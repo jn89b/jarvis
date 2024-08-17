@@ -15,7 +15,7 @@ REMEMBER KEEP THIS SIMPLE THEN APPLY MORE COMPLEXITY
 - [ ] Terrain
 """
 
-class BattleEnv(MultiAgentEnv):
+class BattleEnv(gymnasium.Env):
     metadata = {'render.modes': ['human']}
     
     def __init__(self,
@@ -30,6 +30,8 @@ class BattleEnv(MultiAgentEnv):
         self.terminal_reward = 100        
         self.state = None
         self.done = False
+        self.control_freq = 5 #hz
+        self.old_action = None
         
         #TODO: Refactor all of this as a method
         if not spawn_own_space and battlespace is None:
@@ -53,14 +55,9 @@ class BattleEnv(MultiAgentEnv):
         
         self.action_space = self.init_action_spaces()
         self.observation_space = self.init_observation_spaces()
-        self.terminateds = {agent.id: False for agent in self.all_agents}
-        self.truncateds = {agent.id: False for agent in self.all_agents}
-        self.terminateds['__all__'] = False
-        self.truncateds['__all__'] = False
-        self._agent_ids = set([str(agent.id) for agent in self.agents])
-        self._action_space_in_preferred_format = True
-        self._obs_space_in_preferred_format = None
-    
+        self.terminateds = False
+        self.truncateds = False
+
     @property
     def vehicle(self) -> Agent:
         """First (default) controlled vehicle."""
@@ -113,8 +110,8 @@ class BattleEnv(MultiAgentEnv):
             evader = Evader(
                 battle_space=self.battlespace,
                 state_vector=StateVector(
-                    rand_x,
-                    rand_y,
+                    0.0,
+                    0.0,
                     #np.random.uniform(self.config["x_bounds"][0], self.config["x_bounds"][1]),
                     #np.random.uniform(self.config["y_bounds"][0], self.config["y_bounds"][1]),
                     np.random.uniform(self.config["z_bounds"][0], self.config["z_bounds"][1]),
@@ -176,8 +173,10 @@ class BattleEnv(MultiAgentEnv):
                 # if agent.is_controlled:
                 action_spaces[agent.id] = self.get_agent_action_space(
                     agent_id=agent.id)
+                
+                return self.get_agent_action_space(agent_id=agent.id)
             
-        return spaces.Dict(action_spaces)
+        # return spaces.Dict(action_spaces)
 
     def map_config(self, action_config:Dict) -> Tuple[List,List]:
         high = []
@@ -214,7 +213,9 @@ class BattleEnv(MultiAgentEnv):
                 observation_spaces[agent.id] = self.get_agent_observation_space(
                     agent_id=agent.id
                 )
-        return spaces.Dict(observation_spaces)
+                return self.get_agent_observation_space(agent_id=agent.id)
+                
+        #return spaces.Dict(observation_spaces)
     
     def get_agent_observation_space(self, agent_id:int) -> spaces.Box:
         high_obs = []
@@ -259,8 +260,8 @@ class BattleEnv(MultiAgentEnv):
                           high=np.array(high_obs), 
                           dtype=np.float32)
         
-    def simulate(self, action_dict:spaces.Dict) -> None:
-        self.battlespace.act(action_dict)
+    def simulate(self, action_dict:spaces.Dict, use_multi:bool=True) -> None:
+        self.battlespace.act(action_dict, use_multi)
         self.battlespace.step(self.dt)
         
     def reset(self, *, seed=None, options=None):
@@ -272,17 +273,15 @@ class BattleEnv(MultiAgentEnv):
                                     if agent.is_controlled and 
                                     not agent.is_pursuer]
         
-        self.terminateds = {agent.id: False for agent in self.all_agents}
-        self.truncateds = {agent.id: False for agent in self.all_agents}
-        self.terminateds['__all__'] = False
-        self.truncateds['__all__'] = False
-        rewards = {agent.id: 0 for agent in self.all_agents}
+        self.terminateds = False
+        self.truncateds = False
+        
         # observations = {agent.id: self.get_observation(agent.id) for agent in self.agents}
-        observations = {agent.id: self.get_current_observation(agent.id) for agent in self.agents}
-        
-        infos = {agent.id: {} for agent in self.all_agents}
-        
-        return observations, infos
+        # observations = {agent.id: self.get_current_observation(agent.id) for agent in self.agents}
+        observation = self.get_current_observation(agent_id=0)        
+        # infos = {agent.id: {} for agent in self.all_agents}
+        infos = {}
+        return observation, infos
         
     
     def get_current_observation(self, agent_id:int) -> np.ndarray:
@@ -292,6 +291,8 @@ class BattleEnv(MultiAgentEnv):
         if agent.is_pursuer:
             agent: Pursuer
             for evader in self.agents:
+                if evader.id != agent_id:
+                    continue 
                 evader: Evader
                 rel_distance = agent.state_vector.distance_3D(evader.state_vector)
                 rel_velocity = evader.state_vector.speed - agent.state_vector.speed
@@ -312,7 +313,7 @@ class BattleEnv(MultiAgentEnv):
         else:
             agent: Evader
             for other_agent in self.all_agents:
-                if not other_agent.is_pursuer:
+                if not other_agent.is_pursuer and other_agent.id == agent_id:
                     continue
                 other_agent: Pursuer
                 rel_distance = agent.state_vector.distance_3D(other_agent.state_vector)
@@ -330,10 +331,24 @@ class BattleEnv(MultiAgentEnv):
                                                 env_config.HIGH_REL_ATT)
                 observation = np.append(observation, relative_info)
 
+
+        if agent.is_pursuer:
+            #clip the attitude values
+            observation[3] = np.clip(observation[3],
+                                        env_config.pursuer_observation_constraints['phi_min'],
+                                        env_config.pursuer_observation_constraints['phi_max'])
+            observation[4] = np.clip(observation[4],
+                                        env_config.pursuer_observation_constraints['theta_min'],
+                                        env_config.pursuer_observation_constraints['theta_max'])
+            observation[5] = np.clip(observation[5],
+                                        env_config.pursuer_observation_constraints['psi_min'],
+                                        env_config.pursuer_observation_constraints['psi_max'])
+
         #check if shape is correct
-        assert observation.shape[0] == self.observation_space[agent_id].shape[0]
-        if observation.shape[0] != self.observation_space[agent_id].shape[0]:
-            raise ValueError("Observation shape is not correct")
+        #assert observation.shape[0] == self.observation_space[agent_id].shape[0]
+        if observation.shape[0] != self.observation_space.shape[0]:
+            raise ValueError("Observation shape is not correct", observation.shape,
+                             self.observation_space.shape[0])
 
         return observation
     
@@ -351,49 +366,61 @@ class BattleEnv(MultiAgentEnv):
 
         """
         # obs = np.random.rand(1, 6)
-        reward = {}
+        reward = 0
         info = {}
-        obs = {}
         
         self.current_step += 1
         
-        self.simulate(actions)
-        # get rewards -> reward shaping
-        for id, act in actions.items():
-            obs[id] = self.get_current_observation(id)
-            agent = self.all_agents[id]
-            reward[id] = agent.get_reward(obs[id])
-
+        #do a control based on the control frequency
+        if self.current_step % self.control_freq == 0 or self.current_step == 1:
+            self.simulate(actions, use_multi=False)
+            self.old_action = actions
+        else:
+            #repeat the last action
+            self.simulate(self.old_action, use_multi=False)
+    
+        #self.simulate(actions, use_multi=False)
+        obs = self.get_current_observation(agent_id=0)
+        
+        # # get rewards -> reward shaping
+        # for id, act in actions.items():
+        #     obs = self.get_current_observation(id)
+            # agent = self.all_agents[id]
+        controlled_agent:Evader = self.agents[0]
+        reward = controlled_agent.get_reward(obs)
         #check termination
         # for agent in self.controlled_vehicles:
-        for id, act in actions.items():
-            agent: Agent = self.all_agents[id]
+        # for id, act in actions.items():
+        for agent in self.agents:
+            agent: Agent 
             if agent.crashed:
                 print("You died")
                 #terminate the entire episode
-                self.terminateds = {agent.id: True for agent in self.all_agents}
-                self.terminateds['__all__'] = True
-                self.truncateds = {agent.id: True for agent in self.all_agents}
-                self.truncateds['__all__'] = True
+                self.terminateds = True
+                self.truncateds = True
                 # this is the capture reward
-                if agent.is_pursuer:
-                    reward[id] = self.terminal_reward
+                if agent.is_pursuer == True:
+                    reward = self.terminal_reward
                 else:
-                    reward[id] = -self.terminal_reward
+                    reward = -self.terminal_reward
                     
         # check if the episode is done
         if self.current_step >= self.time_steps:
-            self.terminateds['__all__'] = True
-            self.truncateds['__all__'] = True
+            self.terminateds= True
+            self.truncateds= True
             #hand out rewards
             print("Survived all time steps")
-            for agent in self.all_agents:
+            for agent in self.agents:
                 agent: Agent
                 if agent.is_pursuer:
-                    reward[id] = -self.terminal_reward
+                    reward = -self.terminal_reward
                 else:
-                    reward[id] = self.terminal_reward
-                    
+                    print("Positive reward for evader")
+                    reward = self.terminal_reward
+        
+        #a reward for surviving each step in time
+        reward = reward + (self.current_step*self.dt)            
+        
         return obs, reward, self.terminateds, self.truncateds, info
     
     def render(self, mode:str='human') -> None:

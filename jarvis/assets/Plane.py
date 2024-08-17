@@ -56,6 +56,7 @@ class Agent():
                 distance = self.distance_to(agent)
                 if distance < distance_threshold:
                     return True
+
         return False
     
     def distance_to(self, other:"Agent", 
@@ -64,7 +65,7 @@ class Agent():
         if use_2d:
             return self.state_vector.distance_2D(other.state_vector)
         else:
-            return self.state_vector.distance(other.state_vector)
+            return self.state_vector.distance_3D(other.state_vector)
     
     def heading_difference(self, other:"Agent") -> float:        
         return self.state_vector.heading_difference(other.state_vector)
@@ -107,6 +108,7 @@ class Agent():
         velocity = self.state_vector.speed
         new_z = self.state_vector.z - velocity*dt
         self.state_vector.update(z=new_z)
+        self.plane.set_info(self.state_vector.array)
     
     def step(self, dt:float) -> None:
         """
@@ -137,16 +139,30 @@ class Agent():
             self.plane.state_info, action, dt)
         self.on_state_update(new_states)
         
+    def get_observation(self) -> np.ndarray:
+        """
+        Get the observation of the agent
+        """
+        ego_state = self.state_vector.array
+        #clip the values of the angles
+        
+        return ego_state
+        
 class Pursuer(Agent):
     is_pursuer = True
     MIN_SPEED_MS = env_config.pursuer_observation_constraints['airspeed_min']
     MAX_SPEED_MS = env_config.pursuer_observation_constraints['airspeed_max']
+    MIN_ROLL = env_config.pursuer_observation_constraints['phi_min']
+    MAX_ROLL = env_config.pursuer_observation_constraints['phi_max']
+    MIN_PITCH = env_config.pursuer_observation_constraints['theta_min']
+    MAX_PITCH = env_config.pursuer_observation_constraints['theta_max']
     def __init__(self,
                  battle_space:BattleSpace,
                  state_vector:StateVector,
                  id:int, 
                  radius_bubble:float,
                  is_controlled:bool=False,
+                 capture_distance = 0.0,
                  use_pn:bool=True) -> None:
         super().__init__(battle_space, 
                          state_vector, 
@@ -155,6 +171,7 @@ class Pursuer(Agent):
                          is_controlled)
         
         self.use_pn = use_pn
+        self.capture_distance = capture_distance
         self.old_distance_from_evader = None
         if self.use_pn:
             self.pronav = ProNav(env_config.DT)
@@ -176,17 +193,13 @@ class Pursuer(Agent):
                 distance_from_evader = self.state_vector.distance_3D(agent.state_vector)
                 self.old_distance_from_evader = distance_from_evader
                 
-        # yaw_rate = latax/self.state_vector.speed 
-        
         yaw_rate = latax
         
         roll_cmd = np.arctan2(yaw_rate, 9.81)
         # roll_cmd = 0
-        print("Roll Command: ", np.rad2deg(roll_cmd))
-        print("Yaw Rate: ", np.rad2deg(yaw_rate))
-        
+
         #have to add negatives to make this work
-        a_cmd = 1
+        # a_cmd = 1
         return roll_cmd, pitch_cmd, yaw_rate, a_cmd
     
     def pitch_command(self, ego:StateVector, target:
@@ -228,9 +241,12 @@ class Pursuer(Agent):
         self.clip_actions()
         yaw_cmd = self.action['yaw_cmd']
         speed_cmd = self.action['speed_cmd']
-        print("state vector speed: ", self.state_vector.speed)
-        print("Speed command: ", self.action['speed_cmd'])
-        # print("Speed command: ", speed_cmd)
+        roll_cmd = np.clip(self.action['roll_cmd'],
+                            self.MIN_ROLL, 
+                            self.MAX_ROLL)
+        pitch_cmd = np.clip(self.action['pitch_cmd'],
+                            self.MIN_PITCH, 
+                            self.MAX_PITCH)
         #set the acceleration 
         # speed_input = self.plane.state_info[6] + (acceleration * dt)
         #make sure the speed is within the limits
@@ -238,8 +254,8 @@ class Pursuer(Agent):
                               self.MIN_SPEED_MS, 
                               self.MAX_SPEED_MS)
         # positive pitch command makes it go down
-        action = np.array([self.action['roll_cmd'],
-                            -self.action['pitch_cmd'],
+        action = np.array([roll_cmd,
+                            -pitch_cmd,
                             yaw_cmd,
                             speed_input])
         
@@ -253,7 +269,7 @@ class Pursuer(Agent):
         """
         if action:
             self.action = action
-    
+        
 class Evader(Agent):
     is_pursuer = False
     MIN_SPEED_MS = env_config.evader_observation_constraints['airspeed_min']
@@ -269,15 +285,84 @@ class Evader(Agent):
                          id, 
                          radius_bubble, 
                          is_controlled)
-        
+        self.old_distance_from_pursuer = None 
+        self.old_relative_heading = None   
     
-    def act(self, action:np.array) -> None:
+    def act(self, action:np.array=None) -> None:
         """
-        Set the vehicles action
+        Set the vehicles action 
         """
-        if action:
+        if action.any():
             self.action = action
             
+    def get_reward(self, obs:np.ndarray) -> float:
+        """
+        We want to reward the agent for maximizing distance and 
+        minimizing the distance between the pursuer
+        """
+        relative_information = obs[7:]
+        #get the first element and every 3rd element
+        rel_distances = relative_information[0::3]
+        #get the second element and every 3rd element
+        rel_velocities = relative_information[1::3]
+        #get the third element and every 3rd element
+        rel_headings = relative_information[2::3]    
+
+        #choose the worst case scenario for now?
+        closest_distance = np.min(rel_distances)
+        closest_distance_index = np.argmin(rel_distances)
+        closest_velocity = rel_velocities[closest_distance_index]
+        
+        avg_distance = np.mean(rel_distances)
+        avg_velocity = np.mean(rel_velocities)
+        avg_heading = np.mean(rel_headings)
+        
+        #reward the agent for maximizing distance and minimizing the distance between the pursuer
+        # reward =  abs(avg_heading)  + 0.1 
+        distance_reward = 0.0
+        time_reward = 0.1    
+        manuever_reward = 0.0
+        
+        if self.old_distance_from_pursuer is None:
+            self.old_distance_from_pursuer = closest_distance
+        else:
+            # we want to reward the agent for increasing the distance
+            # so if old distance was 5 and new distance is 4 that means the agent is getting closer
+            # which is bad, so this will be negative
+            distance_reward = closest_distance - self.old_distance_from_pursuer
+            self.old_distance_from_pursuer = closest_distance
+            # distance_reward = np.clip(distance_reward, -1, 1)
+        
+        if self.old_relative_heading is None:
+            self.old_relative_heading = avg_heading
+        else:
+            manuever_reward = abs(avg_heading - self.old_relative_heading)
+            self.old_relative_heading = avg_heading
+            manuever_reward = np.clip(manuever_reward, 0, 1)
+            
+        change_heading = abs(avg_heading)    
+        
+        alpha = 2.0
+        beta = 2.0
+
+        #reward = change_heading#beta*manuever_reward #+ time_reward + change_heading
+        
+        other_agents = self.battle_space.agents
+        for agent in other_agents:
+            if agent.id != self.id and agent.is_pursuer:
+                #compute the dot product
+                dot_product = self.state_vector.dot_product_2D(agent.state_vector)
+                # if self.is_colliding(self.radius_bubble):
+                #     reward = -10.0
+                #     break
+        # reward = (alpha*distance_reward + 
+        #           beta*manuever_reward + time_reward + change_heading)
+        
+        #we want to minimize the dot product so we add a negative
+        reward = -dot_product + distance_reward
+
+        return reward
+        
     def step(self, dt:float) -> None:
         """
         Take a step in the environment
@@ -289,25 +374,13 @@ class Evader(Agent):
             self.fall_down(dt)
             return 
         
-
         self.clip_actions()
-        yaw_input = self.action['yaw_cmd']
-        speed_cmd = self.action['speed_cmd']
-        #set the acceleration 
-        # speed_input = self.plane.state_info[6] + (acceleration * dt)
-        #make sure the speed is within the limits
-        speed_input = np.clip(speed_cmd,
-                              self.MIN_SPEED_MS, 
-                              self.MAX_SPEED_MS)
-        yaw_cmd = yaw_input
-        #positive pitch command makes it go down
-        action = np.array([self.action['roll_cmd'],
-                            -self.action['pitch_cmd'],
-                            yaw_cmd,
-                            speed_input])
+        #have to do this since self.action is immutable
+        action_cmd = self.action.copy()
+        action_cmd[2] = -action_cmd[2]
         
         new_states = self.plane.rk45(
-            self.plane.state_info, action, dt)
+            self.plane.state_info, action_cmd, dt)
         self.on_state_update(new_states)
 
 class DataHandler():

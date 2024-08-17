@@ -77,7 +77,6 @@ class ProNav():
 
             # Calculate closing velocity
             Vc = -LOS_Rate
-            print("LOS_Rate: ", LOS_Rate)
             # Calculate lateral acceleration (latax) using APN with At
             #check if los_rate is close to zero
             if abs(LOS_Rate) == 0:
@@ -95,34 +94,6 @@ class ProNav():
         # Update previous states for the next iteration
         self.previous_ego_state = ego
         self.previous_target_state = target        
-        
         return Vc, yaw_cmd
 
-    # # Update mutable position objects so we can integrate forward to next frame.
-    # msl_pos_previous = math.Vector3(msl_pos)
-    # tgt_pos_previous = math.Vector3(tgt_pos)
-    
-    # # My job is done, it's now up to EXFLINT.Integrate() to steer the missile.
-    # return True
-        
-        # # # Compute the relative position of the target
-        # relative_state_current = target - ego
-
-        # delta_los = predicted_relative_state - relative_state_current
-        # relative_velocity = relative_state_current.speed
-        
-        
-        # #closing velocity
-        # v_closing = (relative_velocity*relative_state_current.array[:2]/\
-        #     np.linalg.norm(relative_state_current.array[:2]))
-        # v_closing_norm = np.linalg.norm(v_closing)
-        
-        # #acceleration cmd
-        # acmd = self.nav_constant * v_closing_norm
-        # heading_cmd = np.arctan2(delta_los.y, delta_los.x)
-        # flight_path_rate = self.nav_constant * heading_cmd
-        # # print("heading_cmd: ", np.rad2deg(heading_cmd))
-        # # print("flight_path_rate: ", np.rad2deg(flight_path_rate))
-        # # print("acmd: ", acmd)
-        # return acmd, flight_path_rate
         

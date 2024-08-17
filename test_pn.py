@@ -52,9 +52,9 @@ for i in range(N):
         print("\n")
         if not agent.is_pursuer:
             agent.act({
-                'yaw_cmd': np.deg2rad(5),
+                'yaw_cmd': np.deg2rad(-10),
                 'pitch_cmd': np.deg2rad(0),
-                'roll_cmd': np.deg2rad(0),
+                'roll_cmd': np.deg2rad(-20),
                 'speed_cmd': 25
             })
             distance = agent.state_vector.distance_3D(missle.state_vector)
@@ -64,7 +64,7 @@ for i in range(N):
                 CAUGHT = True
                 print("Evader caught by missle")
                 break
-                    
+            
     if CAUGHT:
         break
     
