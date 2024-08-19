@@ -33,12 +33,6 @@ pursuer_observation_constraints = {
     'x_max': X_BOUNDS[1],
     'y_min': Y_BOUNDS[0],
     'y_max': Y_BOUNDS[1],
-    'z_min': Z_BOUNDS[0],
-    'z_max': Z_BOUNDS[1],
-    'phi_min':  -np.deg2rad(45),
-    'phi_max':   np.deg2rad(45),
-    'theta_min':-np.deg2rad(20),
-    'theta_max': np.deg2rad(20),
     'psi_min':  -np.pi,
     'psi_max':   np.pi,
     'airspeed_min': 15,
@@ -46,10 +40,6 @@ pursuer_observation_constraints = {
 }
 
 pursuer_control_constraints = {
-    'u_phi_min':  -np.deg2rad(45),
-    'u_phi_max':   np.deg2rad(45),
-    'u_theta_min':-np.deg2rad(5),
-    'u_theta_max': np.deg2rad(5),
     'u_psi_min':  -np.deg2rad(45),
     'u_psi_max':   np.deg2rad(45),
     'v_cmd_min':   15,
@@ -58,10 +48,6 @@ pursuer_control_constraints = {
 
 # Evader
 evader_control_constraints = {
-    'u_phi_min':  -np.deg2rad(45),
-    'u_phi_max':   np.deg2rad(45),
-    'u_theta_min':-np.deg2rad(5),
-    'u_theta_max': np.deg2rad(5),
     'u_psi_min':  -np.deg2rad(45),
     'u_psi_max':   np.deg2rad(45),
     'v_cmd_min':   15,
@@ -73,12 +59,6 @@ evader_observation_constraints = {
     'x_max': X_BOUNDS[1],
     'y_min': Y_BOUNDS[0],
     'y_max': Y_BOUNDS[1],
-    'z_min': Z_BOUNDS[0],
-    'z_max': Z_BOUNDS[1],
-    'phi_min':  -np.deg2rad(45),
-    'phi_max':   np.deg2rad(45),
-    'theta_min':-np.deg2rad(20),
-    'theta_max': np.deg2rad(20),
     'psi_min':  -np.pi,
     'psi_max':   np.pi,
     'airspeed_min': 15,

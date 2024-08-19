@@ -44,7 +44,9 @@ if __name__ == "__main__":
             num_rollout_workers=1
         )
         .multi_agent(
-            policies = {"evader_policy": (None, temp_env.observation_space[0], temp_env.action_space[0], {})},
+            policies = {"evader_policy": 
+                (None, temp_env.observation_space[0], 
+                 temp_env.action_space[0], {})},
             policy_mapping_fn=lambda agent_id, episode, **kwargs: 
                 "evader_policy" if 0 else "evader_policy",
         )

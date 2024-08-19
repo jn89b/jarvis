@@ -18,21 +18,17 @@ if __name__ == "__main__":
     
     USE_RANDOM_ACTIONS = True
     reward_history = []
-    n_times = 1
+    n_times = 5
     for n in range(n_times):
         battle_env.reset()
         for i in range(500):
             action_dict = battle_env.action_space.sample()
-            print("Action Dict: ", action_dict)
+            # print("Action Dict: ", action_dict)
             if not USE_RANDOM_ACTIONS:
-                # action_dict[0][0] = np.random.uniform(-np.pi, np.pi)
-                # action_dict[0][0] = np.deg2rad(35) #roll
-                # action_dict[0][1] = np.deg2rad(10) #pitch
-                # action_dict[0][2] = np.deg2rad(15) #yaw
-                action_dict[0] = np.deg2rad(30)
-                action_dict[1] = np.deg2rad(35) 
-                action_dict[2] = np.deg2rad(10) #pitch
-                action_dict[3] = np.deg2rad(15) #yaw
+                action_dict[0] = 0.2
+                action_dict[1] = 0.0
+                action_dict[2] = 0.0
+                action_dict[3] = 0.0
             #action_dict[0][3] = 25.0 #speed
                 
             # battle_env.step(action_dict)
@@ -41,7 +37,10 @@ if __name__ == "__main__":
             reward_history.append(reward)
             if done:
                 print("Done: ", done)
+                if reward > 0:
+                    print("Win")
                 break
+            
 
         # print("Done: ", done)
         # print("Info: ", info)

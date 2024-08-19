@@ -185,16 +185,11 @@ class Pursuer(Agent):
             if agent.id != self.id and agent.is_pursuer == False:
                 a_cmd, latax = self.pronav.navigate(
                     self.state_vector, agent.state_vector)
-                # a_cmd, latax = self.pronav.pursuit(
-                #     self.state_vector, agent.state_vector)
                 
                 pitch_cmd = self.pitch_command(
                     self.state_vector, agent.state_vector)
-                distance_from_evader = self.state_vector.distance_3D(agent.state_vector)
-                self.old_distance_from_evader = distance_from_evader
                 
         yaw_rate = latax
-        
         roll_cmd = np.arctan2(yaw_rate, 9.81)
         # roll_cmd = 0
 
@@ -325,6 +320,7 @@ class Evader(Agent):
         
         if self.old_distance_from_pursuer is None:
             self.old_distance_from_pursuer = closest_distance
+            self.max_distance_from = closest_distance
         else:
             # we want to reward the agent for increasing the distance
             # so if old distance was 5 and new distance is 4 that means the agent is getting closer
@@ -359,8 +355,11 @@ class Evader(Agent):
         #           beta*manuever_reward + time_reward + change_heading)
         
         #we want to minimize the dot product so we add a negative
-        reward = -dot_product + distance_reward
-
+        # reward = -dot_product + distance_reward
+        # reward = -(1 - closest_distance/self.max_distance_from)
+        #clip the reward
+        reward = distance_reward
+        
         return reward
         
     def step(self, dt:float) -> None:
@@ -577,9 +576,9 @@ class Plane():
         
                     
         #clip the airspeed
-        next_step[6] = np.clip(next_step[6], 
-                               self.min_airspeed_ms, 
-                               self.max_airspeed_ms)            
+        # next_step[6] = np.clip(next_step[6], 
+        #                        self.min_airspeed_ms, 
+        #                        self.max_airspeed_ms)            
                        
         #return as numpy row vector
         if use_numeric:

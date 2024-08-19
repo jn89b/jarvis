@@ -66,16 +66,27 @@ class BattleSpace():
         if distance <= threshold:
             ego_agent.crashed = True
             other_agent.crashed = True
-            print("Collision between agent {} and agent {}".format(
-                ego_agent.id, other_agent.id))
+            # print("Collision between agent {} and agent {}".format(
+            #     ego_agent.id, other_agent.id))
 
     def step(self, dt:float) -> None:
         """
         Step the environment.
         """
+        # for agent in self.agents:
+        #     agent.step(dt)
+        
+        #make the pursuer act first
         for agent in self.agents:
-            agent.step(dt)
-            
+            agent: Agent
+            if agent.is_pursuer:
+                agent.step(dt)
+        
+        for agent in self.agents:
+            agent: Agent
+            if not agent.is_pursuer:
+                agent.step(dt)    
+        
         #check for collisions
         for agent in self.agents:
             agent: Agent

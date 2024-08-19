@@ -14,6 +14,28 @@ class Visualizer(object):
         self.min_y = 1000
         self.max_y = -1000
         
+    def plot_2d_trajectory(self, battlespace:BattleSpace) -> Tuple:
+        fig, ax = plt.subplots()
+        for agent in battlespace.agents:
+            agent: Agent
+            data = agent.plane.data_handler
+            if agent.is_pursuer:
+                color = 'r'
+            else:
+                color = 'b'
+                
+            x = data.x
+            y = data.y
+            ax.scatter(x[0], y[0], color='g', label='Start')
+            ax.plot(x, y, color, label=agent.id)
+            
+            #set titles
+            ax.set_title('2D Trajectory for agent {}'.format(agent.id))
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            
+        return fig, ax        
+    
     def plot_3d_trajectory(self, battlespace:BattleSpace) -> Tuple:
         # Plot 3D trajectory
         fig = plt.figure()
@@ -26,6 +48,7 @@ class Visualizer(object):
                 color = 'r'
             else:
                 color = 'b'
+                print("Data: ", data.x[-1], data.y[-1])
                 
             x = data.x
             y = data.y
@@ -60,5 +83,23 @@ class Visualizer(object):
             ax[1].set_ylabel('theta')
             ax[2].set_ylabel('psi')
             ax[3].set_ylabel('airspeed')
+            
+        return fig, ax
+    
+    def plot_attitudes2d(self, battlespace:BattleSpace) -> Tuple:
+        for agent in battlespace.agents:
+            fig, ax = plt.subplots(2, 1)
+            if agent.is_pursuer:
+                color = 'r'
+            else:
+                color = 'b'
+                
+            #plot the yaw and velocity
+            ax[0].plot(np.rad2deg(agent.plane.data_handler.yaw), color, label='psi')
+            ax[1].plot(agent.plane.data_handler.u, color, label='airspeed')
+            
+            ax[0].set_title('Yaw and Airspeed for agent {}'.format(agent.id))
+            ax[0].set_ylabel('Yaw')
+            ax[1].set_ylabel('Airspeed')
             
         return fig, ax
