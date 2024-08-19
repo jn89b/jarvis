@@ -10,6 +10,23 @@ from jarvis.envs.battle_space import BattleSpace
 from jarvis.algos.pronav import ProNav
 from jarvis.config import env_config
 
+class Obstacle():
+    def __init__(self, x:float, y:float, z:float, radius:float) -> None:
+        self.x = x
+        self.y = y
+        self.z = z
+        self.radius = radius
+        self.state_vector = StateVector(x=x, y=y, z=z,
+            roll_rad=0, pitch_rad=0, yaw_rad=0, speed=0)
+
+    def is_colliding(self, agent:"Agent") -> bool:
+        distance = agent.distance_to(self)
+        if distance < self.radius + agent.radius_bubble:
+            return True
+        return False
+    
+    
+
 class Agent():
     is_pursuer = None
     def __init__(self,
@@ -111,6 +128,11 @@ class Agent():
             new_states[0], new_states[1], new_states[2],
             0, 0, new_states[2], new_states[3] 
         )
+        x = new_vector.x
+        y = new_vector.y
+        psi = new_vector.yaw_rad
+        v = new_vector.speed
+        new_state_info = np.array([x, y, psi, v])
         #we'll keep this information for now
         self.state_vector = new_vector 
         self.plane.set_info(new_states)
@@ -135,13 +157,22 @@ class Agent():
         """
         Get the observation of the agent
         """
-        ego_state = self.state_vector.array
-        #clip the values of the angles
+        #ego_state = self.state_vector.array
+        # we only want to return the x,y,psi,v
+        x = self.state_vector.x
+        y = self.state_vector.y
+        psi = self.state_vector.yaw_rad
+        v = self.state_vector.speed
+        
+        ego_state = np.array([x, y, psi, v])
+        # print("Ego state: ", ego_state)
         
         return ego_state
+
     
 class Evader(Agent):
     is_pursuer = False
+    is_controlled = True
     MIN_SPEED_MS = env_config.evader_observation_constraints['airspeed_min']
     MAX_SPEED_MS = env_config.evader_observation_constraints['airspeed_max']
     def __init__(self,
@@ -181,13 +212,83 @@ class Evader(Agent):
         #have to do this since self.action is immutable
         #action_cmd = self.action.copy()
         # action_cmd[2] = -action_cmd[2]
-        
         new_states = self.plane.rk45(
             self.plane.state_info, self.action, dt)
         self.on_state_update(new_states)
 
+    def get_reward(self, obs:np.ndarray) -> float:
+        """
+        We want to reward the agent for maximizing distance and 
+        minimizing the distance between the pursuer
+        """
+        relative_information = obs[4:]
+        #get the first element and every 3rd element
+        rel_distances = relative_information[0::3]
+        #get the second element and every 3rd element
+        rel_velocities = relative_information[1::3]
+        #get the third element and every 3rd element
+        rel_headings = relative_information[2::3]    
+
+        #choose the worst case scenario for now?
+        closest_distance = np.min(rel_distances)
+        closest_distance_index = np.argmin(rel_distances)
+        closest_velocity = rel_velocities[closest_distance_index]
+        
+        avg_distance = np.mean(rel_distances)
+        avg_velocity = np.mean(rel_velocities)
+        avg_heading = np.mean(rel_headings)
+        
+        #reward the agent for maximizing distance and minimizing the distance between the pursuer
+        # reward =  abs(avg_heading)  + 0.1 
+        distance_reward = 0.0
+        time_reward = 0.1    
+        manuever_reward = 0.0
+        
+        if self.old_distance_from_pursuer is None:
+            self.old_distance_from_pursuer = closest_distance
+            self.max_distance_from = closest_distance
+        else:
+            # we want to reward the agent for increasing the distance
+            # so if old distance was 5 and new distance is 4 that means the agent is getting closer
+            # which is bad, so this will be negative
+            distance_reward = closest_distance - self.old_distance_from_pursuer
+            self.old_distance_from_pursuer = closest_distance
+            # distance_reward = np.clip(distance_reward, -1, 1)
+        
+        if self.old_relative_heading is None:
+            self.old_relative_heading = avg_heading
+        else:
+            manuever_reward = abs(avg_heading - self.old_relative_heading)
+            self.old_relative_heading = avg_heading
+            manuever_reward = np.clip(manuever_reward, 0, 1)
+            
+        change_heading = abs(avg_heading)    
+        
+        alpha = 0.2
+        beta = 0.1
+        gamma = 0.1
+
+        #reward = change_heading#beta*manuever_reward #+ time_reward + change_heading
+        
+        other_agents = self.battle_space.agents
+        for agent in other_agents:
+            if agent.id != self.id and agent.is_pursuer:
+                pursuer: Pursuer = agent
+                #ideally we want to be faster than the pursuer 
+                diff_velocity = self.state_vector.speed - pursuer.state_vector.speed
+                
+        #we want to minimize the dot product so we add a negative
+        # reward = -dot_product + distance_reward
+        # reward = -(1 - closest_distance/self.max_distance_from)
+        #clip the reward
+        
+        reward = alpha*distance_reward + beta*manuever_reward
+        
+        return reward
+
 class Pursuer(Agent):
     is_pursuer = True
+    is_controlled = False    
     MIN_SPEED_MS = env_config.pursuer_observation_constraints['airspeed_min']
     MAX_SPEED_MS = env_config.pursuer_observation_constraints['airspeed_max']
     def __init__(self,
@@ -208,7 +309,7 @@ class Pursuer(Agent):
         self.capture_distance = capture_distance
         self.observation_constraints = env_config.pursuer_observation_constraints
         self.control_constraints = env_config.pursuer_control_constraints
-        if self.is_controlled:
+        if self.use_pn:
             self.pro_nav = ProNav(env_config.DT)
     
     def pro_nav_guidance(self) -> Tuple[float, float]:
@@ -257,7 +358,7 @@ class Pursuer(Agent):
             self.action = np.array([yaw_rate, a_cmd])
 
         #copy the action
-        self.action = copy.deepcopy(self.action)
+        #self.action = copy(self.action)
         self.action[1] = self.action[1] + self.state_vector.speed
         self.clip_actions()
         
@@ -359,7 +460,8 @@ class Plane2D():
         self.v_dot = (self.v_cmd - self.v)*(self.dt_val/self.airspeed_tau)
         self.x_fdot = self.v * ca.cos(self.psi_f)
         self.y_fdot = self.v * ca.sin(self.psi_f)
-        self.psi_fdot = (self.u_psi - self.psi_f)*(self.dt_val/self.pitch_tau)
+        # self.psi_fdot = self.u_psi*self.dt_val #(self.u_psi - self.psi_f)*(self.dt_val/self.pitch_tau)
+        self.psi_fdot = self.u_psi#*(self.pitch_tau)
     
         if self.include_time:
             self.z_dot = ca.vertcat(

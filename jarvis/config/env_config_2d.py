@@ -5,17 +5,20 @@ X_BOUNDS = [-2000, 2000]
 Y_BOUNDS = [-2000, 2000]
 Z_BOUNDS = [30, 150]
 
+### Target Config ###
+TARGET_RADIUS = 5
+
 ### ENV Config ###
 NUM_AGENTS = 1
 NUM_PURSUERS = 1
-TIME_STEPS = 350#600
+TIME_STEPS = 500#600
 MAX_NUM_STEPS = TIME_STEPS
 #if False, the pursuers will be controlled by the AI otherwise default to heuristic
 AI_PURSUERS = False
 USE_PURSUER_HEURISTICS = False
 DT = 0.1
 CAPTURE_RADIUS = 10
-MIN_SPAWN_DISTANCE = 250 #150
+MIN_SPAWN_DISTANCE = 300
 MAX_SPAWN_DISTANCE = 350 #300
 
 # Relative min and max observations
@@ -51,7 +54,7 @@ evader_control_constraints = {
     'u_psi_min':  -np.deg2rad(45),
     'u_psi_max':   np.deg2rad(45),
     'v_cmd_min':   15,
-    'v_cmd_max':   30
+    'v_cmd_max':   25
 }
 
 evader_observation_constraints = {
@@ -62,6 +65,6 @@ evader_observation_constraints = {
     'psi_min':  -np.pi,
     'psi_max':   np.pi,
     'airspeed_min': 15,
-    'airspeed_max': 30
+    'airspeed_max': 25
 }
     

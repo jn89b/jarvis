@@ -382,7 +382,7 @@ class BattleEnv(gymnasium.Env):
         return observation.astype(np.float32)
 
     
-    def step(self, actions:spaces.Dict) -> Tuple[np.ndarray, float, bool, Dict]:
+    def step(self, actions:spaces.Dict) -> Tuple[np.ndarray, float, bool, bool, Dict]:
         """
         Parameters
         ----------

@@ -6,9 +6,19 @@ import numpy as np
 from typing import List, Tuple, TYPE_CHECKING,Dict
 from jarvis.utils.Vector import StateVector
 if TYPE_CHECKING:
-    from jarvis.assets.Plane import Agent
+    from jarvis.assets.Plane2D import Agent, Evader, Pursuer,Obstacle
 
 class BattleSpace():
+    """
+    Consider this like a 2D battlefield where agents can move around.
+    - Right now it only includes agents.
+    
+    - For the future include:
+        - radars
+        - terrain
+        - obstacles
+        
+    """
     def __init__(self,
                  x_bounds:np.ndarray,
                  y_bounds:np.ndarray,
@@ -18,18 +28,20 @@ class BattleSpace():
         self.y_bounds = y_bounds
         self.z_bounds = z_bounds
         self.agents = agents
+        self.target = None
         
-    
+    def insert_target(self, target:"Obstacle") -> None:
+        self.target = target
+        
     def is_out_bounds(self, state_vector:StateVector) -> bool:
         """
         Check if the state vector is out of bounds.
         """
         x, y, z = state_vector.x, state_vector.y, state_vector.z
         return (x < self.x_bounds[0] or x > self.x_bounds[1] or
-                y < self.y_bounds[0] or y > self.y_bounds[1] or
-                z < self.z_bounds[0] or z > self.z_bounds[1])
+                y < self.y_bounds[0] or y > self.y_bounds[1])
         
-    def act(self, action:Dict, use_multi:bool=True) -> None:
+    def act(self, action:Dict, use_multi:bool=False) -> None:
         """
         Act on the environment.
         """
@@ -79,13 +91,13 @@ class BattleSpace():
         
         #make the pursuer act first
         for agent in self.agents:
-            agent: Agent
             if agent.is_pursuer:
+                agent:Pursuer
                 agent.step(dt)
         
         for agent in self.agents:
-            agent: Agent
             if not agent.is_pursuer:
+                agent:Evader
                 agent.step(dt)    
         
         #check for collisions
@@ -106,4 +118,4 @@ class BattleSpace():
         for agent in self.agents:
             if self.is_out_bounds(agent.state_vector):
                 agent.crashed = True
-                # print("Agent {} out of bounds".format(agent.id))
+                print("Agent {} out of bounds".format(agent.id))

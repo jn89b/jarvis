@@ -13,7 +13,7 @@ class PrintNormalizedCallback(BaseCallback):
     def _on_step(self) -> bool:
         # Retrieve the environment
         env = self.training_env
-        # Get the current step's observation, reward, done, and info
+        # Get the current step's obspervation, reward, done, and info
         
         # Check if the environment is wrapped with VecNormalize
         # if isinstance(env, VecNormalize):

@@ -48,13 +48,16 @@ class TestProNav2D(unittest.TestCase):
         steps = 100
         dt = env_config.DT
         initial_distance = self.pursuer.distance_to(self.evader, use_2d=True)
-        evader_action = np.array([np.deg2rad(10), 
+        evader_action = np.array([np.deg2rad(-35), 
                                   20])
         self.evader.act(evader_action)
         for step in range(steps):
             # Step the pursuer in the environment
-            self.pursuer.step(dt)
-            self.evader.step(dt)
+            # self.pursuer.step(dt)
+            # self.evader.step(dt)
+            for agent in self.battlespace.agents:
+                agent.step(dt)
+                
             # Check the distance
             new_distance = self.pursuer.distance_to(self.evader, use_2d=True)
             # print(f"Step {step}: Distance = {new_distance}")
@@ -65,7 +68,7 @@ class TestProNav2D(unittest.TestCase):
         
         # Check if the pursuer eventually captures the evader
         # self.assertTrue(self.pursuer.is_colliding(self.pursuer.capture_distance))
-        #visualize the simulation
+        ## visualize the simulation
         # vis = Visualizer()
         # vis.plot_2d_trajectory(self.battlespace)
         # vis.plot_attitudes2d(self.battlespace)
