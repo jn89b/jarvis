@@ -2,7 +2,7 @@
 __pycache__/
 
 jarvis/__pycache__/
-
+models/
 ray_results/
 
 # Byte-compiled / optimized / DLL files
