@@ -247,6 +247,7 @@ class EngagementEnv(AbstractBattleEnv):
         self.reward = 0
         self.old_distance_to_target = None
         self.time_steps = env_config.TIME_STEPS
+        self.effector_range = env_config.EFFECTOR_RANGE
 
     def __init_battlespace(self) -> BattleSpace:
         return BattleSpace(
@@ -264,13 +265,11 @@ class EngagementEnv(AbstractBattleEnv):
         agent_y = controlled_agent.state_vector.y
         min_spawn_distance = self.config["min_spawn_distance"]
         max_spawn_distance = self.config["max_spawn_distance"]
-        random_heading = np.random.uniform(-np.pi, np.pi)
+        #random_heading = np.random.uniform(-np.pi, np.pi)
         random_distance = np.random.uniform(min_spawn_distance, max_spawn_distance)
+        random_heading = controlled_agent.state_vector.yaw_rad
         target_x = agent_x + random_distance * np.cos(random_heading)
         target_y = agent_y + random_distance * np.sin(random_heading)
-        
-        # target_x = agent_x + np.random.uniform(min_spawn_distance, max_spawn_distance)
-        # target_y = agent_y + np.random.uniform(min_spawn_distance, max_spawn_distance)
         
         #make random negative or positive
         target_x = target_x * np.random.choice([-1, 1])
@@ -358,11 +357,10 @@ class EngagementEnv(AbstractBattleEnv):
             low_y = env_config.Y_BOUNDS[0]
             high_y = env_config.Y_BOUNDS[1]
             
-            distance_squared = (high_x - low_x)**2 + (high_y - low_y)**2
+            distance_squared = (high_x - low_x)**2 \
+                + (high_y - low_y)**2
             low = [0, -np.pi]
             high = [distance_squared, np.pi]
-            # low = [low_x, low_y]
-            # high = [high_x, high_y]
             
             low_obs.extend(low)
             high_obs.extend(high)
@@ -393,7 +391,7 @@ class EngagementEnv(AbstractBattleEnv):
     
     def reset(self, *, seed=None, options=None):
         self.battlespace = self.__init_battlespace()
-        self.all_agents = self.__init_agents()
+        self.all_agents  = self.__init_agents()
         self.battlespace.agents = self.all_agents
         self.make_target()
         self.current_step = 0
@@ -427,14 +425,25 @@ class EngagementEnv(AbstractBattleEnv):
         # reward for being closer to target so if delta_distance is positive then
         # we should reward the agent
         self.old_distance_to_target = distance
-        return delta_distance - np.abs(error_los)
+        
+        ego_unit_vector = np.array([np.cos(agent.state_vector.yaw_rad),
+                                    np.sin(agent.state_vector.yaw_rad)])
+        
+        target_unit_vector = np.array([np.cos(los), np.sin(los)])
+        
+        dot_product = np.dot(ego_unit_vector, target_unit_vector)
+        
+        return dot_product
     
-    def step(self, action:np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict]:
+    
+    def step(self, action:np.ndarray,
+             norm_action:bool=True) -> Tuple[np.ndarray, float, bool, bool, Dict]:
+        
         self.reward = 0
         
-        if self.use_stable_baselines:
+        if self.use_stable_baselines and norm_action:
             action = self.denormalize_action(action, agent_id=0)
-            
+        # print("Action: ", action)    
         self.simulate(action, use_multi=False)
         self.observation = self.get_current_observation(agent_id=0)
         
@@ -452,7 +461,8 @@ class EngagementEnv(AbstractBattleEnv):
                 self.reward -= 100
                 break
         
-        if distance < env_config.TARGET_RADIUS:
+        if distance <= env_config.TARGET_RADIUS+controlled_agent.radius_bubble:
+            print("Target reached")
             self.terminateds = True
             self.reward += 100
         
@@ -461,7 +471,8 @@ class EngagementEnv(AbstractBattleEnv):
             self.reward -= 100
     
         self.current_step += 1
-        self.reward -= 1 
+        #penalize the agent for taking too long
+        self.reward -= (1*0.01) 
         
         return self.observation, self.reward, self.terminateds, self.truncateds, {}
     

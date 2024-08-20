@@ -68,8 +68,6 @@ class PrintNormalizedCallback(BaseCallback):
             
             #print new line
             print("\n")
-                
-                
         return True
 
 
@@ -79,8 +77,8 @@ def create_env():
 
 if __name__ == "__main__":
     # Create a list of environments to run in parallel
-    num_envs = 4  # Adjust this number based on your CPU cores
-    LOAD_MODEL = True
+    num_envs = 6  # Adjust this number based on your CPU cores
+    LOAD_MODEL = False
     CONTINUE_TRAINING = True
     COMPARE_MODELS = False
     TOTAL_TIME_STEPS = 2000000
@@ -93,8 +91,6 @@ if __name__ == "__main__":
     # Check the environment to ensure it's correctly set up
     test_env = BattleEnv()
     check_env(test_env)
-
-
     # Add the callback
     callback = PrintNormalizedCallback(verbose=1)
 
@@ -102,8 +98,7 @@ if __name__ == "__main__":
     checkpoint_callback = CheckpointCallback(save_freq=10000, 
                                              save_path='./models/'+model_name+'_2',
                                             name_prefix=model_name)
-
-
+    
     # Load or initialize the model
     if LOAD_MODEL and not CONTINUE_TRAINING:
         environment = BattleEnv()  # Create a single instance of the environment for evaluation
@@ -130,7 +125,7 @@ if __name__ == "__main__":
                     #use gpu
                     device='cuda')
         # Train the model in parallel
-        model.learn(total_timesteps=100000, callback=[callback,
+        model.learn(total_timesteps=TOTAL_TIME_STEPS, callback=[callback,
                                                     checkpoint_callback])
         
         model.save(model_name)

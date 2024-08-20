@@ -49,7 +49,5 @@ class TestEvader(unittest.TestCase):
         if not np.array_equal(start_position.array, end_position.array):
             self.assertTrue(True)
             
-        
-        
 if __name__ == "__main__":
     unittest.main()

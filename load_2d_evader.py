@@ -5,14 +5,15 @@ from jarvis.envs.simple_2d_env import BattleEnv
 from jarvis.visualizer.visualizer import Visualizer
 
 if __name__ == '__main__':
-    model_name = "PPO_evader_2D_1760000_steps"
+    model_name = "PPO_evader_2D_480000_steps"
+    # model_name ="PPO_evader_2D_40000_steps"
     environment = BattleEnv()  # Create a single instance of the environment for evaluation
     model = PPO.load(model_name, env=environment)
     print("Model loaded.")
     
     #set seed number for reproducibility
     seed = 0
-    num_times = 10
+    num_times = 5
     num_success = 0
     battle_space_list = []
     reward_list = []
@@ -21,7 +22,7 @@ if __name__ == '__main__':
         obs, _ = environment.reset()
         done = False
         count = 0
-        count_max = 300
+        count_max = 350
         while not done:
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, done, _, info  = environment.step(action)
@@ -44,16 +45,15 @@ if __name__ == '__main__':
     print(f"Success rate: {num_success/num_times}")
 
     data_vis = Visualizer()
-    # battlespace = environment.battlespace
+    battlespace = environment.battlespace
     for i, battle_space in enumerate(battle_space_list):
         if i in idx_fail:
             fig, ax = data_vis.plot_2d_trajectory(battle_space)
             # fig, ax = data_vis.plot_attitudes2d(battle_space)
             pass
         else:
-            # fig, ax = data_vis.plot_2d_trajectory(battle_space)
-            fig, ax = data_vis.plot_attitudes2d(battle_space)
-    #fig, ax = data_vis.plot_3d_trajectory(battlespace)
-    #fig, ax = data_vis.plot_attitudes(battlespace)
+            fig, ax = data_vis.plot_2d_trajectory(battle_space)
+            #fig, ax = data_vis.plot_attitudes2d(battle_space)
+
     plt.show()    
 

@@ -21,6 +21,17 @@ success = 0
 for n in range(n_times):
     count = 0
     done = False
+    #reset the environment
+    env.reset()
+    #get pursuer and evader
+    agents = env.battlespace.agents
+    for agent in agents:
+        if agent.is_pursuer:
+            pursuer = agent
+        else:
+            evader = agent
+            
+    print("Pursuer: ", pursuer.state_vector)
     for step in range(steps):
         # print("Step: ", step)
         action_dict = env.action_space.sample()
@@ -33,14 +44,14 @@ for n in range(n_times):
                 print("Lose")
             break    
 
-print(f"Success rate: {success/n_times}")
-data_vis = Visualizer()
-battlespace = env.battlespace
-fig, ax = data_vis.plot_2d_trajectory(battlespace)
-fig, ax = data_vis.plot_attitudes2d(battlespace)
+# print(f"Success rate: {success/n_times}")
+# data_vis = Visualizer()
+# battlespace = env.battlespace
+# fig, ax = data_vis.plot_2d_trajectory(battlespace)
+# fig, ax = data_vis.plot_attitudes2d(battlespace)
 
-#plot the reward history
-fig, ax = plt.subplots()
-ax.plot(reward_history)
+# #plot the reward history
+# fig, ax = plt.subplots()
+# ax.plot(reward_history)
 
-plt.show()
+# plt.show()

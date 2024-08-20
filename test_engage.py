@@ -1,6 +1,7 @@
 import unittest
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 from jarvis.utils.Vector import StateVector
 from jarvis.envs.simple_2d_env import EngagementEnv
 from jarvis.envs.battle_space_2d import BattleSpace
@@ -16,7 +17,7 @@ env = EngagementEnv(use_stable_baselines=True)
 steps = 300
 dt = env_config.DT
 reward_history = []
-n_times = 20
+n_times = 1
 success = 0
 for n in range(n_times):
     count = 0
@@ -24,13 +25,26 @@ for n in range(n_times):
     #reset the environment
     env.reset()
     target = env.battlespace.target
-    dx = target.state_vector.x - env.battlespace.evader.state_vector.x
-    dy = target.state_vector.y - env.battlespace.evader.state_vector.y
-    
+    agent = env.agents[0]
+    dx = target.state_vector.x - agent.state_vector.x
+    dy = target.state_vector.y - agent.state_vector.y
+    theta = np.arctan2(dy, dx)
+    heading_error  = theta - agent.state_vector.yaw_rad
+    reward_history = []
     for step in range(steps):
         # print("Step: ", step)
+        dx = target.state_vector.x - agent.state_vector.x
+        dy = target.state_vector.y - agent.state_vector.y
+        theta = np.arctan2(dy, dx)
+        
+        heading_error  = theta - agent.state_vector.yaw_rad
         action_dict = env.action_space.sample()
-        obs, reward, done, _, info = env.step(action_dict)
+        action_dict[0] = 1.0
+        # action_dict[0] = -heading_error
+        # action_dict[1] = 20
+        
+        obs, reward, done, _, info = env.step(action_dict, norm_action=True)
+        print("obs: ", obs)
         reward_history.append(reward)
         if done or count >= steps:
             if reward > 0:

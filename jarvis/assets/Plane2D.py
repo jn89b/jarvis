@@ -251,7 +251,7 @@ class Evader(Agent):
             # we want to reward the agent for increasing the distance
             # so if old distance was 5 and new distance is 4 that means the agent is getting closer
             # which is bad, so this will be negative
-            distance_reward = closest_distance - self.old_distance_from_pursuer
+            distance_reward = self.old_distance_from_pursuer - closest_distance
             self.old_distance_from_pursuer = closest_distance
             # distance_reward = np.clip(distance_reward, -1, 1)
         
@@ -260,7 +260,7 @@ class Evader(Agent):
         else:
             manuever_reward = abs(avg_heading - self.old_relative_heading)
             self.old_relative_heading = avg_heading
-            manuever_reward = np.clip(manuever_reward, 0, 1)
+            manuever_reward = np.clip(manuever_reward, 0, 0.5)
             
         change_heading = abs(avg_heading)    
         
@@ -283,6 +283,7 @@ class Evader(Agent):
         #clip the reward
         
         reward = alpha*distance_reward + beta*manuever_reward
+        #normalize the distance reward
         
         return reward
 

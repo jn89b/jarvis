@@ -79,7 +79,7 @@ def create_env():
 
 if __name__ == "__main__":
     # Create a list of environments to run in parallel
-    num_envs = 2  # Adjust this number based on your CPU cores
+    num_envs = 5  # Adjust this number based on your CPU cores
     LOAD_MODEL = True
     CONTINUE_TRAINING = True
     COMPARE_MODELS = False
@@ -124,7 +124,7 @@ if __name__ == "__main__":
                     verbose=1,
                     tensorboard_log="./logs/"+model_name,
                     learning_rate=0.003,
-                    ent_coef=0.01,
+                    # ent_coef=0.01,
                     n_steps=2048,
                     batch_size=128,
                     #use gpu

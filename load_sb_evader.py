@@ -17,7 +17,7 @@ if __name__ == '__main__':
         obs, _ = environment.reset()
         done = False
         count = 0
-        count_max = 350
+        count_max = 500
         while not done:
             action, _ = model.predict(obs)
             obs, reward, done, _, info  = environment.step(action)

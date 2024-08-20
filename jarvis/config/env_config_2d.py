@@ -19,7 +19,7 @@ USE_PURSUER_HEURISTICS = False
 DT = 0.1
 CAPTURE_RADIUS = 10
 MIN_SPAWN_DISTANCE = 300
-MAX_SPAWN_DISTANCE = 350 #300
+MAX_SPAWN_DISTANCE = 325 #300
 
 # Relative min and max observations
 LOW_REL_POS = 0.0
@@ -43,16 +43,16 @@ pursuer_observation_constraints = {
 }
 
 pursuer_control_constraints = {
-    'u_psi_min':  -np.deg2rad(45),
-    'u_psi_max':   np.deg2rad(45),
+    'u_psi_min':  -np.deg2rad(40),
+    'u_psi_max':   np.deg2rad(40),
     'v_cmd_min':   15,
     'v_cmd_max':   30
 }
 
 # Evader
 evader_control_constraints = {
-    'u_psi_min':  -np.deg2rad(45),
-    'u_psi_max':   np.deg2rad(45),
+    'u_psi_min':  -np.deg2rad(60),
+    'u_psi_max':   np.deg2rad(60),
     'v_cmd_min':   15,
     'v_cmd_max':   25
 }
