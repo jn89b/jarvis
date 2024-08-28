@@ -456,7 +456,7 @@ class BattleEnv(gymnasium.Env):
         
         #a reward for surviving each step in time
         # self.reward = self.reward + (self.current_step*self.dt)            
-        self.reward += 1
+        self.reward += 0
         
         return self.observation, self.reward, self.terminateds, self.truncateds, info
     

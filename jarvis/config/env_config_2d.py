@@ -5,13 +5,13 @@ X_BOUNDS = [-2000, 2000]
 Y_BOUNDS = [-2000, 2000]
 Z_BOUNDS = [30, 150]
 
-### Target Config ###
+### Target Confige ###
 TARGET_RADIUS = 5
 
 ### ENV Config ###
 NUM_AGENTS = 1
 NUM_PURSUERS = 1
-TIME_STEPS = 500#600
+TIME_STEPS = 500
 MAX_NUM_STEPS = TIME_STEPS
 #if False, the pursuers will be controlled by the AI otherwise default to heuristic
 AI_PURSUERS = False
@@ -51,8 +51,8 @@ pursuer_control_constraints = {
 
 # Evader
 evader_control_constraints = {
-    'u_psi_min':  -np.deg2rad(60),
-    'u_psi_max':   np.deg2rad(60),
+    'u_psi_min':  -np.deg2rad(40),
+    'u_psi_max':   np.deg2rad(40),
     'v_cmd_min':   15,
     'v_cmd_max':   25
 }

@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt
 from jarvis.utils.Vector import StateVector
 from jarvis.envs.battle_space import BattleSpace
 from jarvis.algos.pronav import ProNav
-from jarvis.config import env_config
+from jarvis.config import env_config_2d as env_config
 
 class Obstacle():
     def __init__(self, x:float, y:float, z:float, radius:float) -> None:
@@ -251,7 +251,7 @@ class Evader(Agent):
             # we want to reward the agent for increasing the distance
             # so if old distance was 5 and new distance is 4 that means the agent is getting closer
             # which is bad, so this will be negative
-            distance_reward = self.old_distance_from_pursuer - closest_distance
+            distance_reward = closest_distance - self.old_distance_from_pursuer
             self.old_distance_from_pursuer = closest_distance
             # distance_reward = np.clip(distance_reward, -1, 1)
         
@@ -282,7 +282,8 @@ class Evader(Agent):
         # reward = -(1 - closest_distance/self.max_distance_from)
         #clip the reward
         
-        reward = alpha*distance_reward + beta*manuever_reward
+        #reward = alpha*distance_reward #+ beta*manuever_reward
+        reward = closest_distance*0.01
         #normalize the distance reward
         
         return reward

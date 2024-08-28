@@ -86,8 +86,12 @@ class Visualizer(object):
             
         return fig, ax
     
-    def plot_attitudes2d(self, battlespace:BattleSpace) -> Tuple:
+    def plot_attitudes2d(self, battlespace:BattleSpace, ignore_pursuer:bool=False) -> Tuple:
         for agent in battlespace.agents:
+            
+            if ignore_pursuer and agent.is_pursuer:
+                continue
+            
             fig, ax = plt.subplots(2, 1)
             if agent.is_pursuer:
                 color = 'r'

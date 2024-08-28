@@ -8,15 +8,15 @@ Z_BOUNDS = [30, 150]
 ### ENV Config ###
 NUM_AGENTS = 1
 NUM_PURSUERS = 1
-TIME_STEPS = 350#600
+TIME_STEPS = 500
 MAX_NUM_STEPS = TIME_STEPS
 #if False, the pursuers will be controlled by the AI otherwise default to heuristic
 AI_PURSUERS = False
 USE_PURSUER_HEURISTICS = False
 DT = 0.1
 CAPTURE_RADIUS = 10
-MIN_SPAWN_DISTANCE = 300 #150
-MAX_SPAWN_DISTANCE = 350 #300
+MIN_SPAWN_DISTANCE = 400 #150
+MAX_SPAWN_DISTANCE = 450 #300
 
 # Relative min and max observations
 LOW_REL_POS = 0.0

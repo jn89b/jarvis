@@ -33,9 +33,6 @@ if __name__ == "__main__":
             #lr=tune.grid_search([3e-3]),
             lr = 3e-3,
             train_batch_size=8000,  # Example batch size
-            
-            # vf_clip_param= 50.0,
-            # num_sgd_iter=10,
         )
     )
 
@@ -75,15 +72,3 @@ if __name__ == "__main__":
         )
 
     tuner.fit()
-
-    # tune.run(
-    #     "PPO",
-    #     name="PPO_UAM",
-    #     stop={"timesteps_total": 1500000},
-    #     config=base_config,
-    #     checkpoint_freq=20,
-    #     checkpoint_at_end=True,
-    #     storage_path=storage_path,
-    #     log_to_file=True,
-    # )
-    

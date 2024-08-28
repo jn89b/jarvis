@@ -358,8 +358,7 @@ class Evader(Agent):
         # reward = -dot_product + distance_reward
         # reward = -(1 - closest_distance/self.max_distance_from)
         #clip the reward
-        reward = distance_reward
-        
+        reward = -closest_distance 
         return reward
         
     def step(self, dt:float) -> None:

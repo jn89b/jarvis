@@ -2,13 +2,18 @@ from typing import Dict, Text
 from typing import Dict, List, Optional, Text, Tuple, TypeVar
 import numpy as np
 import gymnasium 
+import copy
+import random
+import pickle as pkl
+
+from stable_baselines3.common.vec_env import VecNormalize
 from gymnasium import spaces
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from jarvis.envs.battle_space_2d import BattleSpace
 from jarvis.config import env_config_2d as env_config
 from jarvis.utils.Vector import StateVector
 from jarvis.assets.Plane2D import Agent, Evader, Pursuer, Obstacle
-
+from jarvis.utils.math import normalize_obs, unnormalize_obs
 # this is a simple environment that will be used to test the RL algorithms
 
 """
@@ -19,6 +24,9 @@ such as :
 - EvaderPolicy
 - TargetPolicy
 """
+
+from stable_baselines3.common.running_mean_std import RunningMeanStd
+
 
 class AbstractBattleEnv(gymnasium.Env):
     """
@@ -32,7 +40,9 @@ class AbstractBattleEnv(gymnasium.Env):
                  spawn_own_agents:bool=False,
                  battlespace:BattleSpace=None,
                  use_stable_baselines:bool=True,
-                 agents:List[Agent]=None) -> None:
+                 agents:List[Agent]=None,
+                 upload_norm_obs:bool=False,
+                 rms_info:RunningMeanStd=None) -> None:
         self.config = self.default_config()
         self.dt = env_config.DT
         self.time_steps = env_config.TIME_STEPS
@@ -41,6 +51,8 @@ class AbstractBattleEnv(gymnasium.Env):
         self.use_stable_baselines = use_stable_baselines        
         self.state = None
         self.done = False
+        self.upload_norm_obs = upload_norm_obs
+        self.rms_info = rms_info
     
     @classmethod
     def default_config(cls) -> Dict:
@@ -484,7 +496,9 @@ class BattleEnv(gymnasium.Env):
                  spawn_own_agents:bool=False,
                  battlespace:BattleSpace=None,
                  use_stable_baselines:bool=True,
-                 agents:List[Agent]=None) -> None:
+                 agents:List[Agent]=None,
+                 upload_norm_obs:bool=False,
+                 vec_env:VecNormalize=None) -> None:
         
         self.config = self.default_config()
         self.dt = env_config.DT
@@ -500,6 +514,9 @@ class BattleEnv(gymnasium.Env):
         self.current_sim_num = 0
         self.num_wins = 0
         self.mean_episode_length = 0
+        
+        self.upload_norm_obs = upload_norm_obs
+        self.vec_env = vec_env
         
         #TODO: Refactor all of this as a method
         if not spawn_own_space and battlespace is None:
@@ -527,6 +544,7 @@ class BattleEnv(gymnasium.Env):
         self.truncateds = False
         self.observation = None
         self.reward = 0
+        #pursuer position
 
     @property
     def vehicle(self) -> Agent:
@@ -568,16 +586,14 @@ class BattleEnv(gymnasium.Env):
             min_speed = env_config.evader_observation_constraints['airspeed_min']
             max_speed = env_config.evader_observation_constraints['airspeed_max']
             min_spawn_distance = self.config["min_spawn_distance"]
-            max_spawn_distance = self.config["max_spawn_distance"]
-
-            rand_x = np.random.uniform(-min_spawn_distance, min_spawn_distance)/2
-            rand_y = np.random.uniform(-min_spawn_distance, min_spawn_distance)/2   
+            max_spawn_distance = self.config["max_spawn_distance"]  
             evader = Evader(
                 battle_space=self.battlespace,
                 state_vector=StateVector(
                     0.0,
                     0.0,
-                    np.random.uniform(self.config["z_bounds"][0], self.config["z_bounds"][1]),
+                    np.random.uniform(self.config["z_bounds"][0], 
+                                      self.config["z_bounds"][1]),
                     0.0,
                     0.0,
                     np.random.uniform(-np.pi, np.pi),
@@ -587,6 +603,8 @@ class BattleEnv(gymnasium.Env):
                 radius_bubble=self.config["bubble_radius"]
             )
             agents.append(evader)
+            
+            #pickle the evader state vector
             counter += 1
 
         for i in range(self.config["num_pursuers"]):
@@ -599,18 +617,15 @@ class BattleEnv(gymnasium.Env):
             random_spawn_distance = np.random.uniform(min_spawn, max_spawn)
             #random value of -1 or 1
             evader: Evader = agents[0]
-            # x = evader.state_vector.x + random_spawn_distance * np.random.choice([-1, 1])
-            # y = evader.state_vector.y + random_spawn_distance * np.random.choice([-1, 1])
-            
-            random_angle = np.random.uniform(-np.pi, np.pi)
+            random_angle = np.random.uniform(0, 2*np.pi)
             x = evader.state_vector.x + random_spawn_distance * np.cos(random_angle)
             y = evader.state_vector.y + random_spawn_distance * np.sin(random_angle)
             
             #get evader heading
             evader_heading = evader.state_vector.yaw_rad
             # pursuer_heading = evader_heading + np.random.uniform(-np.pi/4, np.pi/4)
-            pursuer_heading = np.arctan2(y - evader.state_vector.y, 
-                                         x - evader.state_vector.x)
+            pursuer_heading = np.arctan2(evader.state_vector.y - y, 
+                                         evader.state_vector.x - x)
             pursuer = pursuer_heading + np.random.uniform(-np.pi/4, np.pi/4)
             
             pursuer = Pursuer(
@@ -632,7 +647,6 @@ class BattleEnv(gymnasium.Env):
                 pursuer.is_controlled = True
             agents.append(pursuer)
             counter += 1            
-                    
         return agents
         
     def denormalize_action(self, action: np.ndarray, agent_id: int) -> np.ndarray:
@@ -643,6 +657,30 @@ class BattleEnv(gymnasium.Env):
         # Scale the action from [-1, 1] to the original action space range
         action = low + (0.5 * (action + 1.0) * (high - low))
         return np.clip(action, low, high)
+    
+    def denormalize_observation(self, observation: np.ndarray, agent_id: int) -> np.ndarray:
+        agent: Agent = self.battlespace.agents[agent_id]
+        obs_space = self.get_agent_observation_space(agent_id)
+        low = obs_space.low
+        high = obs_space.high
+        observation = low + (0.5 * (observation + 1.0) * (high - low))
+        return np.clip(observation, low, high)
+    
+    def normalize_observation(self, observation: np.ndarray, agent_id: int) -> np.ndarray:
+        """
+        This assumes the observation space for all environments are the same
+        """
+        #check if self.battlespace is not None
+        if self.battlespace is None:
+            raise ValueError("Battlespace is None")
+        
+        agent: Agent = self.battlespace.agents[agent_id]
+        observation_space = self.get_agent_observation_space(agent_id)
+        low = observation_space.low
+        high = observation_space.high
+        # Scale the observation to [-1, 1]
+        observation = 2.0 * ((observation - low) / (high - low)) - 1.0
+        return np.clip(observation, -1.0, 1.0)
     
     def init_action_spaces(self, use_stable_baselines:bool) -> spaces.Dict:
         action_spaces = {}
@@ -746,6 +784,12 @@ class BattleEnv(gymnasium.Env):
                           dtype=np.float32)
     
     def reset(self, *, seed=None, options=None):
+        # Set the seed for reproducibility
+        if seed is not None:
+            np.random.seed(seed)
+            random.seed(seed)
+            self.seed = seed
+        
         self.battlespace = self.__init_battlespace()
         self.all_agents = self.__init_agents()
         self.battlespace.agents = self.all_agents
@@ -815,44 +859,39 @@ class BattleEnv(gymnasium.Env):
         else:
             #repeat the last action
             self.simulate(self.old_action, use_multi=False)
-        # denorm_action = self.denormalize_action(actions, agent_id=0)
-        #self.simulate(denorm_actions, use_multi=False)
-        self.observation = self.get_current_observation(agent_id=0)
-        
+            
+        self.observation = self.get_current_observation(agent_id=0)        
         controlled_agent: Evader = self.agents[0]
         self.reward = controlled_agent.get_reward(self.observation)
-        
         for agent in self.agents:
             agent: Agent 
             if agent.crashed:
-                #print("You died")
+                print("You died", self.current_step)
                 #terminate the entire episode
                 self.terminateds = True
                 self.truncateds = True
                 self.current_sim_num += 1
                 # this is the capture reward
                 if agent.is_pursuer == True:
-                    self.reward = self.terminal_reward
+                    self.reward += self.terminal_reward
                 else:
-                    self.reward = -self.terminal_reward
-                    
+                    self.reward += -self.terminal_reward
+        
         # check if the episode is done
         if self.current_step >= self.time_steps:
+            print("you win")
             self.terminateds= True
             self.truncateds= True
             self.current_sim_num += 1
             self.num_wins += 1
-            for agent in self.agents:
-                agent: Agent
-                if agent.is_pursuer:
-                    self.reward = -self.terminal_reward
-                else:
-                    # print("Positive reward for evader")
-                    self.reward = self.terminal_reward
+            print("terminal reward", self.terminal_reward)
+            self.reward += self.terminal_reward
         
         #a reward for surviving each step in time
-        self.reward = self.reward + 1 #+ (self.current_step*self.dt)            
-        # self.reward += 1
+        #self.reward = self.reward #+ 1 #+ (self.current_step*self.dt)
+        
+        if self.upload_norm_obs and self.vec_env is not None:
+            self.observation = normalize_obs(self.observation, self.vec_env)           
         
         return self.observation, self.reward, self.terminateds, self.truncateds, info
 
