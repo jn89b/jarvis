@@ -4,7 +4,7 @@ from jarvis.utils.Vector import StateVector
 from jarvis.envs.battle_space import BattleSpace
 from jarvis.algos.pronav import ProNav
 from jarvis.config import env_config_2d
-from Plane2D import Agent
+from jarvis.assets.Plane2D import Agent
 import numpy as np
 
 class BaseObject():
