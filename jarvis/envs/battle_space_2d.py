@@ -7,7 +7,8 @@ from typing import List, Tuple, TYPE_CHECKING,Dict
 from jarvis.utils.Vector import StateVector
 if TYPE_CHECKING:
     from jarvis.assets.Plane2D import Agent, Evader, Pursuer,Obstacle
-
+    from jarvis.assets.BaseObject2D import BaseObject, Radar, RadarSystem
+    
 class BattleSpace():
     """
     Consider this like a 2D battlefield where agents can move around.
@@ -29,9 +30,13 @@ class BattleSpace():
         self.z_bounds = z_bounds
         self.agents = agents
         self.target = None
+        self.radar_system = None
         
     def insert_target(self, target:"Obstacle") -> None:
         self.target = target
+        
+    def insert_radar_system(self, radar_system:"RadarSystem") -> None:
+        self.radar_system = radar_system
         
     def is_out_bounds(self, state_vector:StateVector) -> bool:
         """
@@ -79,8 +84,6 @@ class BattleSpace():
         if distance <= threshold:
             ego_agent.crashed = True
             other_agent.crashed = True
-            # print("Collision between agent {} and agent {}".format(
-            #     ego_agent.id, other_agent.id))
 
     def step(self, dt:float) -> None:
         """
@@ -118,4 +121,4 @@ class BattleSpace():
         for agent in self.agents:
             if self.is_out_bounds(agent.state_vector):
                 agent.crashed = True
-                print("Agent {} out of bounds".format(agent.id))
+                # print("Agent {} out of bounds".format(agent.id))

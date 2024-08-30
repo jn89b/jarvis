@@ -369,7 +369,6 @@ class BattleEnv(MultiAgentEnv):
         for id, act in actions.items():
             agent: Agent = self.all_agents[id]
             if agent.crashed:
-                print("You died")
                 #terminate the entire episode
                 self.terminateds = {agent.id: True for agent in self.all_agents}
                 self.terminateds['__all__'] = True

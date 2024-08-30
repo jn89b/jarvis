@@ -18,7 +18,7 @@ def env_creator(env_config=None):
     return BattleEnv()  # return an env instance
 
 def policy_mapping_fn(agent_id, episode, **kwargs):
-    if agent_id == "0":
+    if agent_id == "0": 
         return "0"
     # else:
     #     return "1"

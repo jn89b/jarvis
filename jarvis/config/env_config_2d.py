@@ -5,13 +5,23 @@ X_BOUNDS = [-2000, 2000]
 Y_BOUNDS = [-2000, 2000]
 Z_BOUNDS = [30, 150]
 
-### Target Confige ###
+### Engagement Environment Configuration ###
 TARGET_RADIUS = 5
+MIN_TARGET_DISTANCE = 150
+MAX_TARGET_DISTANCE = 350
+TARGET_TIME_STEPS = 850
 
-### ENV Config ###
+### Radar Config ###
+NUM_RADARS = 1
+RADAR_RANGE = 1000
+RADAR_FOV = np.pi/2 
+RADAR_SPAWN_MIN_DISTANCE = 500
+RADAR_SPAWN_MAX_DISTANCE = 800
+
+### Evader  Config ###
 NUM_AGENTS = 1
 NUM_PURSUERS = 1
-TIME_STEPS = 500
+TIME_STEPS = 850
 MAX_NUM_STEPS = TIME_STEPS
 #if False, the pursuers will be controlled by the AI otherwise default to heuristic
 AI_PURSUERS = False
@@ -19,8 +29,8 @@ USE_PURSUER_HEURISTICS = False
 DT = 0.1
 CAPTURE_RADIUS = 10
 MIN_SPAWN_DISTANCE = 300
-MAX_SPAWN_DISTANCE = 325 #300
-
+MAX_SPAWN_DISTANCE = 450 #300
+EFFECTOR_RANGE = 5
 # Relative min and max observations
 LOW_REL_POS = 0.0
 HIGH_REL_POS = 2000.0
@@ -51,8 +61,8 @@ pursuer_control_constraints = {
 
 # Evader
 evader_control_constraints = {
-    'u_psi_min':  -np.deg2rad(40),
-    'u_psi_max':   np.deg2rad(40),
+    'u_psi_min':  -np.deg2rad(50),
+    'u_psi_max':   np.deg2rad(50),
     'v_cmd_min':   15,
     'v_cmd_max':   25
 }
@@ -67,4 +77,3 @@ evader_observation_constraints = {
     'airspeed_min': 15,
     'airspeed_max': 25
 }
-    

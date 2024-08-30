@@ -6,16 +6,21 @@ import copy
 import random
 import pickle as pkl
 
-from stable_baselines3.common.vec_env import VecNormalize
+from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
+from stable_baselines3.common.running_mean_std import RunningMeanStd
+
 from gymnasium import spaces
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+
 from jarvis.envs.battle_space_2d import BattleSpace
 from jarvis.config import env_config_2d as env_config
 from jarvis.utils.Vector import StateVector
 from jarvis.assets.Plane2D import Agent, Evader, Pursuer, Obstacle
 from jarvis.utils.math import normalize_obs, unnormalize_obs
-# this is a simple environment that will be used to test the RL algorithms
+from jarvis.assets.BaseObject2D import BaseObject, Radar, RadarSystem
 
+# this is a simple environment that will be used to test the RL algorithms
 """
 I might need to abstract all the annoying stuff like the action and observation spaces
 using inheritance from the gymnasium.Env class. Then 
@@ -25,14 +30,11 @@ such as :
 - TargetPolicy
 """
 
-from stable_baselines3.common.running_mean_std import RunningMeanStd
-
-
 class AbstractBattleEnv(gymnasium.Env):
     """
     Use this as a template?
     - Should have basic observations and then you can add onto it
-    It should only have ego agent observations
+    It should only have ego agent observations then you can add onto it
     
     """
     def __init__(self,
@@ -42,7 +44,7 @@ class AbstractBattleEnv(gymnasium.Env):
                  use_stable_baselines:bool=True,
                  agents:List[Agent]=None,
                  upload_norm_obs:bool=False,
-                 rms_info:RunningMeanStd=None) -> None:
+                 vec_env:VecNormalize=None) -> None:
         self.config = self.default_config()
         self.dt = env_config.DT
         self.time_steps = env_config.TIME_STEPS
@@ -52,7 +54,7 @@ class AbstractBattleEnv(gymnasium.Env):
         self.state = None
         self.done = False
         self.upload_norm_obs = upload_norm_obs
-        self.rms_info = rms_info
+        self.vec_env = vec_env
     
     @classmethod
     def default_config(cls) -> Dict:
@@ -68,6 +70,7 @@ class AbstractBattleEnv(gymnasium.Env):
             "ai_pursuers": env_config.AI_PURSUERS,
             "bubble_radius": 5,
             "capture_radius": env_config.CAPTURE_RADIUS,
+            #this is for pursuers
             "min_spawn_distance": env_config.MIN_SPAWN_DISTANCE,
             "max_spawn_distance": env_config.MAX_SPAWN_DISTANCE
         })
@@ -93,13 +96,6 @@ class AbstractBattleEnv(gymnasium.Env):
         """
         raise NotImplementedError("This method needs to be \
             implemented by the child class")
-
-    # def get_agent_action_space(self, agent_id:int) -> spaces.Box:
-    #     """
-    #     This method needs to be implemented by the child class
-    #     """
-    #     raise NotImplementedError("This method needs to be \
-    #         implemented by the child class")
 
     def simulate(self, action_dict:np.ndarray, use_multi:bool=True) -> None:
         self.battlespace.act(action_dict, use_multi)
@@ -220,6 +216,178 @@ class AbstractBattleEnv(gymnasium.Env):
         raise NotImplementedError("This method needs to be \
             implemented by the child class")
 
+class RCSEnv(AbstractBattleEnv):
+    """
+    Requires the agent to have an RCS table or function to lookup RCS values
+    """
+    def __init__(self, 
+                 spawn_own_space:bool=False,
+                 spawn_own_agents:bool=False,
+                 battlespace:BattleSpace=None,
+                 use_stable_baselines:bool=True,
+                 agents:List[Agent]=None,
+                 upload_norm_obs:bool=False,
+                 vec_env:VecNormalize=None,
+                 use_own_target:bool=False,
+                 target:Obstacle=None) -> None:
+        super().__init__(spawn_own_space=spawn_own_space,
+                            spawn_own_agents=spawn_own_agents,
+                            battlespace=battlespace,
+                            use_stable_baselines=use_stable_baselines,
+                            agents=agents,
+                            upload_norm_obs=upload_norm_obs,
+                            vec_env=vec_env)
+        
+        self.use_own_target = use_own_target
+            
+        if not spawn_own_space and battlespace is None:
+            self.battlespace = self.__init_battlespace(
+                use_own_target=self.use_own_target,
+                target=target)
+        
+    def spawn_radars(self, target:Obstacle) -> List[Radar]:
+        evader:Evader = self.agents[0]
+        dx = evader.state_vector.x - target.x
+        dy = evader.state_vector.y - target.y
+        los = np.arctan2(dy, dx)
+        
+        random_spawn_distance = np.random.uniform(
+            env_config.RADAR_SPAWN_MIN_DISTANCE, env_config.RADAR_SPAWN_MAX_DISTANCE)
+        
+        
+        first_radar_x = target.x + random_spawn_distance*np.cos(los)
+        first_radar_y = target.y + random_spawn_distance*np.sin(los)
+        first_radar_position = StateVector(
+            x=first_radar_x,
+            y=first_radar_y,
+            z=0,
+            roll_rad=0,
+            pitch_rad=0,
+            yaw_rad=los,
+            speed=0
+        )
+        first_radar = Radar(
+            state_vector=first_radar_position,
+            range=env_config.RADAR_RANGE,
+            fov=env_config.RADAR_FOV
+        )
+        
+        radar_list = []
+        radar_list.append(first_radar)
+        
+        left_over_radars = env_config.NUM_RADARS - len(radar_list)
+        upper_radars = left_over_radars//2
+        lower_radars = left_over_radars - upper_radars
+        
+        next_radar:Radar = first_radar
+        for i in range(upper_radars):
+            dx = next_radar.upper_bound[0] - next_radar.state_vector.x
+            dy = next_radar.upper_bound[1] - next_radar.state_vector.y
+            theta = np.arctan2(dy, dx)
+            radar_x = target.x + random_spawn_distance*np.cos(theta)
+            radar_y = target.y + random_spawn_distance*np.sin(theta)
+            radar_position = StateVector(
+                x=radar_x,
+                y=radar_y,
+                z=0,
+                roll_rad=0,
+                pitch_rad=0,
+                yaw_rad=theta,
+                speed=0
+            )
+            radar = Radar(
+                state_vector=radar_position,
+                range=env_config.RADAR_RANGE,
+                fov=env_config.RADAR_FOV
+            )
+            next_radar = radar
+            radar_list.append(radar)
+            
+        next_radar = first_radar
+        for i in range(lower_radars):
+            dx = next_radar.lower_bound[0] - next_radar.state_vector.x
+            dy = next_radar.lower_bound[1] - next_radar.state_vector.y
+            theta = np.arctan2(dy, dx)
+            radar_x = target.x + random_spawn_distance*np.cos(theta)
+            radar_y = target.y + random_spawn_distance*np.sin(theta)
+            radar_position = StateVector(
+                x=radar_x,
+                y=radar_y,
+                z=0,
+                roll_rad=0,
+                pitch_rad=0,
+                yaw_rad=theta,
+                speed=0
+            )
+            radar = Radar(
+                state_vector=radar_position,
+                range=env_config.RADAR_RANGE,
+                fov=env_config.RADAR_FOV
+            )
+            next_radar = radar
+            radar_list.append(radar)
+            
+        return radar_list
+    
+    def __init_battlespace(self, use_own_target:bool=False,
+                           target:Obstacle=None) -> BattleSpace:
+        # Needs to include radar systems
+        battle_space =  BattleSpace(
+            x_bounds=self.config["x_bounds"],
+            y_bounds=self.config["y_bounds"],
+            z_bounds=self.config["z_bounds"]
+        )
+        
+        ## Update this? Need to make it guard against the 
+        # target being None
+        if use_own_target and target is not None: 
+            target = Obstacle(
+                x = np.random.uniform(self.config["x_bounds"][0], self.config["x_bounds"][1]),
+                y = np.random.uniform(self.config["y_bounds"][0], self.config["y_bounds"][1]),
+                z = 0,
+                radius = env_config.TARGET_RADIUS
+            )
+        else:
+            target = target
+            
+        battle_space.insert_target(target)
+        
+        """
+        To make the environment a bit more realistic we would 
+        probably want to create a radar system 
+        that interweaves the radars in the environment 
+        """
+        radars = self.spawn_radars(target)
+        radar_system = RadarSystem(
+            battle_space=battle_space,
+            radars=radars
+        )
+        battle_space.insert_radar_system(radar_system)
+        
+        return battle_space
+        
+    def get_reward(self, observation:np.ndarray) -> float:
+        """
+        This method needs to be implemented by the child class
+        """
+        raise NotImplementedError("This method needs to be \
+            implemented by the child class")
+
+    def get_current_observation(self, agent_id:int) -> np.ndarray:
+        """
+        Needs to return the ego observation and rcs probability?
+        """
+        agent = self.battlespace.agents[agent_id]
+        observation = agent.get_observation()
+        rcs_probability = self.battlespace.radar_system.compute_detection_probability(agent)
+        observation = np.append(observation, rcs_probability)
+        
+        if observation.shape[0] != self.observation_space.shape[0]:
+            raise ValueError("Observation shape is not correct", observation.shape,
+                             self.observation_space.shape[0])
+            
+        return observation.astype(np.float32)
+        
 class EngagementEnv(AbstractBattleEnv):
     """
     This is the environment that will be used to teach 
@@ -233,24 +401,37 @@ class EngagementEnv(AbstractBattleEnv):
                  spawn_own_agents:bool=False,
                  battlespace:BattleSpace=None,
                  use_stable_baselines:bool=True,
-                 agents:List[Agent]=None) -> None:
+                 agents:List[Agent]=None,
+                 upload_norm_obs:bool=False,
+                 vec_env:VecNormalize=None,
+                 use_heuristic_policy:bool=False) -> None:
         super().__init__(spawn_own_space=spawn_own_space,
                          spawn_own_agents=spawn_own_agents,
                          battlespace=battlespace,
                          use_stable_baselines=use_stable_baselines,
-                         agents=agents)
+                         agents=agents,
+                         upload_norm_obs=upload_norm_obs,
+                         vec_env=vec_env)
         if not spawn_own_space and battlespace is None:
             self.battlespace = self.__init_battlespace()
             
+        self.spawn_own_agents = spawn_own_agents
+        
         if not spawn_own_agents and agents is None:
             self.all_agents = self.__init_agents()
             self.battlespace.agents = self.all_agents
             self.agents = [agent for agent in self.all_agents 
                                         if agent.is_controlled and 
                                         not agent.is_pursuer]
+        else:
+            self.all_agents = agents
+            # we awnt to control the evaders
+            self.agents = [agent for agent in self.all_agents 
+                                        if agent.is_controlled and 
+                                        not agent.is_pursuer]
+            self.battlespace.agents = self.all_agents
         
         self.make_target()
-        print("Target: ", self.battlespace.target)
         self.action_space = self.init_action_spaces(self.use_stable_baselines)
         self.observation_space = self.init_observation_spaces()
         self.terminateds = False
@@ -258,8 +439,9 @@ class EngagementEnv(AbstractBattleEnv):
         self.observation = None
         self.reward = 0
         self.old_distance_to_target = None
-        self.time_steps = env_config.TIME_STEPS
+        self.time_steps = env_config.TARGET_TIME_STEPS
         self.effector_range = env_config.EFFECTOR_RANGE
+        self.use_heuristic_policy = use_heuristic_policy
 
     def __init_battlespace(self) -> BattleSpace:
         return BattleSpace(
@@ -268,24 +450,32 @@ class EngagementEnv(AbstractBattleEnv):
             z_bounds=self.config["z_bounds"]
         )
         
-    def make_target(self) -> None:
+    def make_target(self, spawn_own_target:bool=False,
+                    own_target:Obstacle=None) -> None:
         """
         #TODO: test if this works
         """
+        if spawn_own_target and own_target is not None:
+            self.battlespace.insert_target(own_target)
+            target = self.battlespace.target
+            self.old_distance_to_target = target.state_vector.distance_2D(
+                self.agents[0].state_vector)
+            return
+            
         controlled_agent: Evader = self.agents[0]
         agent_x = controlled_agent.state_vector.x
         agent_y = controlled_agent.state_vector.y
-        min_spawn_distance = self.config["min_spawn_distance"]
-        max_spawn_distance = self.config["max_spawn_distance"]
+        agent_heading = controlled_agent.state_vector.yaw_rad
+        
+        min_spawn_distance = env_config.MIN_TARGET_DISTANCE
+        max_spawn_distance = env_config.MAX_TARGET_DISTANCE
+        
         #random_heading = np.random.uniform(-np.pi, np.pi)
         random_distance = np.random.uniform(min_spawn_distance, max_spawn_distance)
         random_heading = controlled_agent.state_vector.yaw_rad
-        target_x = agent_x + random_distance * np.cos(random_heading)
-        target_y = agent_y + random_distance * np.sin(random_heading)
-        
-        #make random negative or positive
-        target_x = target_x * np.random.choice([-1, 1])
-        target_y = target_y * np.random.choice([-1, 1])
+        target_heading  = np.random.uniform(-np.pi, np.pi)
+        target_x = agent_x + (random_distance * np.cos(target_heading))
+        target_y = agent_y + (random_distance * np.sin(target_heading))
         
         obstacle = Obstacle(
             x = target_x,
@@ -362,8 +552,6 @@ class EngagementEnv(AbstractBattleEnv):
             
             #insert the target location
             target = self.battlespace.target
-            target_x = target.x
-            target_y = target.y
             low_x = env_config.X_BOUNDS[0]
             high_x = env_config.X_BOUNDS[1]
             low_y = env_config.Y_BOUNDS[0]
@@ -401,10 +589,32 @@ class EngagementEnv(AbstractBattleEnv):
             
         return observation.astype(np.float32)
     
-    def reset(self, *, seed=None, options=None):
+    def get_target_observation(self, agent_id:int) -> np.ndarray:
+        """
+        Get the observation for the target
+        """
+        agent = self.battlespace.agents[agent_id]
+        target = self.battlespace.target
+        distance = target.state_vector.distance_2D(agent.state_vector)
+        relative_heading = target.state_vector.heading_difference(agent.state_vector)
+        return np.array([distance, relative_heading], dtype=np.float32)
+    
+    def reset(self, *, seed=None, options=None, agents:List[Agent]=None) -> np.ndarray:
         self.battlespace = self.__init_battlespace()
-        self.all_agents  = self.__init_agents()
-        self.battlespace.agents = self.all_agents
+        
+        if not self.spawn_own_agents and agents is None:
+            self.all_agents  = self.__init_agents()
+            self.battlespace.agents = self.all_agents
+            self.agents = [agent for agent in self.all_agents 
+                                if agent.is_controlled and 
+                                not agent.is_pursuer]
+        else:
+            self.all_agents = agents
+            self.agents = [agent for agent in self.all_agents
+                                if agent.is_controlled and 
+                                not agent.is_pursuer]
+            self.battlespace.agents = self.all_agents
+
         self.make_target()
         self.current_step = 0
         self.agents = [agent for agent in self.all_agents 
@@ -436,26 +646,57 @@ class EngagementEnv(AbstractBattleEnv):
         error_los = los - agent.state_vector.yaw_rad
         # reward for being closer to target so if delta_distance is positive then
         # we should reward the agent
+        heading_error = np.abs(error_los)
         self.old_distance_to_target = distance
         
         ego_unit_vector = np.array([np.cos(agent.state_vector.yaw_rad),
                                     np.sin(agent.state_vector.yaw_rad)])
         
-        target_unit_vector = np.array([np.cos(los), np.sin(los)])
+        #target_unit_vector = np.array([np.cos(los), np.sin(los)])
+        los_unit_vector = np.array([np.cos(los), np.sin(los)])
         
-        dot_product = np.dot(ego_unit_vector, target_unit_vector)
+        dot_product = np.dot(ego_unit_vector, los_unit_vector)
         
-        return dot_product
+        #TODO: make this easier to understand we want to penalize the agent for
+        # being too far from the target
+        return delta_distance
     
+    def heuristic_policy(self) -> np.ndarray:
+        """
+        This is a simple heuristic policy that will be used to 
+        test the environment
+        """
+        agent = self.agents[0]
+        target = self.battlespace.target
+        dx = target.state_vector.x - agent.state_vector.x
+        dy = target.state_vector.y - agent.state_vector.y
+        theta = np.arctan2(dy, dx)
+        heading_error  = theta - agent.state_vector.yaw_rad
+        action = np.array([heading_error, 20])
+        return action
+    
+    def is_close_to_target(self, agent:Agent) -> bool:
+        target = self.battlespace.target
+        distance = target.state_vector.distance_2D(agent.state_vector)
+        if distance <= env_config.TARGET_RADIUS+agent.radius_bubble:
+            return True
+        
+        return False
     
     def step(self, action:np.ndarray,
              norm_action:bool=True) -> Tuple[np.ndarray, float, bool, bool, Dict]:
         
         self.reward = 0
+        info = {}
+        info['engaged'] = False
         
         if self.use_stable_baselines and norm_action:
             action = self.denormalize_action(action, agent_id=0)
-        # print("Action: ", action)    
+        # print("Action: ", action)
+        
+        if self.use_heuristic_policy:
+            action = self.heuristic_policy()
+            
         self.simulate(action, use_multi=False)
         self.observation = self.get_current_observation(agent_id=0)
         
@@ -475,10 +716,12 @@ class EngagementEnv(AbstractBattleEnv):
         
         if distance <= env_config.TARGET_RADIUS+controlled_agent.radius_bubble:
             print("Target reached")
+            info['engaged'] = True
             self.terminateds = True
             self.reward += 100
         
         if self.current_step >= self.time_steps:
+            print("Time steps exceeded")
             self.truncateds = True
             self.reward -= 100
     
@@ -486,11 +729,11 @@ class EngagementEnv(AbstractBattleEnv):
         #penalize the agent for taking too long
         self.reward -= (1*0.01) 
         
-        return self.observation, self.reward, self.terminateds, self.truncateds, {}
+        return self.observation, self.reward, self.terminateds, self.truncateds, info
+    
     
 class BattleEnv(gymnasium.Env):
     metadata = {'render.modes': ['human']}
-    
     def __init__(self,
                  spawn_own_space:bool=False,
                  spawn_own_agents:bool=False,
@@ -617,7 +860,7 @@ class BattleEnv(gymnasium.Env):
             random_spawn_distance = np.random.uniform(min_spawn, max_spawn)
             #random value of -1 or 1
             evader: Evader = agents[0]
-            random_angle = np.random.uniform(0, 2*np.pi)
+            random_angle = evader.state_vector.yaw_rad + np.random.uniform(-np.pi/6, np.pi/6)
             x = evader.state_vector.x + random_spawn_distance * np.cos(random_angle)
             y = evader.state_vector.y + random_spawn_distance * np.sin(random_angle)
             
@@ -626,6 +869,8 @@ class BattleEnv(gymnasium.Env):
             # pursuer_heading = evader_heading + np.random.uniform(-np.pi/4, np.pi/4)
             pursuer_heading = np.arctan2(evader.state_vector.y - y, 
                                          evader.state_vector.x - x)
+            # pursuer_heading = np.arctan2(y - evader.state_vector.y, 
+            #                              x - evader.state_vector.x)
             pursuer = pursuer_heading + np.random.uniform(-np.pi/4, np.pi/4)
             
             pursuer = Pursuer(
@@ -762,7 +1007,6 @@ class BattleEnv(gymnasium.Env):
                 high = [high_rel_pos, high_rel_vel, high_rel_heading]
                 low_obs.extend(low)
                 high_obs.extend(high)
-            
         else:
             obs_config = env_config.evader_observation_constraints
             high_obs, low_obs = self.map_config(obs_config)
@@ -785,6 +1029,7 @@ class BattleEnv(gymnasium.Env):
     
     def reset(self, *, seed=None, options=None):
         # Set the seed for reproducibility
+
         if seed is not None:
             np.random.seed(seed)
             random.seed(seed)
@@ -806,7 +1051,10 @@ class BattleEnv(gymnasium.Env):
         #convert to numpy float32
         return observation, infos
 
-    def get_current_observation(self, agent_id:int) -> np.ndarray:
+    def get_current_observation(self, agent_id:int,
+                                get_norm_obs:bool=False) -> np.ndarray:
+        """
+        """
         agent = self.battlespace.agents[agent_id]
         observation = agent.get_observation()
     
@@ -837,6 +1085,10 @@ class BattleEnv(gymnasium.Env):
             raise ValueError("Observation shape is not correct", observation.shape,
                              self.observation_space.shape[0])
 
+        if get_norm_obs and self.upload_norm_obs:
+            observation = normalize_obs(observation, self.vec_env)
+            return observation.astype(np.float32)
+
         #return as type float32
         return observation.astype(np.float32)
     
@@ -847,6 +1099,7 @@ class BattleEnv(gymnasium.Env):
     def step(self, actions:np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict]:
         self.reward = 0
         info = {}
+        info['caught'] = False
         self.current_step += 1
         
         if self.use_stable_baselines:
@@ -866,7 +1119,6 @@ class BattleEnv(gymnasium.Env):
         for agent in self.agents:
             agent: Agent 
             if agent.crashed:
-                print("You died", self.current_step)
                 #terminate the entire episode
                 self.terminateds = True
                 self.truncateds = True
@@ -876,25 +1128,21 @@ class BattleEnv(gymnasium.Env):
                     self.reward += self.terminal_reward
                 else:
                     self.reward += -self.terminal_reward
-        
+                    info['caught'] = True
+                    
         # check if the episode is done
         if self.current_step >= self.time_steps:
-            print("you win")
+            # print("you win")
             self.terminateds= True
             self.truncateds= True
             self.current_sim_num += 1
             self.num_wins += 1
-            print("terminal reward", self.terminal_reward)
             self.reward += self.terminal_reward
-        
-        #a reward for surviving each step in time
-        #self.reward = self.reward #+ 1 #+ (self.current_step*self.dt)
         
         if self.upload_norm_obs and self.vec_env is not None:
             self.observation = normalize_obs(self.observation, self.vec_env)           
         
         return self.observation, self.reward, self.terminateds, self.truncateds, info
-
         
     def render(self, mode:str='human') -> None:
         """
@@ -908,3 +1156,270 @@ class BattleEnv(gymnasium.Env):
         
     def close(self) -> None:
         pass
+    
+class HRLBattleEnv(AbstractBattleEnv):
+    """
+    Should have all the abstract methods
+    - You set a bunch of boolean parameters on what policies 
+    you want to run example:
+        - AvoidancePolicy from Pursuers (Evader)
+        - EngagePolicy (Evader)
+            - Define if you want to use your heuristics or use the RL policy
+        - Obstacle Avoidance (Evader)
+            - Define if you want to use your heuristics or use the RL policy
+    - Observations should be concatenated
+        - Requirement is that they should all have the ego observation
+            - [Ego, Avoidance, Engage, Obstacle] 
+        - Call out each observation space
+    """
+    def __init__(self,
+                 spawn_own_space:bool=False,
+                 spawn_own_agents:bool=False,
+                 battlespace:BattleSpace=None,
+                 use_stable_baselines:bool=True,
+                 agents:List[Agent]=None,
+                 upload_norm_obs:bool=False,
+                 vec_env:VecNormalize=None,
+                 evade_env:VecNormalize=None,
+                 avoidance_policy:PPO=None,
+                 engage_env:VecNormalize=None) -> None:
+        super().__init__(spawn_own_space=spawn_own_space,
+                         spawn_own_agents=spawn_own_agents,
+                         battlespace=battlespace,
+                         use_stable_baselines=use_stable_baselines,
+                         agents=agents,
+                         upload_norm_obs=upload_norm_obs,
+                         vec_env=vec_env)
+        
+        #TODO: Need to refactor this
+        model_name = "PPO_evader_2D_280000_steps"
+        vec_normalize_path = "PPO_evader_2D_vecnormalize_280000.pkl"
+
+        env = DummyVecEnv([self.create_battle_env])
+        env = VecNormalize.load(vec_normalize_path, env)
+        env.training = False
+        env.norm_reward = False
+    
+        # Load the trained model
+        self.evader_policy = PPO.load(model_name, 
+            env=env, print_system_info=True,
+            device='cuda')
+        
+        self.evade_env = BattleEnv(upload_norm_obs=True, vec_env=env)
+        self.evade_obs, _ = self.evade_env.reset()
+
+        # if evade_env is not None:
+        #     self.evade_env = BattleEnv(upload_norm_obs=True,
+        #                                     vec_env=evade_env)
+        # else:
+        #     raise ValueError("Avoidance environment is None")
+            
+        # if avoidance_policy is not None:
+        #     self.avoidance_policy = avoidance_policy
+        # else:
+        #     raise ValueError("Avoidance policy is None")
+        
+        if engage_env is not None:
+            self.engage_env = engage_env
+        else:
+            #use the heuristic policy
+            self.engage_env = EngagementEnv(
+                spawn_own_agents=True,
+                agents = self.evade_env.all_agents,
+                use_heuristic_policy=True)
+                
+        self.update_target()
+        # Select between offensive and defensive
+        # 0 is defensive, 1 is offensive
+        self.action_space = spaces.Discrete(2)  
+        self.observation_space = self.init_observation_spaces()
+        self.current_env = self.evade_env
+        
+        self.engage_obs = None
+        self.truncateds = False
+        self.terminateds = False
+        self.control_freq = 3
+        
+    def create_battle_env(self) -> BattleEnv:
+        return BattleEnv()  # Adjust this to match your environment creation
+
+    def update_target(self) -> None:
+        #let's update the target location to spawn
+        #wrt to where the pursuer is
+        evader:Evader = self.evade_env.agents[0]
+        agents = self.evade_env.all_agents
+        for agent in agents:
+            if agent.is_pursuer:
+                pursuer:Pursuer = agent
+                break
+            
+        min_spawn_distance = env_config.MIN_TARGET_DISTANCE
+        max_spawn_distance = env_config.MAX_TARGET_DISTANCE
+        
+        dx = pursuer.state_vector.x - evader.state_vector.x
+        dy = pursuer.state_vector.y - evader.state_vector.y
+        los = np.arctan2(dy, dx) 
+        
+        random_distance = np.random.uniform(min_spawn_distance, max_spawn_distance)
+        
+        random_heading = los + np.random.uniform(-np.pi/4, np.pi/4)
+        target_x = pursuer.state_vector.x + (random_distance * np.cos(random_heading))
+        target_y = pursuer.state_vector.y + (random_distance * np.sin(random_heading))
+        
+        #spawn it where the target is closer to the pursuer than the evader
+        obstacle = Obstacle(
+            x = target_x,
+            y = target_y,
+            z = 0,
+            radius = env_config.TARGET_RADIUS
+        )
+        
+        self.engage_env.make_target(spawn_own_target=True, 
+                                    own_target=obstacle)
+        
+        
+    def init_observation_spaces(self) -> spaces.Dict:
+        #get the observation space for the avoidance environment
+        avoidance_obs_space = self.evade_env.observation_space
+        engage_obs_space = self.engage_env.observation_space
+        engage_obs_low = engage_obs_space.low[-2:]
+        engage_obs_high = engage_obs_space.high[-2:]
+        #get the last           
+        
+        #concatenate the observation spaces
+        #obs_space = np.concatenate([avoidance_obs_space, engage_obs_space])
+        obs_low = np.concatenate([avoidance_obs_space.low, engage_obs_low])
+        obs_high = np.concatenate([avoidance_obs_space.high, engage_obs_high])
+        return spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
+        
+    def get_current_observation(self, agent_id:int=0) -> np.ndarray:
+        """_summary_
+        Method returns the ego observation concatenated with the
+        avoidance, engage, and obstacle avoidance observations
+        
+        Avoidance Policy:
+            - The relative position, heading, and velocity of the pursuers
+        Engage Policy:
+            - The relative position and heading of the target
+        
+        Returns:
+            np.ndarray: _description_
+        """
+        self.avoid_obs = self.evade_env.get_current_observation(agent_id=0)
+        #TODO: need to refactor this gets really confusing because we want to normalize
+        self.engage_obs = self.engage_env.get_current_observation(agent_id=0)
+        #get the last 2 observations
+        # engage_obs = engage_obs[-2:]
+        # ego_obs = self.get_current_observation(agent_id=0)        
+        obs = np.concatenate([self.avoid_obs, self.engage_obs[-2:]], dtype=np.float32)
+        return obs
+        
+    def reset(self, *, seed=None, options=None) -> np.ndarray:
+        if seed is not None:
+            np.random.seed(seed)
+            random.seed(seed)
+            self.seed = seed
+        
+        self.evade_env.reset()
+        self.engage_env.reset(agents=self.evade_env.all_agents)
+        self.update_target()
+        self.observation = self.get_current_observation()
+        self.current_env = self.evade_env
+        self.current_step = 0
+        self.reward = 0
+        self.truncateds = False
+        self.terminateds = False
+        
+        return self.observation, {}
+    
+    def get_reward(self) -> float:
+        pass
+    
+    def step(self, action:np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict]:
+        """
+        We will step through both environments
+        """
+        self.reward = 0
+        info = {}
+        info['engaged'] = False
+        info['caught'] = False
+        
+        # action = 0
+        # #do a control based on the control frequency
+        if self.current_step % self.control_freq == 0 or self.current_step == 1:
+            current_action = action
+            self.old_action = action
+        else:
+            current_action = self.old_action
+        
+        if current_action == 0:
+            low_level_actions, values = self.evader_policy.predict(
+                self.evade_obs, deterministic=True)
+            self.evade_obs, avoidance_reward, avoidance_done, _, avoidance_info = \
+                self.evade_env.step(low_level_actions)
+                
+        else:
+            if self.engage_env.use_heuristic_policy:
+                low_level_actions = self.engage_env.heuristic_policy()
+            else:
+                low_level_actions, values = self.engage_env.predict(
+                    self.engage_obs, deterministic=True)
+                
+            self.engage_obs, engage_reward, engage_done, _ ,engage_info = \
+                self.engage_env.step(low_level_actions)                
+            self.evade_obs = self.evade_env.get_current_observation(
+                agent_id=0, get_norm_obs=True)
+                
+        self.observation = self.get_current_observation(agent_id=0)
+        ego_agent:Evader = self.evade_env.agents[0]
+        
+        avoid_reward =  ego_agent.get_reward(
+            self.evade_env.get_current_observation(agent_id=0))
+        engage_reward = self.engage_env.get_reward(
+            self.engage_env.get_current_observation(agent_id=0))
+        time_reward = -0.1
+        self.reward = avoid_reward + 2.0*engage_reward + time_reward
+        
+        if self.engage_env.is_close_to_target(ego_agent):
+            print("Target reached")
+            self.reward = 1000 + self.reward
+            self.terminateds = True
+            self.truncateds = True
+        elif ego_agent.crashed:
+            print("Crashed")
+            self.reward = -100 + self.reward
+            self.terminateds = True
+            self.truncateds = True          
+        elif self.current_step >= self.time_steps:
+            self.reward = -100 + self.reward
+            print("Time steps exceeded you lose")
+            self.terminateds = True
+            self.truncateds = True
+
+        self.current_step += 1
+        
+        if self.upload_norm_obs and self.vec_env is not None:
+            self.observation = normalize_obs(self.observation, 
+                                             self.vec_env)
+        
+        return self.observation, self.reward, self.terminateds, self.truncateds, info
+        
+    def switch_policy(self, action:int) -> np.ndarray:
+        """
+        Switch between the avoidance and engage policy
+        0 is avoidance, 1 is engage
+        """
+        norm_avoid_obs = normalize_obs(self.avoid_obs, self.evade_env.vec_env)
+        if action == 0:
+            print("normalizing avoidance observation", norm_avoid_obs)
+            low_level_actions, values = self.avoidance_policy.predict(
+                norm_avoid_obs, deterministic=True)
+            print("Avoidance policy actions: ", low_level_actions)
+        else:
+            if self.engage_env.use_heuristic_policy:
+                low_level_actions = self.engage_env.heuristic_policy()
+            else:
+                low_level_actions, values = self.engage_env.predict(
+                    self.engage_obs, deterministic=True)
+                    
+        return low_level_actions

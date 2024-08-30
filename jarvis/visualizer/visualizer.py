@@ -27,8 +27,11 @@ class Visualizer(object):
             x = data.x
             y = data.y
             ax.scatter(x[0], y[0], color='g', label='Start')
-            ax.plot(x, y, color, label=agent.id)
-            
+            ax.plot(x, y, color=color, 
+                    label=agent.id, 
+                    linestyle='-', marker='o', markersize=2)
+            #print the length of the trajectory
+                        
             #set titles
             ax.set_title('2D Trajectory for agent {}'.format(agent.id))
             ax.set_xlabel('X')

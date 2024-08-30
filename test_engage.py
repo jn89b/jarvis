@@ -1,20 +1,15 @@
 import unittest
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.pyplot as plt
-from jarvis.utils.Vector import StateVector
 from jarvis.envs.simple_2d_env import EngagementEnv
-from jarvis.envs.battle_space_2d import BattleSpace
-from jarvis.algos.pronav import ProNav
 from jarvis.config import env_config
-from jarvis.assets.Plane2D import Pursuer, Evader
-from tests.utils import setup_battlespace
 from jarvis.visualizer.visualizer import Visualizer
 from stable_baselines3.common.env_checker import check_env
 
 
-env = EngagementEnv(use_stable_baselines=True)
-steps = 300
+env = EngagementEnv(use_stable_baselines=True,
+                    use_heuristic_policy=True)
+steps = 501
 dt = env_config.DT
 reward_history = []
 n_times = 1
@@ -39,12 +34,14 @@ for n in range(n_times):
         
         heading_error  = theta - agent.state_vector.yaw_rad
         action_dict = env.action_space.sample()
-        action_dict[0] = 1.0
-        # action_dict[0] = -heading_error
+        # action_dict[0] = 1.0
+        
+        # action_dict[0] = heading_error
         # action_dict[1] = 20
         
         obs, reward, done, _, info = env.step(action_dict, norm_action=True)
-        print("obs: ", obs)
+        # print("obs: ", obs)
+        # print("reward: ", reward)
         reward_history.append(reward)
         if done or count >= steps:
             if reward > 0:
@@ -59,7 +56,8 @@ battlespace = env.battlespace
 fig, ax = data_vis.plot_2d_trajectory(battlespace)
 #PLOT THE target
 target = battlespace.target
-ax.plot(target.state_vector.x, target.state_vector.y, 'ro')
+ax.plot(target.state_vector.x, target.state_vector.y, 'ro', label='Target')
+ax.legend()
 fig, ax = data_vis.plot_attitudes2d(battlespace)
 
 #plot the reward history

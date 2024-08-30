@@ -9,10 +9,6 @@ from jarvis.config.env_config_2d import NUM_PURSUERS
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.vec_env import VecNormalize
 
-from stable_baselines3.common.callbacks import CheckpointCallback
-from stable_baselines3.common.vec_env import VecNormalize
-
-
 class SaveVecNormalizeCallback(CheckpointCallback):
     def __init__(self, save_freq, save_path, name_prefix, vec_normalize_env, verbose=0):
         super(SaveVecNormalizeCallback, self).__init__(save_freq, save_path, name_prefix, verbose)
@@ -105,15 +101,15 @@ if __name__ == "__main__":
     set_global_seed(seed=seed_num)
     # Create a list of environments to run in parallel
     num_envs = 4  # Adjust this number based on your CPU cores
-    LOAD_MODEL = True
-    CONTINUE_TRAINING = True
+    LOAD_MODEL = False
+    CONTINUE_TRAINING = False
     COMPARE_MODELS = False
     TOTAL_TIME_STEPS = 2000000
     model_name = "PPO_evader_2D"
-    num_pursuers = NUM_PURSUERS
+    num_pursuers = str(NUM_PURSUERS) + '_pursuers'
     version_num = 0 
     save_path = './models/' + model_name + '_' \
-        + str(num_pursuers) + '_' + str(version_num)
+        + num_pursuers + '_' + str(version_num)
 
     # Normalize the environment (observations and rewards)
     env = SubprocVecEnv([create_env for _ in range(num_envs)])

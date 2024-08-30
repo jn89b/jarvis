@@ -25,8 +25,6 @@ class Obstacle():
             return True
         return False
     
-    
-
 class Agent():
     is_pursuer = None
     def __init__(self,
@@ -69,7 +67,6 @@ class Agent():
                     self.crashed = True
                     agent.crashed = True
                     break
-                
                 
     def is_colliding(self, distance_threshold:float) -> bool:
         """
@@ -169,7 +166,6 @@ class Agent():
         
         return ego_state
 
-    
 class Evader(Agent):
     is_pursuer = False
     is_controlled = True
@@ -283,7 +279,7 @@ class Evader(Agent):
         #clip the reward
         
         #reward = alpha*distance_reward #+ beta*manuever_reward
-        reward = closest_distance*0.01
+        reward = distance_reward
         #normalize the distance reward
         
         return reward

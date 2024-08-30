@@ -11,7 +11,6 @@ from tests.utils import setup_battlespace
 from jarvis.visualizer.visualizer import Visualizer
 from stable_baselines3.common.env_checker import check_env
 
-
 env = BattleEnv(use_stable_baselines=True)
 steps = 300
 dt = env_config.DT

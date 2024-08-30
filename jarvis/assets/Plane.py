@@ -46,7 +46,6 @@ class Agent():
                     agent.crashed = True
                     break
                 
-                
     def is_colliding(self, distance_threshold:float) -> bool:
         """
         Check if the agent is colliding with another agent
