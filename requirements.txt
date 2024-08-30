@@ -1,0 +1,7 @@
+casadi==3.6.6
+gymnasium==0.29.1
+matplotlib==3.9.2
+numpy==2.1.0
+ray==2.35.0
+stable_baselines3==2.3.2
+torch==2.4.0
