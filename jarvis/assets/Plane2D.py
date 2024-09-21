@@ -2,6 +2,7 @@ from abc import ABC
 import numpy as np
 import casadi as ca
 import copy
+import pickle as pkl
 from typing import Dict, List, Optional, Text, Tuple, TypeVar
 
 from matplotlib import pyplot as plt
@@ -184,6 +185,13 @@ class Evader(Agent):
                          is_controlled)
         self.old_distance_from_pursuer = None 
         self.old_relative_heading = None   
+        
+        #TODO: Right now it has a default rcs table
+        # Yields a 2D array of rcs values
+        # the keys are 0 to 360 degrees and the values are the rcs values
+        with open("jarvis/assets/rcs_table.pkl", "rb") as f:
+            self.rcs_table = pkl.load(f)
+        
         
     def act(self, action:np.array=None) -> None:
         """

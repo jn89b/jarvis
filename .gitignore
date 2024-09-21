@@ -1,8 +1,10 @@
 *.pyc
 __pycache__/
 
+
+
 jarvis/__pycache__/
-models/
+models/*
 ray_results/
 logs/
 
