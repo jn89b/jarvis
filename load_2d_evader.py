@@ -4,7 +4,7 @@ from stable_baselines3 import PPO
 
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
-from jarvis.envs.simple_2d_env import BattleEnv
+from jarvis.envs.simple_2d_env import AvoidThreatEnv
 from jarvis.visualizer.visualizer import Visualizer
 from jarvis.assets.Plane2D import Pursuer, Evader 
 from jarvis.utils.Vector import StateVector
@@ -24,11 +24,13 @@ def set_global_seed(seed):
         torch.cuda.manual_seed_all(seed)
 
 def create_env():
-    return BattleEnv()  # Adjust this to match your environment creation
+    return AvoidThreatEnv(
+        
+        )  # Adjust this to match your environment creation
 
 if __name__ == '__main__':
-    model_name = "PPO_evader_2D_280000_steps"
-    vec_normalize_path = "PPO_evader_2D_vecnormalize_280000.pkl"
+    model_name = "PPO_evader_2D_3000000_steps"
+    vec_normalize_path = "PPO_evader_2D_vecnormalize_3010000.pkl"
     USE_PICKLE_PURSUERS = True
     # Load the environment and normalization statistics
     num_envs = 5
@@ -63,7 +65,11 @@ if __name__ == '__main__':
     print("Mean reward and standard deviation:", mean_rwd, std_reward)
     print("\n")
     #environment = env.envs[0]  # Access the first environment from the VecNormalize wrapper
-    environment = BattleEnv(upload_norm_obs=True, vec_env=env)
+    environment = AvoidThreatEnv(
+        upload_norm_obs=True, 
+        vec_env=env,
+        use_discrete_actions=True)
+    
     # obs, _ = environment.reset(seed=seed)
     for i in range(num_times):
         obs, _ = environment.reset()    
@@ -76,7 +82,7 @@ if __name__ == '__main__':
             action, values = model.predict(obs, deterministic=True)
             obs, reward, done, _, info = environment.step(action)
             end_time = time.time() - start_time
-            environment.render()
+            # environment.render()
             count += 1
             reward_list.append(reward)
             

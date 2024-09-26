@@ -1,10 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from jarvis.envs.simple_2d_env import EngagementEnv, BattleEnv, HRLBattleEnv
+from jarvis.envs.simple_2d_env import EngagementEnv, ThreatAvoidEnv, HRLBattleEnv
 from jarvis.config import env_config_2d as env_config
 from jarvis.visualizer.visualizer import Visualizer
-from jarvis.envs.simple_2d_env import BattleEnv, HRLBattleEnv
+from jarvis.envs.simple_2d_env import ThreatAvoidEnv, HRLBattleEnv
 from jarvis.visualizer.visualizer import Visualizer
 from jarvis.utils.callbacks import SaveVecNormalizeCallback
 from jarvis.config.env_config_2d import NUM_PURSUERS
@@ -20,7 +20,7 @@ def create_env():
     evader_model_name = "PPO_evader_2D_1_pursuers_0"
     vec_evader_normalize_path = "PPO_evader_2D_1_pursuers_0.pkl"
     
-    evader_env = DummyVecEnv([BattleEnv])
+    evader_env = DummyVecEnv([ThreatAvoidEnv])
     evader_env = VecNormalize.load(vec_evader_normalize_path, evader_env)
     evader_env.training = False
     evader_env.norm_reward = False

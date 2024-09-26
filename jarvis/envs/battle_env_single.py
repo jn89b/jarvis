@@ -8,12 +8,68 @@ from jarvis.envs.battle_space import BattleSpace
 from jarvis.config import env_config
 from jarvis.utils.Vector import StateVector
 from jarvis.assets.Plane import Agent, Evader, Pursuer
+from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
 
 """
 REMEMBER KEEP THIS SIMPLE THEN APPLY MORE COMPLEXITY
 #TODO: Add 
 - [ ] Terrain
 """
+class AbstractBattleEnv(gymnasium.Env):
+    def __init__(self,
+                 spawn_own_space:bool=False,
+                 spawn_own_agents:bool=False,
+                 battlespace:BattleSpace=None,
+                 use_stable_baselines:bool=True,
+                 agents:List[Agent]=None,
+                 upload_norm_obs:bool=False,
+                 vec_env:VecNormalize=None,
+                 use_discrete_actions:bool=False) -> None:
+        self.config = self.default_config()
+        self.dt = env_config.DT
+        self.time_steps = env_config.TIME_STEPS
+        self.current_step = 0
+        self.config = self.default_config()
+        self.use_stable_baselines = use_stable_baselines        
+        self.state = None
+        self.done = False
+        self.upload_norm_obs = upload_norm_obs
+        self.vec_env = vec_env
+        self.use_discrete_actions = use_discrete_actions        
+
+    @classmethod
+    def default_config(cls) -> Dict:
+        config = {}
+        config.update({
+            "x_bounds": env_config.X_BOUNDS,
+            "y_bounds": env_config.Y_BOUNDS,
+            "z_bounds": env_config.Z_BOUNDS,
+            "num_evaders": env_config.NUM_AGENTS,
+            "num_pursuers": env_config.NUM_PURSUERS,
+            "use_pursuer_heuristics": env_config.USE_PURSUER_HEURISTICS,
+            "dt": env_config.DT,
+            "ai_pursuers": env_config.AI_PURSUERS,
+            "bubble_radius": 5,
+            "capture_radius": env_config.CAPTURE_RADIUS,
+            #this is for pursuers
+            "min_spawn_distance": env_config.MIN_SPAWN_DISTANCE,
+            "max_spawn_distance": env_config.MAX_SPAWN_DISTANCE
+        })
+        
+        return config
+    
+    @property
+    def vehicle(self) -> Agent:
+        """First (default) controlled vehicle."""
+        return self.agents[0] \
+            if self.agents else None
+    
+    # @abstractmethod
+    def __init_battlespace(self) -> BattleSpace:
+        """
+        This method needs to be implemented by the child class
+        """
+        pass
 
 class BattleEnv(gymnasium.Env):
     metadata = {'render.modes': ['human']}
@@ -417,10 +473,6 @@ class BattleEnv(gymnasium.Env):
         # self.simulate(actions, use_multi=False)
         self.observation = self.get_current_observation(agent_id=0)
         
-        # # get rewards -> reward shaping
-        # for id, act in actions.items():
-        #     obs = self.get_current_observation(id)
-            # agent = self.all_agents[id]
         controlled_agent:Evader = self.agents[0]
         self.reward = controlled_agent.get_reward(self.observation)
         #check termination

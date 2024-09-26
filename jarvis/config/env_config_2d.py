@@ -22,16 +22,16 @@ RADAR_SPAWN_MAX_DISTANCE = 40
 
 ### Evader  Config ###
 NUM_AGENTS = 1
-NUM_PURSUERS = 1
-TIME_STEPS = 850
+NUM_PURSUERS = 2
+TIME_STEPS = 450
 MAX_NUM_STEPS = TIME_STEPS
 #if False, the pursuers will be controlled by the AI otherwise default to heuristic
 AI_PURSUERS = False
 USE_PURSUER_HEURISTICS = False
 DT = 0.1
 CAPTURE_RADIUS = 10
-MIN_SPAWN_DISTANCE = 20
-MAX_SPAWN_DISTANCE = 40 #300
+MIN_SPAWN_DISTANCE = 200
+MAX_SPAWN_DISTANCE = 350 #300
 EFFECTOR_RANGE = 5
 # Relative min and max observations
 LOW_REL_POS = 0.0
@@ -63,10 +63,10 @@ pursuer_control_constraints = {
 
 # Evader
 evader_control_constraints = {
-    'u_psi_min':  -np.deg2rad(50),
-    'u_psi_max':   np.deg2rad(50),
+    'u_psi_min':  -np.deg2rad(45),
+    'u_psi_max':   np.deg2rad(45),
     'v_cmd_min':   15,
-    'v_cmd_max':   30
+    'v_cmd_max':   22
 }
 
 evader_observation_constraints = {
@@ -77,5 +77,5 @@ evader_observation_constraints = {
     'psi_min':  -np.pi,
     'psi_max':   np.pi,
     'airspeed_min': 15,
-    'airspeed_max': 30
+    'airspeed_max': 22
 }

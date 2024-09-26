@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 import matplotlib.pyplot as plt
 from jarvis.utils.Vector import StateVector
-from jarvis.envs.simple_2d_env import BattleEnv
+from jarvis.envs.simple_2d_env import ThreatAvoidEnv
 from jarvis.algos.pronav import ProNav
 from jarvis.config import env_config
 from jarvis.assets.Plane2D import Pursuer, Evader
@@ -20,7 +20,7 @@ Unit test to test the environment with
 class Test2DEnv(unittest.TestCase):
     
     def setUp(self) -> None:
-        self.env = BattleEnv(use_stable_baselines=True)
+        self.env = ThreatAvoidEnv(use_stable_baselines=True)
         self.num_pursuers = 0
         self.relative_info_size = 3
         self.state_size = 4 # x, y,psi, speed

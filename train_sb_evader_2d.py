@@ -1,7 +1,7 @@
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import VecNormalize, SubprocVecEnv, VecMonitor
 from stable_baselines3.common.env_checker import check_env
-from jarvis.envs.simple_2d_env import BattleEnv
+from jarvis.envs.simple_2d_env import AvoidThreatEnv
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
 from jarvis.utils.seed_function import set_global_seed
 from jarvis.config.env_config_2d import NUM_PURSUERS
@@ -94,38 +94,45 @@ class PrintNormalizedCallback(BaseCallback):
 
 # Function to create an instance of the environment
 def create_env():
-    return BattleEnv(spawn_own_space=False, spawn_own_agents=False)
+    return AvoidThreatEnv(spawn_own_space=False, spawn_own_agents=False,
+                          use_discrete_actions=True)
 
 if __name__ == "__main__":
     seed_num = 0
     set_global_seed(seed=seed_num)
     # Create a list of environments to run in parallel
-    num_envs = 4  # Adjust this number based on your CPU cores
+    num_envs = 10  # Adjust this number based on your CPU cores
     LOAD_MODEL = False
     CONTINUE_TRAINING = False
     COMPARE_MODELS = False
-    TOTAL_TIME_STEPS = 2000000
+    TOTAL_TIME_STEPS = 6000000
     model_name = "PPO_evader_2D"
     num_pursuers = str(NUM_PURSUERS) + '_pursuers'
     version_num = 0 
     save_path = './models/' + model_name + '_' \
         + num_pursuers + '_' + str(version_num)
 
-    # Normalize the environment (observations and rewards)
+    # Normalize the environment (obPPO_evader_2D_vecnormalize_3000000servations and rewards)
     env = SubprocVecEnv([create_env for _ in range(num_envs)])
     env = VecNormalize(env, norm_obs=True, norm_reward=False)
     env = VecMonitor(env)  # Monitor the vectorized environment
     
     # Check the environment to ensure it's correctly set up
-    test_env = BattleEnv()
+    test_env = AvoidThreatEnv()
     check_env(test_env)
     # Add the callback
-    callback = PrintNormalizedCallback(verbose=1)
+    # callback = PrintNormalizedCallback(verbose=1)
 
     # Define the CheckpointCallback to save the model 
     # every `save_freq` steps
     # Define the custom checkpoint callback
-    checkpoint_callback = SaveVecNormalizeCallback(
+    checkpoint_callback = CheckpointCallback(
+        save_freq=10000,  # Save every 10,000 steps
+        save_path=save_path,
+        name_prefix=model_name
+    )
+    
+    vec_callback = SaveVecNormalizeCallback(
         save_freq=10000,  # Save every 10,000 steps
         save_path=save_path,
         name_prefix=model_name,
@@ -135,7 +142,7 @@ if __name__ == "__main__":
     
     # Load or initialize the model
     if LOAD_MODEL and not CONTINUE_TRAINING:
-        environment = BattleEnv()  # Create a single instance of the environment for evaluation
+        environment = AvoidThreatEnv()  # Create a single instance of the environment for evaluation
         model = PPO.load(model_name, env=environment)
         print("Model loaded.")
     elif LOAD_MODEL and CONTINUE_TRAINING:
@@ -143,7 +150,7 @@ if __name__ == "__main__":
         model = PPO.load(model_name, env=env)
         model.learn(total_timesteps=TOTAL_TIME_STEPS, 
                     log_interval=1,
-                    callback=[callback, checkpoint_callback])
+                    callback=[vec_callback, checkpoint_callback])
         model.save(model_name)
         print("Model saved.")
     else:
@@ -159,7 +166,7 @@ if __name__ == "__main__":
                     #use gpu
                     device='cuda')
         # Train the model in parallel
-        model.learn(total_timesteps=TOTAL_TIME_STEPS, callback=[callback,
+        model.learn(total_timesteps=TOTAL_TIME_STEPS, callback=[vec_callback,
                                                     checkpoint_callback])
         
         model.save(model_name)

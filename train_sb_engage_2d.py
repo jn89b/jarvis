@@ -13,33 +13,35 @@ def create_env():
                          use_heuristic_policy=False,
                          randomize_goal=RANDOM_GOAL,
                          difficulty_level=LEVEL_DIFFICULTY,
-                         randomize_start=RANDOM_START)  # Adjust this to match your environment creation
+                         randomize_start=RANDOM_START,
+                         use_discrete_actions=True)  # Adjust this to match your environment creation
 
 if __name__ == "__main__":
     # Create a list of environments to run in parallel
-    num_envs = 1  # Adjust this number based on your CPU cores
-    LEVEL_DIFFICULTY = 1 # 0, 1, 2, 3
+    num_envs = 5  # Adjust this number based on your CPU cores
+    LEVEL_DIFFICULTY = 2 # 0, 1, 2, 3
     LOAD_MODEL = True
     CONTINUE_TRAINING = True
-    TOTAL_TIME_STEPS = 4000000
+    TOTAL_TIME_STEPS = 6000000
     RANDOM_GOAL = True
     RANDOM_START = False
     
     env = SubprocVecEnv([create_env for _ in range(num_envs)])
     env = VecNormalize(env, norm_obs=True, norm_reward=False)
     env = VecMonitor(env)  # Monitor the vectorized environment
-    model_name = "PPO_engage_2D" + "_difficulty_" + str(LEVEL_DIFFICULTY)
+    index_number = 0
+    model_name = "PPO_engage_2D" + "_difficulty_" + str(LEVEL_DIFFICULTY) + "_" + str(index_number) 
+    print("Model name:", model_name)
     # Normalize the environment (observations and rewards)
 
     # Check the environment to ensure it's correctly set up
     test_env = EngagementEnv(use_heuristic_policy=True)
     check_env(test_env)
     
-    
     # Vectorized callback to save into pickle file
     callback = SaveVecNormalizeCallback(
         save_freq=10000,  # Save every 10,000 steps
-        save_path='./models/'+model_name+'_4',
+        save_path='./models/'+model_name,
         name_prefix=model_name,
         vec_normalize_env=env,
         verbose=1   
@@ -47,14 +49,15 @@ if __name__ == "__main__":
     
     # Define the CheckpointCallback to save the model every `save_freq` steps
     checkpoint_callback = CheckpointCallback(save_freq=10000, 
-                                             save_path='./models/'+model_name+'_4',
+                                             save_path='./models/'+model_name,
                                             name_prefix=model_name)
 
     # Load or initialize the model
     if LOAD_MODEL and not CONTINUE_TRAINING:
         environment = EngagementEnv(randomize_goal=RANDOM_GOAL,
                                     difficulty_level=LEVEL_DIFFICULTY,
-                                    randomize_start=RANDOM_START)  # Create a single instance of the environment for evaluation
+                                    randomize_start=RANDOM_START,
+                                    use_discrete_actions=True)  # Create a single instance of the environment for evaluation
         model = PPO.load(model_name, env=environment)
         print("Model loaded.")
     elif LOAD_MODEL and CONTINUE_TRAINING:
@@ -86,4 +89,6 @@ if __name__ == "__main__":
                                                     checkpoint_callback])
         
         model.save(model_name)
+        #save the VecNormalize statistics
+        #save 
         print("Model saved.")

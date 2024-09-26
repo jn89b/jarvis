@@ -21,21 +21,30 @@ def set_global_seed(seed):
     random.seed(seed)
     torch.manual_seed(seed)
     if torch.cuda.is_available():
+        print("Using GPU")
         torch.cuda.manual_seed_all(seed)
+    else:
+        print("Using CPU")
+    
+    
+USE_PICKLE_PURSUERS = True
+LEVEL_DIFFICULTY = 1 # 0, 1, 2, 3
+LOAD_MODEL = True
+RANDOM_GOAL = True
+RANDOM_START = True
+DISCRETE_ACTIONS = True
+
 
 def create_env():
     return EngagementEnv(randomize_goal=RANDOM_GOAL,
                          randomize_start=RANDOM_START,
-                         difficulty_level=LEVEL_DIFFICULTY)  # Adjust this to match your environment creation
+                         difficulty_level=LEVEL_DIFFICULTY,
+                         use_discrete_actions=DISCRETE_ACTIONS)  # Adjust this to match your environment creation
 
 if __name__ == '__main__':
-    model_name = "PPO_engage_2D_difficulty_1"
-    vec_normalize_path = "PPO_engage_2D_difficulty_1_vecnormalize.pkl"
-    USE_PICKLE_PURSUERS = True
-    LEVEL_DIFFICULTY = 1 # 0, 1, 2, 3
-    LOAD_MODEL = True
-    RANDOM_GOAL = False
-    RANDOM_START = True
+    model_name = "PPO_engage_2D_difficulty_2_0"
+    vec_normalize_path = "PPO_engage_2D_difficulty_2_0_vecnormalize.pkl"
+
     # Load the environment and normalization statistics
     num_envs = 5
     # Create a DummyVecEnv for single environment inference
@@ -56,7 +65,7 @@ if __name__ == '__main__':
     seed = 1
     set_global_seed(seed=seed)
     
-    num_times = 5
+    num_times = 20
     num_success = 0
     battle_space_list = []
     reward_list = []
@@ -70,7 +79,8 @@ if __name__ == '__main__':
     print("\n")
     #environment = env.envs[0]  # Access the first environment from the VecNormalize wrapper
     environment = EngagementEnv(upload_norm_obs=True, vec_env=env, randomize_goal=RANDOM_GOAL,
-                                randomize_start=RANDOM_START, difficulty_level=LEVEL_DIFFICULTY)
+                                randomize_start=RANDOM_START, difficulty_level=LEVEL_DIFFICULTY,
+                                use_discrete_actions=DISCRETE_ACTIONS)
     # obs, _ = environment.reset(seed=seed)
     for i in range(num_times):
         obs, _ = environment.reset()    
