@@ -16,8 +16,8 @@ class TestSingleRadar(unittest.TestCase):
         self.num_pursuers = 0
         radar_parameters = RadarParameters(false_alarm_rate=0.1,
                                            position=StateVector(0,0,0,0,0,0,0),
-                                           max_fov_dg=30,
-                                           range_m=500,
+                                           max_fov_dg=150,
+                                           range_m=250,
                                            c1=-0.25,
                                            c2=1000)        
         self.radar = Radar2D(radar_parameters=radar_parameters,
@@ -25,8 +25,8 @@ class TestSingleRadar(unittest.TestCase):
         
         radar_parameters_2 = RadarParameters(false_alarm_rate=0.1,
                                            position=StateVector(250,250,0,0,0,0,0),
-                                           max_fov_dg=30,
-                                           range_m=500,
+                                           max_fov_dg=150,
+                                           range_m=250,
                                            c1=-0.25,
                                            c2=1000)
         self.radar_2 = Radar2D(radar_parameters=radar_parameters_2,
@@ -35,7 +35,7 @@ class TestSingleRadar(unittest.TestCase):
         self.radar_system = RadarSystem2D([self.radar, self.radar_2])
         
         self.evader = Evader(self.env.battlespace,
-                             StateVector(-1000,-1000,0,0,0,0,0),
+                             StateVector(700,700,0,0,0,0,0),
                              id = 1,
                              radius_bubble=5)
         
@@ -78,8 +78,8 @@ class TestSingleRadar(unittest.TestCase):
         detections = []
         incident_angles = []
         #set the color as a gradient for distance
-        self.evader.state_vector.x = 1000
-        self.evader.state_vector.y = 1000
+        self.evader.state_vector.x = 0
+        self.evader.state_vector.y = 0
         self.evader.state_vector.z = 0
         
         for i in range(180):
@@ -107,8 +107,60 @@ class TestSingleRadar(unittest.TestCase):
                     
         # ax.set_xlabel("Distance (m)")
         ax.legend()
-        plt.show()
+        # plt.show()
         
+    def visualize_radars(self) -> None:
+        pass
+        
+    def test_radar_env(self) -> None:
+        
+        fig, ax = plt.subplots()
+        
+        radar_system:RadarSystem2D = self.env.battlespace.radar_system
+        distances = np.arange(100, 500, 50)
+        
+        for distance in distances:    
+            detection_values = []        
+            self.evader.state_vector.x = -500 #+ distance
+            self.evader.state_vector.y = -500 #+ distance
+            self.evader.state_vector.yaw_rad = 0
+            for i in range(360):
+                self.evader.state_vector.yaw_rad = np.deg2rad(i)#np.deg2rad(90)
+                detection_value = radar_system.probability_of_detection_system(
+                    self.evader)
+                print("Detection value: ", detection_value)
+                detection_values.append(detection_value)
+                
+            ax.plot(detection_values, label='Detection probability at distance: {}'.format(distance))
+            
+        ax.set_xlabel("Yaw angle (deg)")
+        ax.legend()
+        
+        # plot the layout of the radars
+        fig, ax = plt.subplots()
+        for radar in radar_system.radars:
+            radar:Radar2D
+            print("Radar position: ", radar.radar_parameters.position.x, radar.radar_parameters.position.y)
+            ax.plot(radar.radar_parameters.position.x, radar.radar_parameters.position.y, 'ro')
+            ax.text(radar.radar_parameters.position.x, radar.radar_parameters.position.y, "Radar", fontsize=12)
+            
+            #plot a circle
+            circle = plt.Circle((radar.radar_parameters.position.x, radar.radar_parameters.position.y), 
+                                radar.radar_parameters.range_m, color='b', fill=True, alpha=0.2)
+            
+            
+            ax.add_artist(circle)
+        
+        ax.plot(self.evader.state_vector.x, self.evader.state_vector.y, 'bo', label='Evader')
+        ax.plot(self.env.target.x, self.env.target.y, 'go', label='Target')
+        ax.legend()
+        
+        # fit everything in the plot
+        ax.set_xlim(-1000, 1000)
+        ax.set_ylim(-1000, 1000)
+        
+        plt.show()
+            
         
 if __name__ == "__main__":
     unittest.main()

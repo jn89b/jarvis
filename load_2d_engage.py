@@ -48,7 +48,7 @@ if __name__ == '__main__':
     # Load the environment and normalization statistics
     num_envs = 5
     # Create a DummyVecEnv for single environment inference
-    env = DummyVecEnv([create_env])
+    env = DummyVecEnv([create_env   ])
     
     if VecNormalize:
         env = VecNormalize.load(vec_normalize_path, env)
@@ -89,6 +89,7 @@ if __name__ == '__main__':
         while not done:
             start_time = time.time()
             action, values = model.predict(obs, deterministic=False)
+            print("action", action)
             obs, reward, done, _, info = environment.step(action)
             end_time = time.time() - start_time
 

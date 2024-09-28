@@ -2,7 +2,7 @@ import unittest
 import numpy as np
 import matplotlib.pyplot as plt
 from jarvis.utils.Vector import StateVector
-from jarvis.envs.simple_2d_env import ThreatAvoidEnv
+from jarvis.envs.simple_2d_env import AvoidThreatEnv
 from jarvis.envs.battle_space_2d import BattleSpace
 from jarvis.algos.pronav import ProNav
 from jarvis.config import env_config
@@ -11,8 +11,9 @@ from tests.utils import setup_battlespace
 from jarvis.visualizer.visualizer import Visualizer
 from stable_baselines3.common.env_checker import check_env
 
-env = ThreatAvoidEnv(use_stable_baselines=True)
-steps = 300
+env = AvoidThreatEnv(use_stable_baselines=True,
+                     use_discrete_actions=True)
+steps = env_config.TIME_STEPS
 dt = env_config.DT
 reward_history = []
 n_times = 20
@@ -35,6 +36,7 @@ for n in range(n_times):
         # print("Step: ", step)
         action_dict = env.action_space.sample()
         obs, reward, done, _, info = env.step(action_dict)
+        print("obs: ", obs)
         reward_history.append(reward)
         if done or count >= steps:
             if reward > 0:
@@ -43,14 +45,14 @@ for n in range(n_times):
                 print("Lose")
             break    
 
-# print(f"Success rate: {success/n_times}")
-# data_vis = Visualizer()
-# battlespace = env.battlespace
-# fig, ax = data_vis.plot_2d_trajectory(battlespace)
-# fig, ax = data_vis.plot_attitudes2d(battlespace)
+print(f"Success rate: {success/n_times}")
+data_vis = Visualizer()
+battlespace = env.battlespace
+fig, ax = data_vis.plot_2d_trajectory(battlespace)
+fig, ax = data_vis.plot_attitudes2d(battlespace)
 
-# #plot the reward history
-# fig, ax = plt.subplots()
-# ax.plot(reward_history)
+#plot the reward history
+fig, ax = plt.subplots()
+ax.plot(reward_history)
 
-# plt.show()
+plt.show()

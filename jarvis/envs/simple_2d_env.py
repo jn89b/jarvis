@@ -19,8 +19,9 @@ from jarvis.utils.Vector import StateVector
 from jarvis.assets.Plane2D import Agent, Evader, Pursuer, Obstacle
 from jarvis.utils.math import normalize_obs, unnormalize_obs
 # from jarvis.assets.BaseObject2D import BaseObject, Radar, RadarSystem
-from jarvis.assets.Radar2D import Radar2D as Radar
+#from jarvis.assets.Radar2D import Radar2D as Radar
 from jarvis.assets.Radar2D import RadarSystem2D as RadarSystem, RadarParameters
+from jarvis.assets.Radar2D import Radar2D as Radar
 
 # this is a simple environment that will be used to test the RL algorithms
 """
@@ -60,6 +61,7 @@ class AbstractBattleEnv(gymnasium.Env):
         self.vec_env = vec_env
         self.use_discrete_actions = use_discrete_actions
         self.agents = agents
+        self.battlespace:BattleSpace = battlespace
     
     @classmethod
     def default_config(cls) -> Dict:
@@ -258,17 +260,19 @@ class RCSEnv(AbstractBattleEnv):
                  upload_norm_obs:bool=False,
                  vec_env:VecNormalize=None,
                  use_own_target:bool=False,
-                 target:Obstacle=None,) -> None:
+                 target:Obstacle=None,
+                 use_discrete_actions:bool=False) -> None:
         super().__init__(spawn_own_space=spawn_own_space,
                             spawn_own_agents=spawn_own_agents,
                             battlespace=battlespace,
                             use_stable_baselines=use_stable_baselines,
                             agents=agents,
                             upload_norm_obs=upload_norm_obs,
-                            vec_env=vec_env)
+                            vec_env=vec_env,
+                            use_discrete_actions=use_discrete_actions)
         
         self.use_own_target = use_own_target
-            
+        self.target = target
         if not spawn_own_space and battlespace is None:
             self.battlespace = self.__init_battlespace(
                 use_own_target=self.use_own_target,
@@ -280,7 +284,24 @@ class RCSEnv(AbstractBattleEnv):
             self.agents = [agent for agent in self.all_agents 
                                         if agent.is_controlled and 
                                         not agent.is_pursuer]
-            
+            self.target = self.make_target(spawn_own_target=self.use_own_target,
+                                own_target=target)
+            self.__init_radar_system()
+            #self.battlespace.insert_radar_system()
+        
+        # radar to neutralize
+        self.idx_radar = int(np.random.uniform(0, len(self.battlespace.radar_system.radars)))
+        self.idx_radar = 1
+        self.assigned_target = self.battlespace.radar_system.radars[self.idx_radar]
+        self.action_space = self.init_action_spaces(self.use_stable_baselines)
+        self.observation_space = self.init_observation_spaces()
+        self.old_distance = 0.0
+        self.seed = None
+        self.terminateds = False
+        self.truncateds = False
+        self.reward = 0
+        self.current_step = 0
+        self.max_steps = env_config.MAX_NUM_STEPS
         
     def spawn_radars(self, target:Obstacle) -> List[Radar]:
         evader:Evader = self.agents[0]
@@ -292,6 +313,11 @@ class RCSEnv(AbstractBattleEnv):
             env_config.RADAR_SPAWN_MIN_DISTANCE, env_config.RADAR_SPAWN_MAX_DISTANCE)
         
         
+        radar_list:List[Radar] = []
+        # num_radars = env_config.NUM_RADARS
+        radar_id = 0
+        num_radars = np.random.uniform(env_config.NUM_RADARS_MIN, env_config.NUM_RADARS_MAX)
+        num_radars = int(num_radars)
         first_radar_x = target.x + random_spawn_distance*np.cos(los)
         first_radar_y = target.y + random_spawn_distance*np.sin(los)
         first_radar_position = StateVector(
@@ -303,23 +329,29 @@ class RCSEnv(AbstractBattleEnv):
             yaw_rad=los,
             speed=0
         )
-        # first_radar = Radar(
-        #     radar_parameters=RadarParameters(
-        #         position=first_radar_position,
-                
-        # )
+        radar_params = RadarParameters(
+            false_alarm_rate=0.1,
+            position = first_radar_position,
+            max_fov_dg=env_config.RADAR_FOV,
+            range_m=env_config.RADAR_RANGE,
+            c1 = -0.25,
+            c2 = 1000
+        )
+        radar = Radar(radar_parameters=radar_params,
+                      radar_id=radar_id)
+        radar_list.append(radar)
+        radar_id += 1
         
-        radar_list = []
-        radar_list.append(first_radar)
-        
-        left_over_radars = env_config.NUM_RADARS - len(radar_list)
+        left_over_radars = num_radars - len(radar_list)
         upper_radars = left_over_radars//2
         lower_radars = left_over_radars - upper_radars
         
-        next_radar:Radar = first_radar
+        next_radar:Radar = radar
         for i in range(upper_radars):
-            dx = next_radar.upper_bound[0] - next_radar.state_vector.x
-            dy = next_radar.upper_bound[1] - next_radar.state_vector.y
+            random_spawn_distance = np.random.uniform(
+                env_config.RADAR_SPAWN_MIN_DISTANCE, env_config.RADAR_SPAWN_MAX_DISTANCE)
+            dx = next_radar.upper_bound[0] - next_radar.position[0]
+            dy = next_radar.upper_bound[1] - next_radar.position[1]
             theta = np.arctan2(dy, dx)
             radar_x = target.x + random_spawn_distance*np.cos(theta)
             radar_y = target.y + random_spawn_distance*np.sin(theta)
@@ -332,18 +364,26 @@ class RCSEnv(AbstractBattleEnv):
                 yaw_rad=theta,
                 speed=0
             )
-            radar = Radar(
-                state_vector=radar_position,
-                range=env_config.RADAR_RANGE,
-                fov=env_config.RADAR_FOV
+            radar_params = RadarParameters(
+                false_alarm_rate=0.1,
+                position = radar_position,
+                max_fov_dg=env_config.RADAR_FOV,
+                range_m=env_config.RADAR_RANGE,
+                c1 = -0.25,
+                c2 = 1000
             )
+            radar = Radar(radar_parameters=radar_params,
+                          radar_id=radar_id)
             next_radar = radar
             radar_list.append(radar)
-            
-        next_radar = first_radar
+            radar_id += 1
+        
+        next_radar = radar_list[0]
         for i in range(lower_radars):
-            dx = next_radar.lower_bound[0] - next_radar.state_vector.x
-            dy = next_radar.lower_bound[1] - next_radar.state_vector.y
+            random_spawn_distance = np.random.uniform(
+                env_config.RADAR_SPAWN_MIN_DISTANCE, env_config.RADAR_SPAWN_MAX_DISTANCE)
+            dx = next_radar.lower_bound[0] - next_radar.position[0]
+            dy = next_radar.lower_bound[1] - next_radar.position[1]
             theta = np.arctan2(dy, dx)
             radar_x = target.x + random_spawn_distance*np.cos(theta)
             radar_y = target.y + random_spawn_distance*np.sin(theta)
@@ -356,16 +396,22 @@ class RCSEnv(AbstractBattleEnv):
                 yaw_rad=theta,
                 speed=0
             )
-            radar = Radar(
-                state_vector=radar_position,
-                range=env_config.RADAR_RANGE,
-                fov=env_config.RADAR_FOV
+            radar_params = RadarParameters(
+                false_alarm_rate=0.1,
+                position = radar_position,
+                max_fov_dg=env_config.RADAR_FOV,
+                range_m=env_config.RADAR_RANGE,
+                c1 = -0.25,
+                c2 = 1000
             )
+            radar = Radar(radar_parameters=radar_params,
+                            radar_id=radar_id)
             next_radar = radar
             radar_list.append(radar)
+            radar_id += 1
             
         return radar_list
-    
+            
     def __init_agents(self) -> None:
         agents = []
         counter = 0
@@ -378,11 +424,13 @@ class RCSEnv(AbstractBattleEnv):
 
             rand_x = np.random.uniform(-min_spawn_distance, min_spawn_distance)/2
             rand_y = np.random.uniform(-min_spawn_distance, min_spawn_distance)/2   
+            rand_x = np.random.uniform(-700, -701)
+            rand_y = np.random.uniform(-700, -701)
             evader = Evader(
                 battle_space=self.battlespace,
                 state_vector=StateVector(
-                    0.0,
-                    0.0,
+                    rand_x,
+                    rand_y,
                     np.random.uniform(self.config["z_bounds"][0], self.config["z_bounds"][1]),
                     0.0,
                     0.0,
@@ -397,6 +445,7 @@ class RCSEnv(AbstractBattleEnv):
             #spawn pursuers at a distance from the evader
         return agents
     
+
     def __init_battlespace(self, use_own_target:bool=False,
                            target:Obstacle=None) -> BattleSpace:
         # Needs to include radar systems
@@ -428,24 +477,153 @@ class RCSEnv(AbstractBattleEnv):
         probably want to create a radar system 
         that interweaves the radars in the environment 
         """
-        radars = self.spawn_radars(self.battlespace.target)
+        radars:List[Radar] = self.spawn_radars(self.battlespace.target)
+        radar_system:RadarSystem = RadarSystem(radar_system=radars)
         self.battlespace.insert_radar_system(
-            RadarSystem(radar_system = radars))    
+            radar_system=radar_system) 
+        
+        # return radar_system
+        
+    def init_observation_spaces(self) -> spaces.Dict:
+        obs_space = self.get_agent_observation_space(self.vehicle.id)
+        
+        return obs_space
+        
+    def get_agent_observation_space(self, agent_id: int) -> spaces.Box:
+        """
+        Order is as follows:
+            x 
+            y
+            theta 
+            
+            dx to radar target
+            dy to radar target
+            distance to radar target
+            heading to radar target
+            
+            dx to other radar
+            dy to other radar
+            distance to other radar
+            heading to other radar
+            last value is the rcs probability
+        """
+        # ego_agent = self.battlespace.agents[agent_id]
+        
+        obs_config = env_config.evader_observation_constraints
+        high_obs, low_obs = self.map_config(obs_config)
+        
+        #add the radar observations
+        for radar in self.battlespace.radar_system.radars:
+            
+            radar:Radar = radar
+            low_x = env_config.X_BOUNDS[0]
+            high_x = env_config.X_BOUNDS[1]
+            
+            low_y = env_config.Y_BOUNDS[0]
+            high_y = env_config.Y_BOUNDS[1]
+            
+            distance_squared = (high_x - low_x)**2 + (high_y - low_y)**2
+            distance = np.sqrt(distance_squared)
+            
+            low = [
+                low_x, 
+                low_y, 
+                0,
+                -np.pi,
+            ]
+            
+            high = [
+                high_x,
+                high_y,
+                distance,
+                np.pi
+            ]
+            
+            high_obs.extend(high)
+            low_obs.extend(low)
+            
+        #add the rcs probability
+        low_obs.append(0)
+        high_obs.append(1)
+
+        return spaces.Box(low=np.array(low_obs),
+                            high=np.array(high_obs),
+                            dtype=np.float32)
+        
+        
+    def make_target(self, spawn_own_target:bool=False,
+                    own_target: Obstacle=None) -> Obstacle:
+        if spawn_own_target and own_target is None:
+            self.battlespace.insert_target(
+                own_target)
+            return own_target
+        
+        factor = 2
+        #rand_x = np.random.uniform(-self.config["x_bounds"][1]/factor, self.config["x_bounds"][1]/factor)
+        #rand_y = np.random.uniform(-self.config["y_bounds"][1]/factor, self.config["y_bounds"][1]/factor)
+        rand_x = 0
+        rand_y = 0
+        target = Obstacle(
+            x = rand_x,
+            y = rand_y,
+            z = 0,
+            radius = env_config.TARGET_RADIUS
+        )
+        self.battlespace.insert_target(target)
+        return target
         
     def get_reward(self, observation:np.ndarray) -> float:
         """
         This method needs to be implemented by the child class
         """
-        raise NotImplementedError("This method needs to be \
-            implemented by the child class")
-
+        # reward for getting closer t
+        dx = self.assigned_target.position[0] - self.vehicle.state_vector.x
+        dy = self.assigned_target.position[1] - self.vehicle.state_vector.y
+        distance = np.sqrt(dx**2 + dy**2)
+        
+        delta_distance = self.old_distance - distance
+        detection_probability = observation[-1] # this value is between 0 and 1
+        
+        distance_weight = 5
+        reward = (distance_weight*delta_distance) - detection_probability
+        self.old_distance = distance
+        return reward
+        
     def get_current_observation(self, agent_id:int) -> np.ndarray:
         """
         Needs to return the ego observation and rcs probability?
+        x 
+        y
+        theta 
+        dx to radar target
+        dy to radar target
+        distance to radar target
+        heading to radar target
+        dx to other radar
+        dy to other radar
+        distance to other radar
+        heading to other radar
+        last value is the rcs probability
         """
         agent = self.battlespace.agents[agent_id]
         observation = agent.get_observation()
-        rcs_probability = self.battlespace.radar_system.compute_detection_probability(agent)
+        radar_system:RadarSystem = self.battlespace.radar_system
+        rcs_probability = radar_system.probability_of_detection_system(agent)
+
+        for radar in self.battlespace.radar_system.radars:
+            radar:Radar = radar
+            dx = radar.position[0] - agent.state_vector.x
+            dy = radar.position[1] - agent.state_vector.y
+            distance = np.sqrt(dx**2 + dy**2)
+            #relatitive heading from agent to radar
+            heading = np.arctan2(dy, dx)
+            # relative_heading = heading - agent.state_vector.yaw_rad
+            # #wrap the heading
+            # relative_heading = (relative_heading + np.pi) % (2 * np.pi) - np.pi
+            incident_angle = np.deg2rad(radar_system.compute_angle_of_incidence(
+                radar, agent))
+            observation = np.append(observation, [dx, dy, distance, incident_angle])
+        
         observation = np.append(observation, rcs_probability)
         
         if observation.shape[0] != self.observation_space.shape[0]:
@@ -454,6 +632,86 @@ class RCSEnv(AbstractBattleEnv):
             
         return observation.astype(np.float32)
       
+    def reset(self, *, seed=None, options=None) -> Tuple[np.ndarray, Dict]:
+                    
+        if seed is not None:
+            np.random.seed(seed)
+            random.seed(seed)
+            self.seed = seed
+        
+        self.battlespace = self.__init_battlespace()
+        self.all_agents = self.__init_agents()
+        self.battlespace.agents = self.all_agents
+        self.agents = [agent for agent in self.all_agents
+                        if agent.is_controlled and not agent.is_pursuer]
+        self.target = self.make_target(spawn_own_target=self.use_own_target,
+                                       own_target=self.target)
+        self.__init_radar_system()
+        
+        self.idx_radar = int(np.random.uniform(0, len(self.battlespace.radar_system.radars)))
+        self.idx_radar = 1
+        self.assigned_target = self.battlespace.radar_system.radars[self.idx_radar]
+        
+        self.current_step = 0
+        self.terminateds = False
+        self.truncateds = False
+        self.reward = 0
+        
+        observation = self.get_current_observation(self.vehicle.id)
+        self.old_distance = 0
+        infos = {}
+        
+        return observation, infos
+    
+    def step(self, action: np.ndarray, 
+             norm_action:bool=True) -> Tuple[np.ndarray, float, bool, Dict]:
+        self.reward = 0
+        info = {}
+        
+        if self.use_discrete_actions:
+            action = self.heading_commands[action[0]], self.velocity_commands[action[1]]
+            action = np.array(action)
+        elif self.use_stable_baselines:
+            action = self.denormalize_action(action, self.vehicle.id)
+            
+        self.simulate(action, use_multi=False)
+        current_obs = self.get_current_observation(self.vehicle.id)
+        self.reward = self.get_reward(current_obs)
+        self.current_step += 1
+        
+        #check if close to target
+        dx = self.assigned_target.position[0] - self.vehicle.state_vector.x
+        dy = self.assigned_target.position[1] - self.vehicle.state_vector.y
+        distance = np.sqrt(dx**2 + dy**2)
+        detection_probability = current_obs[-1]
+        info['detection_probability'] = detection_probability
+        
+        if detection_probability >= 0.75:
+            print("You've been detected", detection_probability)
+        
+        if distance < env_config.RADAR_CAPTURE_DISTANCE:
+            self.terminateds = True
+            self.truncateds = True
+            self.reward = 1000
+            print("captured")        
+        elif self.current_step >= self.max_steps:
+            self.terminateds = True
+            self.truncateds = True
+            self.reward = self.reward    
+        elif detection_probability >= 0.75:
+            self.terminateds = True
+            self.truncateds = True
+            self.reward = -1000
+            # print("You've been detected")
+            
+        # Don't normalize the environment and use discrete actions
+        if self.upload_norm_obs and self.vec_env is not None:
+            current_obs = normalize_obs(current_obs, self.vec_env)
+            
+        self.observation = current_obs
+            
+        return current_obs, self.reward, self.terminateds, self.truncateds, info
+                      
 class AvoidThreatEnv(AbstractBattleEnv):
     """
     This environment is used to train the agent to learn an avoidance policy
@@ -555,10 +813,13 @@ class AvoidThreatEnv(AbstractBattleEnv):
         Multiply by n pursuers/threats and this will be our observation space
         """
         
-        high_obs = []
-        low_obs = []
+        # high_obs = []
+        # low_obs = []
         # agent:Agent = self.battlespace.agents[agent_id]
         ego_agent = self.vehicle
+
+        obs_config = env_config.evader_observation_constraints
+        high_obs, low_obs = self.map_config(obs_config)
         
         for agent in self.all_agents:
             agent:Agent = agent
@@ -569,9 +830,6 @@ class AvoidThreatEnv(AbstractBattleEnv):
             low = []
             high = []
 
-            obs_config = env_config.evader_observation_constraints
-            # high_obs, low_obs = self.map_config(obs_config)
-            
             low_x = env_config.X_BOUNDS[0]
             high_x = env_config.X_BOUNDS[1]
             
@@ -599,9 +857,9 @@ class AvoidThreatEnv(AbstractBattleEnv):
         Returns the observation for the agent as a numpy array
         """        
         ego_agent = self.battlespace.agents[agent_id]
-        # current_state = self.vehicle.get_observation()
+        current_state = self.vehicle.get_observation()
         
-        observation = np.array([])
+        observation = self.vehicle.get_observation()#np.array([])
         for agent in self.all_agents:
             agent:Agent = agent
             if agent.id == ego_agent.id:
@@ -667,7 +925,7 @@ class AvoidThreatEnv(AbstractBattleEnv):
             random_spawn_distance = np.random.uniform(min_spawn, max_spawn)
             #random value of -1 or 1
             evader: Evader = agents[0]
-            random_angle = evader.state_vector.yaw_rad + np.random.uniform(-np.pi/6, np.pi/6)
+            random_angle = evader.state_vector.yaw_rad + np.random.uniform(-np.pi, np.pi)
             x = evader.state_vector.x + random_spawn_distance * np.cos(random_angle)
             y = evader.state_vector.y + random_spawn_distance * np.sin(random_angle)
             
@@ -716,6 +974,7 @@ class AvoidThreatEnv(AbstractBattleEnv):
         self.terminateds = False
         self.truncateds = False
         self.reward = 0
+        self.old_distance = 0.0
         
         observation = self.get_current_observation(self.vehicle.id)
         infos = {}
@@ -778,16 +1037,33 @@ class AvoidThreatEnv(AbstractBattleEnv):
             self.reward = self.terminal_reward
             print("terminateds", self.terminateds)
             
+        
+        # first let's check if our ego vehicle crashed 
+        ego_agent:Evader = self.vehicle
+        if ego_agent.crashed:
+            self.terminateds = True
+            self.truncateds = True
+            self.reward = -self.terminal_reward
+        
+        # sift through to see if our agent made the pursuers crash into each other
         for agent in self.battlespace.agents:
-            if agent.crashed:
+            if agent.is_controlled:
+                continue
+            if agent.crashed and agent.is_pursuer and not ego_agent.crashed:
+                print("Pursuer crashed you win", ego_agent.crashed)
                 self.truncateds = True
                 self.terminateds = True
-                self.reward = -self.terminal_reward
-            
-
-        if self.upload_norm_obs and self.vec_env is not None:
+                self.reward = self.terminal_reward
+                
+            # if agent.crashed and agent.is_pursuer: 
+            #     self.truncateds = True
+            #     self.terminateds = True
+            #     self.reward = self.terminal_reward
+                
+        # Don't normalize the environment and use discrete actions
+        if self.upload_norm_obs and self.vec_env is not None and not self.use_discrete_actions:
             current_obs = normalize_obs(current_obs, self.vec_env)
-        
+            
         self.observation = current_obs
         
         return current_obs, self.reward, self.terminateds, self.truncateds, info

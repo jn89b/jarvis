@@ -25,12 +25,12 @@ def set_global_seed(seed):
 
 def create_env():
     return AvoidThreatEnv(
-        
+        use_discrete_actions=True,
         )  # Adjust this to match your environment creation
 
 if __name__ == '__main__':
     model_name = "PPO_evader_2D_3000000_steps"
-    vec_normalize_path = "PPO_evader_2D_vecnormalize_3010000.pkl"
+    vec_normalize_path = "PPO_evader_2D_vecnormalize_3000000.pkl"
     USE_PICKLE_PURSUERS = True
     # Load the environment and normalization statistics
     num_envs = 5
@@ -79,7 +79,9 @@ if __name__ == '__main__':
         
         while not done:
             start_time = time.time()
+            print("obs", obs)
             action, values = model.predict(obs, deterministic=True)
+            print("action", action)
             obs, reward, done, _, info = environment.step(action)
             end_time = time.time() - start_time
             # environment.render()

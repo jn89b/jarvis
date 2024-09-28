@@ -5,6 +5,7 @@ import numpy as np
 
 from typing import List, Tuple, TYPE_CHECKING,Dict
 from jarvis.utils.Vector import StateVector
+from jarvis.assets.Radar2D import RadarSystem2D
 if TYPE_CHECKING:
     from jarvis.assets.Plane import Agent
 
@@ -18,6 +19,7 @@ class BattleSpace():
         self.y_bounds = y_bounds
         self.z_bounds = z_bounds
         self.agents = agents
+        self.radar_system:RadarSystem2D = None
         
     
     def is_out_bounds(self, state_vector:StateVector) -> bool:

@@ -22,12 +22,12 @@ class Radar():
         self.upper_bound = self.upper_bound()
         print("radar heading: ", np.rad2deg(self.position[2]))
 
-    def lower_bound(self):
+    def lower_bound(self) -> np.ndarray:
         x = self.position[0] + self.range*np.cos(self.position[2] - self.fov/2)
         y = self.position[1] + self.range*np.sin(self.position[2] - self.fov/2)
         return np.array([x, y])
     
-    def upper_bound(self):
+    def upper_bound(self) -> np.ndarray:
         x = self.position[0] + self.range*np.cos(self.position[2] + self.fov/2)
         y = self.position[1] + self.range*np.sin(self.position[2] + self.fov/2)
         return np.array([x, y])

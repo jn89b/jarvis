@@ -14,11 +14,14 @@ TARGET_X = 250
 TARGET_Y = 250
 
 ### Radar Config ###
-NUM_RADARS = 1
-RADAR_RANGE = 1000
-RADAR_FOV = np.pi/2 
-RADAR_SPAWN_MIN_DISTANCE = 20
-RADAR_SPAWN_MAX_DISTANCE = 40
+# MIN_NUM_RADARS = 2
+NUM_RADARS_MIN = 3
+NUM_RADARS_MAX = 3
+RADAR_RANGE = 350
+RADAR_FOV = 120
+RADAR_SPAWN_MIN_DISTANCE = RADAR_RANGE 
+RADAR_SPAWN_MAX_DISTANCE = RADAR_RANGE + RADAR_RANGE/2
+RADAR_CAPTURE_DISTANCE = 150 # used 
 
 ### Evader  Config ###
 NUM_AGENTS = 1
@@ -33,6 +36,7 @@ CAPTURE_RADIUS = 10
 MIN_SPAWN_DISTANCE = 200
 MAX_SPAWN_DISTANCE = 350 #300
 EFFECTOR_RANGE = 5
+
 # Relative min and max observations
 LOW_REL_POS = 0.0
 HIGH_REL_POS = 2000.0
@@ -40,6 +44,7 @@ LOW_REL_VEL = 0.0
 HIGH_REL_VEL = 35.0
 LOW_REL_ATT = -np.pi
 HIGH_REL_ATT = np.pi
+
 
 ### Agent Config ###
 # Pursuer
@@ -66,7 +71,7 @@ evader_control_constraints = {
     'u_psi_min':  -np.deg2rad(45),
     'u_psi_max':   np.deg2rad(45),
     'v_cmd_min':   15,
-    'v_cmd_max':   22
+    'v_cmd_max':   25
 }
 
 evader_observation_constraints = {
@@ -77,5 +82,5 @@ evader_observation_constraints = {
     'psi_min':  -np.pi,
     'psi_max':   np.pi,
     'airspeed_min': 15,
-    'airspeed_max': 22
+    'airspeed_max': 25
 }

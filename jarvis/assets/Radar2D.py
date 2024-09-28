@@ -1,10 +1,12 @@
 """
 """
+
 import numpy as np
-from typing import List
+from typing import List, TYPE_CHECKING
 from dataclasses import dataclass, field
 from jarvis.utils.Vector import StateVector
-from jarvis.assets.Plane2D import Evader
+if TYPE_CHECKING:
+    from jarvis.assets.Plane2D import Evader
 
 @dataclass
 class RadarParameters:
@@ -29,13 +31,22 @@ class RadarParameters:
 
 class Radar2D():
     def __init__(self, radar_parameters: RadarParameters,
-                 is_circle:bool = True):
+                 is_circle:bool = True,
+                 radar_id:int = 0):
         self.radar_parameters:RadarParameters = radar_parameters
         self.is_circle:bool = is_circle
         self.get_fov()
         self.c1:float = radar_parameters.c1
         self.c2:float = radar_parameters.c2
         self.radar_fq_hz:float = radar_parameters.radar_fq_hz
+        self.position = np.array([radar_parameters.position.x,
+                                    radar_parameters.position.y,
+                                    radar_parameters.position.yaw_rad])
+        self.radar_id = radar_id
+        self.range = radar_parameters.range_m
+        self.fov = radar_parameters.max_fov_rad
+        self.lower_bound = self.get_lower_bound()
+        self.upper_bound = self.get_upper_bound()
         
     def get_fov(self) -> None:
         """
@@ -54,6 +65,16 @@ class Radar2D():
                                          position.roll_rad, position.pitch_rad, 
                                          position.yaw_rad, position.speed)
         
+        
+    def get_lower_bound(self) -> np.ndarray:
+            x = self.position[0] + self.range*np.cos(self.position[2] - self.fov/2)
+            y = self.position[1] + self.range*np.sin(self.position[2] - self.fov/2)
+            return np.array([x, y])
+    
+    def get_upper_bound(self) -> np.ndarray:
+        x = self.position[0] + self.range*np.cos(self.position[2] + self.fov/2)
+        y = self.position[1] + self.range*np.sin(self.position[2] + self.fov/2)
+        return np.array([x, y])
         
     # Define the function to compute antenna gain (G) in dB based on Rmax
     def find_G_db(self, Pt, lambda_radar, k, Ts, Bn, L, snr_threshold):
@@ -83,23 +104,15 @@ class Radar2D():
         Bn = 1e6  # Noise bandwidth in Hz
         L_db = 8  # Losses in linear scale
         L = 10**(L_db/10)  # Losses in dB
-        SNR_THRESHOLD_DB = 8  # SNR threshold in dB
+        SNR_THRESHOLD_DB = 5  # SNR threshold in dB
         SNR_THRESHOLD_DB_LINEAR = 10**(SNR_THRESHOLD_DB/10)  # SNR threshold in linear scale
         # G_db = 20   # Antenna gain in linear scale
         # G = 10**(G_db/10)  # Antenna gain in dB
         G = self.find_G_db(Pt, lambda_radar, k, Ts, Bn, L, SNR_THRESHOLD_DB_LINEAR)
-        print("G: ", G)
         rcs_val = 10**(rcs_val/10)
         SN = (Pt * G**2 * lambda_radar**2 * rcs_val) / ((4 * np.pi)**3 * distance**4 * k * Ts * Bn * L)
         probability_detection = 1 - np.exp(-SN/SNR_THRESHOLD_DB_LINEAR)
-        # if distance >= self.radar_parameters.detection_range:
-        #     return 0
-        # Compute the probability of detection
-        #  
-        # print("linear_db: ", linear_db)
-        # radar_prob_detection = 1/(1 +(self.c2* np.power(distance,4) / linear_db)**self.c1)
-        # probability_detection = 1- pow(radar_prob_detection , self.radar_fq_hz)
-        
+
         return probability_detection
         
 def normalize_vector(v: np.ndarray) -> np.ndarray:
@@ -111,7 +124,7 @@ class RadarSystem2D():
     def __init__(self, radar_system: List[Radar2D]):
         self.radars = radar_system
         
-    def compute_angle_of_incidence(self, radar: Radar2D, agent: Evader) -> float:
+    def compute_angle_of_incidence(self, radar: Radar2D, agent: "Evader") -> float:
         """
         Calculate the angle of incidence between the radar's line of sight 
         and the agent's heading.
@@ -122,7 +135,6 @@ class RadarSystem2D():
         los_angle = np.arctan2(dy, dx)
         
         los_norm = normalize_vector(np.array([dx, dy]))
-        
         heading_vector = np.array([np.cos(agent.state_vector.yaw_rad),
                                       np.sin(agent.state_vector.yaw_rad)])
         
@@ -135,8 +147,8 @@ class RadarSystem2D():
         
         return angle_of_incidence_deg
         
-        
-    def probability_of_detection_system(self, agent: Evader) -> float:
+
+    def probability_of_detection_system(self, agent: "Evader") -> float:
         """
         Compute the probability of detection for a system of radars.
         Each radar is assumed to operate independently.
@@ -153,14 +165,15 @@ class RadarSystem2D():
                 rcs_val = agent_rcs[str(angle_incidence_dg)]
             else:
                 raise ValueError("RCS value not found for this incident angle", angle_incidence_dg)
-            
             prob_detection = radar.probability_of_detection(agent.state_vector, rcs_val)
+            # if prob_detection <= 0.3:
+            #     continue 
+            
             # Probability of not being detected by this radar
-            print("prob_detection: ", prob_detection)
             non_detection_probs.append(1 - prob_detection)
         
         # Overall probability of detection
-        #overall_prob_detection = 1 - np.prod(non_detection_probs)
+        overall_prob_detection = 1 - np.prod(non_detection_probs)
         
-        return prob_detection
+        return overall_prob_detection
 

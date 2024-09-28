@@ -3,19 +3,24 @@ import numpy as np
 from typing import Type as Tuple
 from jarvis.envs.battle_space import BattleSpace
 from jarvis.assets.Plane import Agent
-
+from jarvis.assets.Radar2D import Radar2D, RadarSystem2D
 class Visualizer(object):
     def __init__(self) -> None:
         # this is for the 3D animation
         self.lines = []
         self.scatters = []
-        self.min_x = 1000 
-        self.max_x = -1000
-        self.min_y = 1000
-        self.max_y = -1000
+        self.min_x = -1000 
+        self.max_x = 1000
+        self.min_y = -1000
+        self.max_y = 1000
         
-    def plot_2d_trajectory(self, battlespace:BattleSpace) -> Tuple:
-        fig, ax = plt.subplots()
+    def plot_2d_trajectory(self, battlespace:BattleSpace,
+                           use_own_fig:bool=False,
+                           fig=None, ax=None) -> Tuple:
+        
+        if not use_own_fig:
+            fig, ax = plt.subplots()
+        
         for agent in battlespace.agents:
             agent: Agent
             data = agent.plane.data_handler
@@ -109,4 +114,29 @@ class Visualizer(object):
             ax[0].set_ylabel('Yaw')
             ax[1].set_ylabel('Airspeed')
             
+        return fig, ax
+    
+    def plot_radars(self, battlespace:BattleSpace) -> Tuple:
+        # Plot the radar
+        fig, ax = plt.subplots()
+        
+        radar_system = battlespace.radar_system
+        for radar in radar_system.radars:
+            radar: Radar2D
+            x = radar.position[0]
+            y = radar.position[1]
+            id = radar.radar_id
+            ax.scatter(x, y, color='r', label='Radar {}'.format(id))
+            #plot circle
+            circle = plt.Circle((x, y), radar.range, color='r', fill=True,
+                                alpha=0.5)
+            
+            ax.add_artist(circle)
+            
+        #plot the trajectory as well
+        self.plot_2d_trajectory(battlespace, fig=fig, ax=ax, use_own_fig=True)
+        #set limits 
+        ax.set_xlim([self.min_x, self.max_x])
+        ax.set_ylim([self.min_y, self.max_y])
+                        
         return fig, ax

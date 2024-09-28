@@ -111,8 +111,8 @@ class BattleSpace():
                 other_agent: Agent
                 
                 #ignore collisions with pursuers for now
-                if agent.is_pursuer and other_agent.is_pursuer:
-                    continue
+                # if agent.is_pursuer and other_agent.is_pursuer:
+                #     continue
                 
                 if agent.id != other_agent.id:
                     self.check_collisions(agent, other_agent)

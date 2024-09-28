@@ -6,10 +6,12 @@ from jarvis.envs.simple_2d_env import EngagementEnv
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
 from jarvis.utils.callbacks import SaveVecNormalizeCallback
 from jarvis.envs.simple_2d_env import AbstractBattleEnv, AvoidThreatEnv, EngagementEnv, RCSEnv
-from jarvis.assets.Plane2D import Agent, Evader, Pursuer, Obstacle
+# from jarvis.assets.Plane2D import Agent, Evader, Pursuer, Obstacle
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
-
+from jarvis.visualizer.visualizer import Visualizer
+from matplotlib import pyplot as plt
+import copy 
 
 class RLTrainer2D():
     """
@@ -79,6 +81,17 @@ class RLTrainer2D():
                 vec_env=self.vec_env,
                 upload_norm_obs=self.upload_norm_obs,
                 )
+        elif self.env_type == 2:
+            env = RCSEnv(
+                spawn_own_space=self.spawn_own_space,
+                spawn_own_agents=self.spawn_own_agents, 
+                use_stable_baselines=self.use_stable_baselines,
+                use_discrete_actions=self.use_discrete_actions,
+                vec_env=self.vec_env,
+                upload_norm_obs=self.upload_norm_obs,
+                )
+        else:
+            raise ValueError("Invalid environment type.")
             
         return env
             
@@ -86,7 +99,11 @@ class RLTrainer2D():
         env = SubprocVecEnv([self.create_env for _ in range(self.num_envs)])
         env = VecNormalize(env, norm_obs=True, norm_reward=False)
         env = VecMonitor(env)
+
+        test_env = self.create_env()
+        check_env(test_env)
         
+        print("model name:", self.model_name)
         callback = SaveVecNormalizeCallback(
             save_freq=self.save_freq,  # Save every 10,000 steps
             save_path='./models/'+self.model_name,
@@ -101,12 +118,11 @@ class RLTrainer2D():
             name_prefix=self.model_name
         )
         
-        
         if self.load_model and self.continue_training:
             print("Loading model and continuing training:", self.model_name)
             vec_normal_path = self.model_name + "_vecnormalize.pkl"
             env = VecNormalize.load(vec_normal_path, venv=env)
-            model = PPO.load(self.model_name, env=env)
+            model = PPO.load(self.model_name, env=env, devce='cuda')
             model.learn(total_timesteps=self.total_time_steps, 
                         log_interval=1,
                         callback=[callback, checkpoint_callback])
@@ -118,19 +134,20 @@ class RLTrainer2D():
                         verbose=1,
                         tensorboard_log="./logs/"+self.model_name,
                         learning_rate=0.0003,
-                        )
+                        device='cuda')
             model.learn(total_timesteps=self.total_time_steps, 
                         log_interval=1,
                         callback=[callback, checkpoint_callback])
             model.save(self.model_name)
             print("Model saved.")
         
-    def infer_model(self, num_evals:int=5) -> None:
-        vec_normal_path:str = self.model_name + "_vecnormalize.pkl"
-
+    def infer_model(self, num_evals:int=3,
+                    vis_results:bool=True) -> None:
+        
         env = DummyVecEnv([self.create_env])
 
         if self.vec_env is None:
+            vec_normal_path:str = self.model_name + "_vecnormalize.pkl"
             env = VecNormalize.load(vec_normal_path, env)
             env.training = False
             env.norm_reward = False
@@ -148,25 +165,88 @@ class RLTrainer2D():
         # environment = model.get_env()
         #reset the environment
         environment = self.create_env()
-                
+        
+        battle_space_list = []
+        reward_list = []
+        idx_fail = []
+        detection_overall = []
         success_history = []
         for i in range(num_evals):
             obs, _ = environment.reset()
             done = False
             count = 0
+            detections = []
             while not done:
                 action, values = model.predict(obs, deterministic=True)
                 obs, reward, done, _, info = environment.step(action)
                 count += 1
-                
+                detections.append(info['detection_probability'])
+                reward_list.append(reward)
                 if done:
                     if reward > 0:
+                        battle_space_list.append(
+                            copy.deepcopy(environment.battlespace))
                         success_history.append(True)
                     else:
+                        idx_fail.append(i)
+                        battle_space_list.append(
+                            copy.deepcopy(environment.battlespace))
                         success_history.append(False)
-        
+                    detection_overall.append(detections)
         
         win_percentage = sum(success_history) / num_evals
         print("win percentage:", win_percentage)
         
+        data_vis = Visualizer()
+        for i, battle_space in enumerate(battle_space_list):
+            #fig, ax = data_vis.plot_2d_trajectory(battle_space)
+            if success_history[i]:
+                fig,ax = data_vis.plot_2d_trajectory(battle_space)
+                ax.set_title("Success")
+            else:
+                fig,ax = data_vis.plot_2d_trajectory(battle_space)
+                ax.set_title("Failure")
         
+        if self.env_type == 2:
+            #plot the detections
+            
+            #visualize the radar
+            fig, ax = data_vis.plot_radars(battle_space_list[0])
+            
+            #plot the trajectories over time
+            for i, detections in enumerate(detection_overall):
+                fig, ax = plt.subplots()
+                ax.plot(detections)
+                ax.set_title("Detections")
+            
+        
+        #plot the rewards
+        fig, ax = plt.subplots()
+        ax.plot(reward_list)
+        
+        # plot the results
+        plt.show()
+        
+        
+        
+    def test_environment(self) -> None:
+        env = self.create_env()
+        check_env(env)
+        
+        obs = env.reset()
+        reward_history = []
+        for _ in range(1000):
+            action = env.action_space.sample()
+            obs, reward, done, _, info = env.step(action)
+            # env.render()
+            reward_history.append(reward)
+            if done:
+                obs = env.reset()
+                
+        data_vis = Visualizer()
+        fig, ax = data_vis.plot_2d_trajectory(env.battlespace)
+        
+        fig, ax = plt.subplots()
+        ax.plot(reward_history)
+        
+        plt.show()
