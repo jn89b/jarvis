@@ -201,23 +201,32 @@ class RLTrainer2D():
         for i, battle_space in enumerate(battle_space_list):
             #fig, ax = data_vis.plot_2d_trajectory(battle_space)
             if success_history[i]:
-                fig,ax = data_vis.plot_2d_trajectory(battle_space)
+                if self.env_type == 2:
+                    fig, ax = data_vis.plot_radars(battle_space)
+                    fig, ax = plt.subplots()
+                    ax.plot(detection_overall[i])
+                else:
+                    fig,ax = data_vis.plot_2d_trajectory(battle_space)
                 ax.set_title("Success")
             else:
-                fig,ax = data_vis.plot_2d_trajectory(battle_space)
+                if self.env_type == 2:
+                    fig, ax = data_vis.plot_radars(battle_space)
+                else:
+                    fig,ax = data_vis.plot_2d_trajectory(battle_space)
+                    ax.plot(detection_overall[i])
                 ax.set_title("Failure")
         
-        if self.env_type == 2:
-            #plot the detections
+        # if self.env_type == 2:
+        #     #plot the detections
             
-            #visualize the radar
-            fig, ax = data_vis.plot_radars(battle_space_list[0])
+        #     #visualize the radar
+        #     fig, ax = data_vis.plot_radars(battle_space_list[0])
             
-            #plot the trajectories over time
-            for i, detections in enumerate(detection_overall):
-                fig, ax = plt.subplots()
-                ax.plot(detections)
-                ax.set_title("Detections")
+        #     #plot the trajectories over time
+        #     for i, detections in enumerate(detection_overall):
+        #         fig, ax = plt.subplots()
+        #         ax.plot(detections)
+        #         ax.set_title("Detections")
             
         
         #plot the rewards

@@ -1,8 +1,10 @@
 from jarvis.utils.Trainer2D import RLTrainer2D
 from jarvis.config.env_config_2d import NUM_PURSUERS, NUM_RADARS_MAX
+import matplotlib
+matplotlib.use('TkAgg')
 if __name__ == '__main__':
     
-    test_num = 1
+    test_num = 2
 
     sim_config = {
         0: "AvoidThreatEnv",
@@ -39,5 +41,5 @@ if __name__ == '__main__':
                              total_time_steps=total_time_steps,
                              upload_norm_obs=upload_norm_obs,
                              vec_env_path=model_name)
-    rl_trainer.infer_model(num_evals=1)
+    rl_trainer.infer_model(num_evals=5)
     

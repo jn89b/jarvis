@@ -584,7 +584,7 @@ class RCSEnv(AbstractBattleEnv):
         delta_distance = self.old_distance - distance
         detection_probability = observation[-1] # this value is between 0 and 1
         
-        distance_weight = 5
+        distance_weight = 2
         reward = (distance_weight*delta_distance) - detection_probability
         self.old_distance = distance
         return reward
@@ -686,9 +686,6 @@ class RCSEnv(AbstractBattleEnv):
         detection_probability = current_obs[-1]
         info['detection_probability'] = detection_probability
         
-        if detection_probability >= 0.75:
-            print("You've been detected", detection_probability)
-        
         if distance < env_config.RADAR_CAPTURE_DISTANCE:
             self.terminateds = True
             self.truncateds = True
@@ -697,8 +694,9 @@ class RCSEnv(AbstractBattleEnv):
         elif self.current_step >= self.max_steps:
             self.terminateds = True
             self.truncateds = True
-            self.reward = self.reward    
-        elif detection_probability >= 0.75:
+            self.reward = -1000    
+        elif detection_probability >= 0.50:
+            print("You've been detected")
             self.terminateds = True
             self.truncateds = True
             self.reward = -1000
