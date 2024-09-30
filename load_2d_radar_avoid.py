@@ -4,7 +4,7 @@ import matplotlib
 matplotlib.use('TkAgg')
 if __name__ == '__main__':
     
-    test_num = 2
+    test_num = 3
 
     sim_config = {
         0: "AvoidThreatEnv",

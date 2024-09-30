@@ -68,8 +68,8 @@ pursuer_control_constraints = {
 
 # Evader
 evader_control_constraints = {
-    'u_psi_min':  -np.deg2rad(45),
-    'u_psi_max':   np.deg2rad(45),
+    'u_psi_min':  -np.deg2rad(40),
+    'u_psi_max':   np.deg2rad(40),
     'v_cmd_min':   15,
     'v_cmd_max':   25
 }

@@ -200,6 +200,8 @@ class Evader(Agent):
         if action.any():
             #TODO: have a check to make sure the action space size is correct
             self.action = action
+            self.on_action_update(self.action)
+
             
     def step(self, dt:float) -> None:
         """
@@ -219,6 +221,14 @@ class Evader(Agent):
         new_states = self.plane.rk45(
             self.plane.state_info, self.action, dt)
         self.on_state_update(new_states)
+
+
+    def on_action_update(self, action:np.ndarray) -> None:
+        """
+        Update the action of the agent
+        """
+        self.plane.data_handler.psi_cmd = action[0]
+        self.plane.data_handler.v_cmd = action[1]
 
     def get_reward(self, obs:np.ndarray) -> float:
         """
@@ -466,8 +476,9 @@ class Plane2D():
         self.v_dot = (self.v_cmd - self.v)*(self.dt_val/self.airspeed_tau)
         self.x_fdot = self.v * ca.cos(self.psi_f)
         self.y_fdot = self.v * ca.sin(self.psi_f)
+        # self.psi_fdot =  (self.u_psi - self.psi_f) * (self.dt_val / self.pitch_tau)
         # self.psi_fdot = self.u_psi*self.dt_val #(self.u_psi - self.psi_f)*(self.dt_val/self.pitch_tau)
-        self.psi_fdot = self.u_psi#*(self.pitch_tau)
+        self.psi_fdot = self.u_psi
     
         if self.include_time:
             self.z_dot = ca.vertcat(

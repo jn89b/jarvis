@@ -171,14 +171,24 @@ class AbstractBattleEnv(gymnasium.Env):
                 
                 if self.use_discrete_actions:
                     
-                    self.heading_commands = np.arange(
-                        action_space.low[0], action_space.high[0], np.deg2rad(5))
+                    # self.heading_commands = np.arange(
+                    #     action_space.low[0], action_space.high[0], np.deg2rad(5))
                     
-                    self.velocity_commands = np.arange(
-                        action_space.low[1], action_space.high[1], 1)
+                    self.heading_commands = np.linspace(
+                        action_space.low[0], action_space.high[0], 19)
+                    
+                    # self.velocity_commands = np.arange(
+                    #     action_space.low[1], action_space.high[1], 1)
+                    
+                    self.velocity_commands = np.linspace(
+                        action_space.low[1], action_space.high[1], 10)
                     
                     self.len_velocity_commands = len(self.velocity_commands)
                     self.len_heading_commands = len(self.heading_commands)
+                    
+                    print("length of heading commands: ", self.len_heading_commands)
+                    print("length of velocity commands: ", self.len_velocity_commands)
+                    
                     action_space = spaces.MultiDiscrete(
                         [self.len_heading_commands, self.len_velocity_commands])
                     return action_space
@@ -1064,7 +1074,7 @@ class AvoidThreatEnv(AbstractBattleEnv):
             
         self.observation = current_obs
         
-        return current_obs, self.reward, self.terminateds, self.truncateds, info
+        return current_obs, float(self.reward), self.terminateds, self.truncateds, info
             
 class EngagementEnv(AbstractBattleEnv):
     """

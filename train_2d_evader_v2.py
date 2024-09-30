@@ -2,13 +2,13 @@ from jarvis.utils.Trainer2D import RLTrainer2D
 from jarvis.config.env_config_2d import NUM_PURSUERS
 if __name__ == '__main__':
     
-    test_num = 1
+    test_num = 3
     num_pursuers = NUM_PURSUERS
     
     continue_training = False
     load_model = False
     use_discrete_actions = True
-    total_time_steps = 12000000
+    total_time_steps = 1000000
     
     if continue_training:
         upload_norm_obs = True
@@ -29,6 +29,7 @@ if __name__ == '__main__':
                              env_type=0,  
                              total_time_steps=total_time_steps,
                              upload_norm_obs=upload_norm_obs,
-                             vec_env_path=model_name)
+                             vec_env_path=model_name,
+                             use_perciever=True)
     rl_trainer.train()
     
