@@ -1,0 +1,33 @@
+control_limits:
+  u_phi:
+    min: !!float -0.7853981633974483   # -np.deg2rad(45)
+    max: !!float 0.7853981633974483    # np.deg2rad(45)
+  u_z:
+    min: 0 
+    max: 50
+  v_cmd:
+    min: 15.0
+    max: 30.0
+
+state_limits:
+  x:
+    min: -inf
+    max: inf
+  y:
+    min: -inf
+    max: inf
+  z:
+    min: 0
+    max: 50
+  phi:
+    min: !!float -0.7853981633974483   # -np.deg2rad(45)
+    max: !!float 0.7853981633974483    # np.deg2rad(45)
+  theta:
+    min: !!float -0.4363323129985824   # -np.deg2rad(25)
+    max: !!float 0.3490658503988659    # np.deg2rad(20)
+  psi:
+    min: !!float -6.283185307179586    # -np.deg2rad(360)
+    max: !!float 6.283185307179586     # np.deg2rad(360)
+  v:
+    min: 15.0
+    max: 25.0
