@@ -348,12 +348,13 @@ class DynamicThreatAvoidance(AbstractBattleEnv):
             rand_x = evader_position.x + rand_distance * np.cos(rand_angle)
             rand_y = evader_position.y + rand_distance * np.sin(rand_angle)
             rand_z = evader_position.z + np.random.uniform(-10, 10)
-
             rand_phi = np.random.uniform(self.pursuer_state_limits['phi']['min'],
                                          self.pursuer_state_limits['phi']['max'])
             rand_theta = np.random.uniform(self.pursuer_state_limits['theta']['min'],
                                            self.pursuer_state_limits['theta']['max'])
-            rand_psi = np.random.uniform(0, 2 * np.pi)
+            # rand_psi = np.random.uniform(0, 2 * np.pi)
+            rand_psi = evader_position.yaw_rad + \
+                np.random.uniform(-np.pi/2, np.pi/2)
             rand_velocity = np.random.uniform(
                 self.pursuer_state_limits['v']['min'], self.pursuer_state_limits['v']['max'])
             state_vector = StateVector(

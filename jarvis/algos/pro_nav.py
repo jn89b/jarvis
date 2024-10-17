@@ -32,28 +32,18 @@ class ProNav():
         # los_unit_vector = los.array[:3] / np.linalg.norm(los.array[:3])
         # ego_speed = ego.speed
         # lateral_acceleration = ego.speed * los_unit_vector
-        heading_cmd: float = np.arctan2(los.array[1], los.array[0])
+        # I HAVE TO flip the sign of the lateral acceleration
+        heading_cmd: float = np.arctan2(los.array[0], los.array[1])
         flight_path_rate: float = self.nav_constant * heading_cmd
         acmd = self.nav_constant * ego.speed
 
-        # check dot product and distance
-        error_heading: float = abs(ego.yaw_rad - heading_cmd)
-        target_distance: float = np.linalg.norm(los.array[:3])
-        flight_path_rate: float = self.nav_constant * \
-            (heading_cmd - ego.yaw_rad)
+        error = heading_cmd - ego.yaw_rad
+        if error > np.pi:
+            error = error - 2*np.pi
+        elif error < -np.pi:
+            error = error + 2*np.pi
 
-        if error_heading > np.deg2rad(20) and target_distance < self.capture_distance + 30:
-            acmd = -1.0
-        else:
-            acmd = 1.0
-
-        if error_heading < np.deg2rad(1):
-            flight_path_rate = 0.0
-
-        # wrap the heading command between 0 to 2pi
-        flight_path_rate = (flight_path_rate + 2 * np.pi) % (2 * np.pi)
-
-        return acmd, flight_path_rate
+        return acmd, heading_cmd
 
     def navigate(self, ego: StateVector, target: StateVector) -> np.ndarray:
         """
@@ -95,10 +85,9 @@ class ProNav():
             yaw_desired = latax / ego.speed
             yaw_cmd = yaw_desired
 
-        Vc, yaw_cmd = self.pursuit(ego, target)
+        # Vc, yaw_cmd = self.pursuit(ego, target)
         # wrap yaw command between 0 and 2pi
-        yaw_cmd = (yaw_cmd + 2 * np.pi) % (2 * np.pi)
-        print(f"Vc: {Vc}, yaw_cmd: {np.rad2deg(yaw_cmd)}")
+        # print(f"Vc: {Vc}, yaw_cmd: {np.rad2deg(yaw_cmd)}")
         # Update previous states for the next iteration
         self.previous_ego_state = ego
         self.previous_target_state = target

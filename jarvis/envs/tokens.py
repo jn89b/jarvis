@@ -8,3 +8,4 @@ class ControlIndex(Enum):
     ROLL: int = 0
     ALTITUDE: int = 1
     VELOCITY: int = 2
+    HEADING: int = 3

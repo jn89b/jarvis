@@ -77,8 +77,8 @@ class BattleSpace():
         if distance <= threshold:
             ego_agent.crashed = True
             other_agent.crashed = True
-            # print("Collision between agent {} and agent {}".format(
-            #     ego_agent.id, other_agent.id))
+            print("Collision between agent {} and agent {}".format(
+                ego_agent.id, other_agent.id))
 
     def step(self) -> None:
         """

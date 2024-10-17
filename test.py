@@ -10,31 +10,35 @@ if __name__ == "__main__":
     # print("observation space", dyn_env.observation_space)
     # print("action space", dyn_env.action_space)
 
-    N = 1000
+    N = 4000
     for i in range(N):
         action: np.ndarray = dyn_env.action_space.sample()
         # print("action", action)
         dyn_env.step(action)
         # dyn_env.reset()
 
-reports = []
-x_list = []
-y_list = []
-z_list = []
-for agent in dyn_env.all_agents:
-    reports.append(agent.sim_interface.report)
-    x_list.append(agent.sim_interface.report.x)
-    y_list.append(agent.sim_interface.report.y)
-    z_list.append(agent.sim_interface.report.z)
+    reports = []
+    x_list = []
+    y_list = []
+    z_list = []
+    # 3D plot
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    for agent in dyn_env.all_agents:
 
+        reports.append(agent.sim_interface.report)
+        x_list.append(agent.sim_interface.report.x)
+        y_list.append(agent.sim_interface.report.y)
+        z_list.append(agent.sim_interface.report.z)
+        ax.plot(agent.sim_interface.report.x, agent.sim_interface.report.y,
+                agent.sim_interface.report.z, label=f"Agent {agent.id}")
+        ax.scatter(agent.sim_interface.report.x[-1], agent.sim_interface.report.y[-1],
+                   agent.sim_interface.report.z[-1], label=f"Agent {agent.id} End")
+        print("Agent", agent.id, "Final Position", agent.sim_interface.report.x[-1],
+              agent.sim_interface.report.y[-1], agent.sim_interface.report.z[-1])
 
-# 3D plot
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
-for i, report in enumerate(reports):
-    ax.plot(report.x, report.y, report.z, label=f"Agent {i}")
-ax.set_xlabel('X')
-ax.set_ylabel('Y')
-ax.set_zlabel('Z')
-ax.legend()
-plt.show()
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    ax.legend()
+    plt.show()
