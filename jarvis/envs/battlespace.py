@@ -8,7 +8,7 @@ from jarvis.utils.vector import StateVector
 from jarvis.envs.tokens import ControlIndex
 # from jarvis.assets.Radar2D import RadarSystem2D
 if TYPE_CHECKING:
-    from jarvis.envs.agent import Agent
+    from jarvis.envs.agent import Agent, Pursuer, Evader
 
 
 class BattleSpace():
@@ -45,9 +45,17 @@ class BattleSpace():
                         raise ValueError(
                             "Action key not found for agent but is supposed to be controlled {}".format(agent.id))
         else:
+            controlled_agent: Evader = None
             for agent in self.all_agents:
                 if agent.is_controlled:
+                    controlled_agent: Evader = agent
                     agent.act(action)
+
+            for agent in self.all_agents:
+                agent: Agent
+                if agent.is_pursuer:
+                    agent: Pursuer
+                    agent.chase(controlled_agent)
 
     def check_captured(self) -> bool:
         """

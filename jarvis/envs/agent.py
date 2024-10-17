@@ -4,6 +4,7 @@ from typing import List, Tuple, Dict
 from jarvis.envs.battlespace import BattleSpace
 from jarvis.envs.tokens import ControlIndex
 from jarvis.utils.vector import StateVector
+from jarvis.algos.pro_nav import ProNav
 # import aircraftsim
 from aircraftsim import (
     SimInterface,
@@ -80,6 +81,7 @@ class Agent():
             self.fall_down()
 
         self.sim_interface.step(self.high_control_inputs)
+        self.on_state_update()
 
     def distance_to(self, other: "Agent",
                     use_2d: bool = False) -> float:
@@ -112,7 +114,7 @@ class Agent():
             aircraft_state.roll,
             aircraft_state.pitch,
             aircraft_state.yaw,
-            aircraft_state.speed
+            aircraft_state.airspeed
         )
         # we'll keep this information for now
         self.state_vector = new_vector
@@ -125,31 +127,6 @@ class Agent():
         return self.state_vector.array
 
 
-class Pursuer(Agent):
-    is_pursuer: bool = True
-    is_controlled: bool = False
-
-    def __init__(self, battle_space: BattleSpace,
-                 state_vector: StateVector,
-                 sim_interface: SimInterface,
-                 id: float = None,
-                 radius_bubble: float = 0.0,
-                 pursuer_state_limits: Dict = None,
-                 pursuer_control_limits: Dict = None,
-                 capture_distance: float = 5.0) -> None:
-        super().__init__(battle_space, state_vector,
-                         sim_interface, id, radius_bubble)
-        self.pursuer_state_limits: Dict = pursuer_state_limits
-        self.pursuer_control_limits: Dict = pursuer_control_limits
-        self.capture_distance: float = capture_distance
-
-    def pro_nav(self) -> None:
-        """
-        Proportional navigation.
-        """
-        pass
-
-
 class Evader(Agent):
     is_pursuer: bool = False
     is_controlled: bool = True
@@ -160,3 +137,40 @@ class Evader(Agent):
                  radius_bubble: float,
                  id: int = None) -> None:
         super().__init__(battle_space, state_vector, sim_interface, id, radius_bubble)
+
+
+class Pursuer(Agent):
+    is_pursuer: bool = True
+    is_controlled: bool = False
+
+    def __init__(self, battle_space: BattleSpace,
+                 state_vector: StateVector,
+                 sim_interface: SimInterface,
+                 id: int = None,
+                 radius_bubble: float = 0.0,
+                 pursuer_state_limits: Dict = None,
+                 pursuer_control_limits: Dict = None,
+                 capture_distance: float = 5.0) -> None:
+        super().__init__(battle_space, state_vector,
+                         sim_interface, id, radius_bubble)
+        self.pursuer_state_limits: Dict = pursuer_state_limits
+        self.pursuer_control_limits: Dict = pursuer_control_limits
+        self.capture_distance: float = capture_distance
+        self.dt: float = self.sim_interface.dt
+        self.pro_nav: ProNav = ProNav(
+            dt=0.1, nav_constant=4.0, capture_distance=self.capture_distance)
+
+    def chase(self, target: Evader) -> None:
+        """
+        Implement the chase algorithm and sets the action
+        """
+        a_cmd, latax = self.pro_nav.navigate(
+            self.state_vector, target.state_vector)
+        vel_cmd: float = self.state_vector.speed + a_cmd
+        roll_cmd: float = np.arctan2(latax, -9.81)
+        # clip the roll command
+        roll_cmd = np.clip(roll_cmd, -np.pi/4, np.pi/4)
+        alt_cmd: float = target.state_vector.z
+        print(f"Roll: {roll_cmd}, Alt: {alt_cmd}, Vel: {vel_cmd}")
+        action = np.array([roll_cmd, alt_cmd, vel_cmd])
+        self.act(action)

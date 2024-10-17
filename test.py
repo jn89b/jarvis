@@ -17,9 +17,24 @@ if __name__ == "__main__":
         dyn_env.step(action)
         # dyn_env.reset()
 
-report: ReportGraphs = dyn_env.agents[0].sim_interface.report
-data_vis = DataVisualizer(report)
-data_vis.plot_3d_trajectory()
-data_vis.plot_attitudes()
-data_vis.plot_airspeed()
+reports = []
+x_list = []
+y_list = []
+z_list = []
+for agent in dyn_env.all_agents:
+    reports.append(agent.sim_interface.report)
+    x_list.append(agent.sim_interface.report.x)
+    y_list.append(agent.sim_interface.report.y)
+    z_list.append(agent.sim_interface.report.z)
+
+
+# 3D plot
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+for i, report in enumerate(reports):
+    ax.plot(report.x, report.y, report.z, label=f"Agent {i}")
+ax.set_xlabel('X')
+ax.set_ylabel('Y')
+ax.set_zlabel('Z')
+ax.legend()
 plt.show()
