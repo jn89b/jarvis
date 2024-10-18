@@ -39,7 +39,7 @@ class EnvConfig:
     high_rel_vel: float = 100.0
     low_rel_att: float = 0.0
     high_rel_att: float = 2 * np.pi
-    sim_end_time: float = 20
+    sim_end_time: float = 40.0
     # multiply by 1/freq * num_env_steps to get total sim time
     num_env_steps: int = int(sim_end_time*sim_frequency)
 
@@ -313,6 +313,10 @@ class DynamicThreatAvoidance(AbstractBattleEnv):
         self.action_space: spaces.Dict = self.__init_action_spaces()
         self.old_distance_from_pursuer: float = 0.0
         self.terminal_reward: float = 1000.0
+        self.old_action = None
+        self.ctrl_time: float = 0.5  # control time in seconds
+        self.ctrl_time_index = int(self.ctrl_time * self.config.sim_frequency)
+        self.ctrl_counter: int = 0  # control counter
 
     def __getstate__(self):
         # Copy the object's state and remove unpicklable parts
@@ -366,7 +370,6 @@ class DynamicThreatAvoidance(AbstractBattleEnv):
             state_vector = StateVector(
                 x=rand_x, y=rand_y, z=rand_z, roll_rad=rand_phi,
                 pitch_rad=rand_theta, yaw_rad=rand_psi, speed=rand_velocity)
-            print("aircraft speed", rand_velocity)
             init_conditions = AircraftIC(state_vector.x,
                                          state_vector.y,
                                          state_vector.z,
@@ -578,38 +581,6 @@ class DynamicThreatAvoidance(AbstractBattleEnv):
             info_dict[agent.id] = agent.get_observation()
         return info_dict
 
-    def step(self, action: np.ndarray,
-             norm_action: bool = False) -> Tuple[np.ndarray, float, bool, Dict]:
-        """
-        """
-        truncated: bool = False
-        terminated: bool = False
-        info = self.get_info()
-
-        if self.use_discrete_actions:
-            action: np.ndarray = self.discrete_to_continuous(action)
-        self.simulate(action, use_multi=False)
-        controlled_agent: Evader = self.agents
-        obs: np.array = self.get_current_observation(self.agents.id)
-        reward: float = self.get_reward(obs)
-
-        for agent in self.all_agents:
-            agent: Agent
-            if agent.crashed:
-                print("You died")
-                reward -= self.terminal_reward
-                terminated = True
-                truncated = True
-
-        self.current_step += 1
-        if self.current_step >= self.config.num_env_steps:
-            print("You win")
-            reward += self.terminal_reward
-            terminated = True
-            truncated = True
-
-        return obs, reward, terminated, truncated, info
-
     def render(self, mode: str = 'human') -> None:
         pass
 
@@ -703,3 +674,44 @@ class DynamicThreatAvoidance(AbstractBattleEnv):
         observation = self.get_current_observation(controlled_agent.id)
         infos = self.get_info()
         return observation, infos
+
+    def step(self, action: np.ndarray,
+             norm_action: bool = False) -> Tuple[np.ndarray, float, bool, Dict]:
+        """
+        """
+        truncated: bool = False
+        terminated: bool = False
+        info: Dict = self.get_info()
+
+        if self.ctrl_counter % self.ctrl_time_index == 0 and self.ctrl_counter != 0 \
+                or self.old_action is None:
+            if self.use_discrete_actions:
+                action: np.ndarray = self.discrete_to_continuous(action)
+            self.simulate(action, use_multi=False)
+            self.ctrl_counter = 0
+            self.old_action: np.ndarray = action
+        else:
+            self.ctrl_counter += 1
+            self.simulate(self.old_action, use_multi=False)
+
+        # self.simulate(action, use_multi=False)
+        controlled_agent: Evader = self.agents
+        obs: np.array = self.get_current_observation(controlled_agent.id)
+        reward: float = self.get_reward(obs)
+
+        # for agent in self.all_agents:
+        #     agent: Agent
+        if controlled_agent.crashed:
+            print("You died")
+            reward -= self.terminal_reward
+            terminated = True
+            truncated = True
+
+        self.current_step += 1
+        if self.current_step >= self.config.num_env_steps:
+            print("You win")
+            reward += self.terminal_reward
+            terminated = True
+            truncated = True
+
+        return obs, reward, terminated, truncated, info

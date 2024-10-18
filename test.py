@@ -19,12 +19,12 @@ if __name__ == "__main__":
     N = 4000
     for i in range(N):
         action: np.ndarray = dyn_env.action_space.sample()
+
         # print("action", action)
         obs, reward, terminated, _, info = dyn_env.step(action)
-        # if terminated:
-        #     break
-        dyn_env.reset()
-
+        if terminated:
+            break
+    print("Number of steps", N)
     reports = []
     x_list = []
     y_list = []
@@ -53,7 +53,11 @@ if __name__ == "__main__":
     fig, ax = plt.subplots()
     for agent in dyn_env.all_agents:
         ax.plot(agent.sim_interface.report.airspeed, label=f"Agent {agent.id}")
-
     ax.legend()
 
+    fig, ax = plt.subplots()
+    for agent in dyn_env.all_agents:
+        if agent.is_pursuer:
+            continue
+        ax.plot(agent.sim_interface.report.roll_dg)
     plt.show()

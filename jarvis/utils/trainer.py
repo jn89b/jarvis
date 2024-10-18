@@ -94,11 +94,10 @@ class Trainer():
         return env
 
     def train(self) -> None:
-        # env = SubprocVecEnv([self.create_env for _ in range(self.num_envs)])
-        # # env = self.create_env()
-        # env = VecNormalize(env, norm_obs=True, norm_reward=False)
-        # env = VecMonitor(env)
-        env = DummyVecEnv([lambda: self.create_env()])
+        env = SubprocVecEnv([self.create_env for _ in range(self.num_envs)])
+        # env = self.create_env()
+        env = VecNormalize(env, norm_obs=True, norm_reward=False)
+        env = VecMonitor(env)
 
         # test_env = self.create_env()
         # check_env(test_env)

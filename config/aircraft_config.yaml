@@ -7,7 +7,7 @@ control_limits:
     max: 30
   v_cmd:
     min: 15.0
-    max: 20.0
+    max: 25.0
 
 state_limits:
   x:
@@ -30,4 +30,4 @@ state_limits:
     max: !!float 6.283185307179586     # np.deg2rad(360)
   v:
     min: 10.0
-    max: 20.0
+    max: 35.0

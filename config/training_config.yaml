@@ -1,8 +1,8 @@
 model_config:
-  model_name: "MyModel"
+  model_name: "DynamicEvader"
   load_model: false
-  vec_env_path: "MyModel"
-  model_path: "MyModel"
+  vec_env_path: "DynamicEvader"
+  model_path: "DynamicEvader"
 
 env_config:
   env_type: 1
