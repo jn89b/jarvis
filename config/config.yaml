@@ -2,7 +2,7 @@ x_bounds: [-1000, 1000]
 y_bounds: [-1000, 1000]
 z_bounds: [-100, 100]
 num_evaders: 1
-num_pursuers: 3
+num_pursuers: 1
 use_pursuer_heuristics: false
 dt: 0.1
 ai_pursuers: true
@@ -17,3 +17,4 @@ low_rel_vel: -75.0
 high_rel_vel: 75.0
 low_rel_att: 0.0
 high_rel_att: 3.14159 
+sim_end_time : 30.0

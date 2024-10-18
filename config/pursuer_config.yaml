@@ -3,8 +3,8 @@ control_limits:
     min: !!float -0.7853981633974483   # -np.deg2rad(45)
     max: !!float 0.7853981633974483    # np.deg2rad(45)
   u_z:
-    min: 0 
-    max: 50
+    min: 30 
+    max: 30
   v_cmd:
     min: 15.0
     max: 30.0
@@ -17,8 +17,8 @@ state_limits:
     min: -inf
     max: inf
   z:
-    min: 0
-    max: 50
+    min: -30
+    max: 30
   phi:
     min: !!float -0.7853981633974483   # -np.deg2rad(45)
     max: !!float 0.7853981633974483    # np.deg2rad(45)
@@ -29,5 +29,5 @@ state_limits:
     min: !!float -6.283185307179586    # -np.deg2rad(360)
     max: !!float 6.283185307179586     # np.deg2rad(360)
   v:
-    min: 15.0
-    max: 30.0
+    min: 10.0
+    max: 35.0

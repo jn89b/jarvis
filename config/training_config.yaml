@@ -1,0 +1,28 @@
+model_config:
+  model_name: "MyModel"
+  load_model: false
+  vec_env_path: "MyModel"
+  model_path: "MyModel"
+
+env_config:
+  env_type: 1
+  vec_env: null
+  spawn_own_space: false
+  spawn_own_agents: false
+  use_discrete_actions: true
+  config_file_dir: "config.yaml"
+  aircraft_config_dir: "aircraft_config.yaml"
+  pursuer_config_dir: "pursuer_config.yaml"
+
+training_config:
+  total_time_steps: 5000000
+  save_freq: 10000
+  upload_norm_obs: false 
+  num_envs: 10 #the number of environments to train in parallel
+  load_model: false
+  set_seed: false
+  seed_num: 0
+  
+  continue_training: false
+
+

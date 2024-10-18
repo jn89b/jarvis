@@ -193,7 +193,13 @@ class Pursuer(Agent):
         elif error < -np.pi:
             error = error + 2*np.pi
         roll_cmd = np.clip(error, -np.pi/4, np.pi/4)
-        vel_cmd = 25.0  # self.pursuer_control_limits["v_cmd"]['max']
+        # vel_cmd = 25.0  # self.pursuer_control_limits["v_cmd"]['max']
+
+        distance = np.sqrt(dx**2 + dy**2)
+        if distance >= self.capture_distance + 50.0:
+            vel_cmd = 25.0
+        else:
+            vel_cmd = 25.0
         alt_cmd = target.state_vector.z
         action = np.array(
             [roll_cmd, alt_cmd, vel_cmd, heading_cmd])
@@ -223,16 +229,8 @@ class Pursuer(Agent):
             dy = target.state_vector.y - aircraft_state.y
             dx = target.state_vector.x - aircraft_state.x
 
-            # RTM_old: StateVector = self.previous_target_state - self.previous_ego_state
-            # RTM_new: StateVector = target.state_vector - self.state_vector
-
-            # theta_old: float = np.arctan2(RTM_old.array[0], RTM_old.array[1])
-            # theta_new: float = np.arctan2(RTM_new.array[0], RTM_new.array[1])
             theta_old: float = np.arctan2(dx_old, dy_old)
             theta_new: float = np.arctan2(dx, dy)
-            # RTM_new = RTM_new.array[:3] / np.linalg.norm(RTM_new.array[:3])
-            # RTM_old = RTM_old.array[:3] / np.linalg.norm(RTM_old.array[:3])
-
             RTM_new = np.array([dx_old, dy_old, 0])
             RTM_old = np.array([self.previous_target_state.x - self.previous_ego_state.x,
                                 self.previous_target_state.y - self.previous_ego_state.y, 0])
@@ -273,12 +271,8 @@ class Pursuer(Agent):
                 [0.0, target.state_vector.z, airspeed_cmd, yaw_cmd])
             self.previous_ego_state = aircraft_state
             self.previous_target_state = evader_state
+
         action = self.pursuit(target)
         self.previous_ego_state = aircraft_state
         self.previous_target_state = evader_state
         self.act(action)
-
-        # airspeed_cmd = self.state_vector.speed + Vc
-        # action = np.array(
-        #     [pursuit_action[0], pursuit_action[1], airspeed_cmd, yaw_cmd])
-        # self.act(action)

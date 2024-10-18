@@ -77,8 +77,16 @@ class BattleSpace():
         if distance <= threshold:
             ego_agent.crashed = True
             other_agent.crashed = True
-            print("Collision between agent {} and agent {}".format(
-                ego_agent.id, other_agent.id))
+
+    def clear_jsbsim(self) -> None:
+        """
+        Close the JSBSim simulation.
+        """
+        for agent in self.all_agents:
+            agent.sim_interface.close_sim()
+
+    def clear_agents(self) -> None:
+        self.all_agents: List[Agent] = []
 
     def step(self) -> None:
         """
