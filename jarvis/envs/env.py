@@ -39,7 +39,7 @@ class EnvConfig:
     high_rel_vel: float = 100.0
     low_rel_att: float = 0.0
     high_rel_att: float = 2 * np.pi
-    sim_end_time: float = 40.0
+    sim_end_time: float = 30.0
     # multiply by 1/freq * num_env_steps to get total sim time
     num_env_steps: int = int(sim_end_time*sim_frequency)
 

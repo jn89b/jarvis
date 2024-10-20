@@ -1,7 +1,7 @@
 *.pyc
 __pycache__/
 
-
+data/
 
 jarvis/__pycache__/
 models/*
@@ -41,6 +41,10 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+
+transform_models/
+*.pth
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
