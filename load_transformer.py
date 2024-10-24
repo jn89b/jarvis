@@ -1,7 +1,9 @@
 import matplotlib.pyplot as plt
 import torch
+import numpy as np
 from typing import Tuple
-from jarvis.transformers.test import CarTransformer
+# from jarvis.transformers.test import CarTransformer
+from jarvis.transformers.evader_transformer import EvaderTransformer
 from jarvis.transformers.data_loader import (
     CarTrajectoryDataset, collate_fn, DataLoader, open_json_file)
 
@@ -89,6 +91,48 @@ def extract_avg_attention_to_vehicles(attention_weights: Tuple[torch.Tensor]) ->
     return avg_attention_to_vehicles.cpu().numpy()
 
 
+def get_avg_attention_per_vehicle(attn_weights: torch.Tensor) -> torch.Tensor:
+    """
+    Averages attention weights across heads and layers to get attention values for each vehicle.
+
+    Args:
+        attn_weights (torch.Tensor): Attention weights from all layers,
+                                     shape [num_layers, batch_size, num_heads, num_vehicles].
+
+    Returns:
+        torch.Tensor: Average attention per vehicle, shape [batch_size, num_vehicles].
+    """
+    # Average across heads (dimension 2) to get [num_layers, batch_size, num_vehicles]
+    avg_head_attention = attn_weights.mean(dim=2)
+
+    # Average across layers (dimension 0) to get [batch_size, num_vehicles]
+    avg_layer_attention = avg_head_attention.mean(dim=0)
+
+    return avg_layer_attention.cpu().numpy()
+
+
+def get_pursuer_distances(vehicle_data: torch.Tensor) -> torch.Tensor:
+    """
+    Computes the norm distance
+    """
+    pursuers = vehicle_data.squeeze()
+    pursuers = pursuers[:, :2]
+    # Compute L2 norm across the rows
+    distances = torch.norm(pursuers, p=2, dim=1)
+
+    return distances.cpu().numpy()
+
+
+def get_pursuer_heading(vehicle_data: torch.Tensor) -> torch.Tensor:
+    """
+    Computes the heading of the pursuers
+    """
+    pursuers = vehicle_data.squeeze()
+    pursuers = pursuers[:, 2]
+    # Compute L2 norm across the rows
+
+    return pursuers.cpu().numpy()
+
 # Example usage:
 # attention_weights = output.attentions  # Extracted from the transformer model's output
 # avg_attention = extract_avg_attention_to_vehicles(attention_weights)
@@ -110,12 +154,12 @@ test_dataloader = DataLoader(
 
 
 # Initiis alize the model architecture
-model = CarTransformer().to(device)
+model = EvaderTransformer().to(device)
 
 # Load the saved model parameters (weights and biases)
 # model.load_state_dict(torch.load('evader_transformer_model_100.pth'))
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
-checkpoint_path = 'evader_transformer_model.pth'
+checkpoint_path = 'evader_transformer_model_10.pth'
 checkpoint = torch.load(checkpoint_path)
 model.load_state_dict(checkpoint['model_state_dict'])
 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -136,7 +180,10 @@ ground_truth_list = []
 predicted_list = []
 pursuer_1_attention = []
 pursuer_2_attention = []
-
+pursuer_1_distance = []
+pursuer_2_distance = []
+pursuer_1_heading = []
+pursuer_2_heading = []
 
 with torch.no_grad():
     for batch in test_dataloader:
@@ -148,15 +195,14 @@ with torch.no_grad():
 
         batch_size, seq_length, _ = padded_ego.shape
 
-        for t in range(100):
+        for t in range(0, 200):
             ego_data_t = padded_ego[:, t, :]
             vehicles_data_t = padded_vehicles[:, t, :, :]
             waypoints_t = waypoints[:, t, :]
             last_wp = waypoints_t[0, -1, :]
 
             # Get predictions
-            pred_waypoints, attn_weights = model(
-                ego_data_t, vehicles_data_t, last_wp)
+            pred_waypoints, attn_weights = model(vehicles_data_t, last_wp)
 
             # print(f"Predicted waypoints: {pred_waypoints}")
             # print(f"Actual waypoints: {waypoints_t}")
@@ -166,9 +212,16 @@ with torch.no_grad():
             total_test_loss += loss.item()
             ground_truth_list.append(waypoints_t.cpu().numpy().squeeze(0))
             predicted_list.append(pred_waypoints.cpu().numpy().squeeze(0)[1:])
-            attention_weight = extract_avg_attention_to_vehicles(attn_weights)
+            attention_weight = extract_avg_attention_with_ego(attn_weights)
+            # attention_weight = get_avg_attention_per_vehicle(attn_weights)
+            distances = get_pursuer_distances(vehicles_data_t)
+            headings = get_pursuer_heading(vehicles_data_t)
+            pursuer_1_distance.append(distances[0])
+            pursuer_2_distance.append(distances[1])
             pursuer_1_attention.append(attention_weight[0][0])
             pursuer_2_attention.append(attention_weight[0][1])
+            pursuer_1_heading.append(np.rad2deg(headings[0]))
+            pursuer_2_heading.append(np.rad2deg(headings[1]))
             # print("ego_data_t: ", ego_data_t)
             # print(
             #     f"Predicted waypoints: {pred_waypoints.cpu().numpy().squeeze(0)[1:]}")
@@ -199,7 +252,7 @@ py_list = []
 for g, p in zip(ground_truth_list, predicted_list):
     gx_list.extend(g[:, 0])
     gy_list.extend(g[:, 1])
-    last_row = p[2]
+    last_row = p[0]
     px_list.append(last_row[0])
     py_list.append(last_row[1])
     # px_list.extend(p[:, 0])
@@ -222,6 +275,23 @@ ax.plot(pursuer_2_attention, label='Pursuer 2 Attention', color='red')
 ax.set_title('Average Attention to Pursuers')
 ax.set_xlabel('Time Step')
 ax.set_ylabel('Attention')
+ax.legend()
+
+fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+ax.plot(pursuer_1_distance, label='Pursuer 1 Distance', color='blue')
+ax.plot(pursuer_2_distance, label='Pursuer 2 Distance', color='red')
+ax.set_title('Distance to Evader')
+ax.set_xlabel('Time Step')
+ax.set_ylabel('Distance')
+ax.legend()
+
+fig = plt.figure(figsize=(8, 6))
+ax = fig.add_subplot(111)
+ax.plot(pursuer_1_heading, label='Pursuer 1 Heading', color='blue')
+ax.plot(pursuer_2_heading, label='Pursuer 2 Heading', color='red')
+ax.set_title('Heading of Pursuers')
+ax.set_xlabel('Time Step')
+ax.set_ylabel('Heading')
 ax.legend()
 
 plt.show()
