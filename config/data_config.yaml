@@ -12,6 +12,7 @@ future_len: 60 #future trajectory
 load_num_workers: 0 # number of workers for loading data
 train_data_path: "data" # data path
 val_data_path: [ "data_samples/nuscenes" ] # list of paths to the validation data
-num_samples: 1 #set to None if you want to use all the data
+num_samples: 2 #set to None if you want to use all the data
 trajectory_sample_interval: 1 # sample interval for the trajectory
 object_type: [ 'VEHICLE' ] #object types included in the training set
+max_num_agents: 2

@@ -1,3 +1,4 @@
+from typing import List, Dict, Any
 import json
 import ijson
 import concurrent.futures
@@ -34,6 +35,15 @@ class ObjectTypes(Enum):
     TARGET = 3
 
 
+class StateIndex(Enum):
+    X = 0
+    Y = 1
+    YAW = 2
+    VEL = 3
+    VX = 4
+    VY = 5
+
+
 default_value = 0
 # object_type = defaultdict(lambda: default_value, ObjectTypes)
 
@@ -64,6 +74,8 @@ class BaseDataset(Dataset):
 
         self.num_samples: int = config['num_samples']
         self.data_loaded: Dict[str, Any] = {}
+        self.final_data: Dict[List[Dict[str, Any]]] = {}
+        self.overall_data: List = []
         self.load_data()
 
     def split_individual_json(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -183,14 +195,16 @@ class BaseDataset(Dataset):
             f"Loaded {len(json_files)} files in {time.time() - start_time:.2f} seconds")
 
         for i, (k, sample_batches) in enumerate(self.data_loaded.items()):
-            print(f"Loaded {len(sample_batches)} samples from {k}")
+            self.final_data[k] = []
             for samples in sample_batches:
                 samples: Dict[str, Any]
 
                 output: Dict[str, Any] = self.preprocess_data(
                     data=samples, filename=k, idx=i)
 
-                self.process_data(output)
+                output = self.process_data(output)
+                self.final_data[k].append(output)
+                self.overall_data.append(output)
 
     def preprocess_data(self, data: Dict[str, Any], filename: str,
                         idx: int) -> Dict[str, Any]:
@@ -355,7 +369,7 @@ class BaseDataset(Dataset):
             obj_types (np.ndarray): Array of object types with shape (num_objects,).
 
         Returns:
-            Tuple containing:
+            Dictionary containing the following:
                 - obj_trajs_data (np.ndarray): Combined array with trajectory data, one-hot encoding, time, heading embeddings, and acceleration, shape (num_center_objects, max_num_agents, num_timestamps, num_features).
                 - obj_trajs_mask (np.ndarray): Mask array indicating valid timestamps, shape (num_center_objects, max_num_agents, num_timestamps).
                 - obj_trajs_pos (np.ndarray): Position data, shape (num_center_objects, max_num_agents, num_timestamps, 3).
@@ -367,28 +381,162 @@ class BaseDataset(Dataset):
                 - center_gt_final_valid_idx (np.ndarray): Indices of the final valid timestamp for each center object, shape (num_center_objects,).
                 - track_index_to_predict_new (np.ndarray): Updated track indices to predict for each center object, shape (num_center_objects,).
 
-        Maybe better to return this as a dictionary... 
         """
+        other_idx_encode: int = 3
+        ego_idx_encode: int = 4
 
         num_center_objects = center_objects.shape[0]
         num_objects, num_timestamps, box_dim = obj_trajs_past.shape
 
         # the data is already made to be relative to the center object or the ego vehicle
         # Expand obj_trajs_past to have an additional dimension for num_center_objects
-        object_trajs = np.tile(obj_trajs_past, (num_center_objects, 1, 1, 1))
-        # Now object_trajs will have shape (num_center_objects, num_objects, num_timestamps, box_dim)
-        print("object_trajs shape:", object_trajs.shape)
+        # Now object_trajs will have shape (num_center_objects, num_objects, num_timestamps, feature_dim)
+        obj_trajs = np.tile(obj_trajs_past, (num_center_objects, 1, 1, 1))
 
-        return
+        object_onehot_mask = np.zeros(
+            (num_center_objects, num_objects, num_timestamps, 5))
+        object_onehot_mask[:, obj_types == 1, :, 0] = 1
+        # object_onehot_mask[:, obj_types == 2, :, 1] = 1
+        # object_onehot_mask[:, obj_types == 3, :, 2] = 1
+
+        object_onehot_mask[np.arange(
+            num_center_objects), track_index_to_predict, :, other_idx_encode] = 1
+        object_onehot_mask[:, sdc_track_index, :, ego_idx_encode] = 1
+
+        object_time_embedding = np.zeros(
+            (num_center_objects, num_objects, num_timestamps, num_timestamps + 1))
+        for i in range(num_timestamps):
+            object_time_embedding[:, :, i, i] = 1
+        object_time_embedding[:, :, :, -1] = timestamps
+
+        # we are are computing the sin and cos of the yaw
+        # to make sure that the yaw is continuous
+        object_heading_embedding = np.zeros(
+            (num_center_objects, num_objects, num_timestamps, 2))
+        object_heading_embedding[:, :, :, 0] = np.sin(
+            obj_trajs[:, :, :, StateIndex.YAW.value])
+        object_heading_embedding[:, :, :, 1] = np.cos(
+            obj_trajs[:, :, :, StateIndex.YAW.value])
+
+        vel = obj_trajs[:, :, :, StateIndex.VEL.value:StateIndex.VY.value]
+        vel_prev = np.roll(vel, shift=1, axis=2)
+        acce = vel - vel_prev / 0.1
+        acce[:, :, 0, :] = acce[:, :, 1, :]
+
+        obj_trajs_data = np.concatenate([
+            obj_trajs[:, :, :, StateIndex.X.value:StateIndex.YAW.value],
+            object_onehot_mask,
+            object_time_embedding,
+            object_heading_embedding,
+            obj_trajs[:, :, :, StateIndex.VEL.value:StateIndex.VY.value],
+            acce,
+        ], axis=-1)
+
+        obj_trajs_mask = obj_trajs[:, :, :, -1]
+        obj_trajs_data[obj_trajs_mask == 0] = 0
+
+        obj_trajs_future = obj_trajs_future.astype(np.float32)
+        obj_trajs_future = np.tile(
+            obj_trajs_future, (num_center_objects, 1, 1, 1))
+
+        obj_trajs_future_state = obj_trajs_future[:, :, :, [
+            StateIndex.X.value, StateIndex.Y.value, StateIndex.VX.value, StateIndex.VY.value]]  # (x, y, vx, vy)
+
+        obj_trajs_future_mask = obj_trajs_future[:, :, :, -1]
+        obj_trajs_future_state[obj_trajs_future_mask == 0] = 0
+
+        center_obj_idxs = np.arange(len(track_index_to_predict))
+        center_gt_trajs = obj_trajs_future_state[center_obj_idxs,
+                                                 track_index_to_predict]
+        center_gt_trajs_mask = obj_trajs_future_mask[center_obj_idxs,
+                                                     track_index_to_predict]
+        center_gt_trajs[center_gt_trajs_mask == 0] = 0
+
+        assert obj_trajs_past.__len__() == obj_trajs_data.shape[1]
+        valid_past_mask = np.logical_not(
+            obj_trajs_past[:, :, -1].sum(axis=-1) == 0)
+
+        obj_trajs_mask = obj_trajs_mask[:, valid_past_mask]
+        obj_trajs_data = obj_trajs_data[:, valid_past_mask]
+        obj_trajs_future_state = obj_trajs_future_state[:, valid_past_mask]
+        obj_trajs_future_mask = obj_trajs_future_mask[:, valid_past_mask]
+
+        obj_trajs_pos = obj_trajs_data[:, :, :,
+                                       StateIndex.X.value:StateIndex.Y.value]
+        num_center_objects, num_objects, num_timestamps, _ = obj_trajs_pos.shape
+        obj_trajs_last_pos = np.zeros(
+            (num_center_objects, num_objects, 2), dtype=np.float32)
+        for k in range(num_timestamps):
+            cur_valid_mask = obj_trajs_mask[:, :, k] > 0
+            obj_trajs_last_pos[cur_valid_mask] = obj_trajs_pos[:,
+                                                               :, k, :][cur_valid_mask]
+        center_gt_final_valid_idx = np.zeros(
+            (num_center_objects), dtype=np.float32)
+        for k in range(center_gt_trajs_mask.shape[1]):
+            cur_valid_mask = center_gt_trajs_mask[:, k] > 0
+            center_gt_final_valid_idx[cur_valid_mask] = k
+
+        max_num_agents = self.config['max_num_agents']
+        object_dist_to_center = np.linalg.norm(
+            obj_trajs_data[:, :, -1, 0:2], axis=-1)
+
+        # mask out agents that are not in the topk or super far away
+        object_dist_to_center[obj_trajs_mask[..., -1] == 0] = 1e10
+        topk_idxs = np.argsort(object_dist_to_center,
+                               axis=-1)[:, :max_num_agents]
+
+        topk_idxs = np.expand_dims(topk_idxs, axis=-1)
+        topk_idxs = np.expand_dims(topk_idxs, axis=-1)
+
+        obj_trajs_data = np.take_along_axis(obj_trajs_data, topk_idxs, axis=1)
+        obj_trajs_mask = np.take_along_axis(
+            obj_trajs_mask, topk_idxs[..., 0], axis=1)
+        obj_trajs_pos = np.take_along_axis(obj_trajs_pos, topk_idxs, axis=1)
+        obj_trajs_last_pos = np.take_along_axis(
+            obj_trajs_last_pos, topk_idxs[..., 0], axis=1)
+        obj_trajs_future_state = np.take_along_axis(
+            obj_trajs_future_state, topk_idxs, axis=1)
+        obj_trajs_future_mask = np.take_along_axis(
+            obj_trajs_future_mask, topk_idxs[..., 0], axis=1)
+        track_index_to_predict_new = np.zeros(
+            len(track_index_to_predict), dtype=np.int64)
+
+        # add padding in case the number of agents is less than max_num_agents
+        obj_trajs_data = np.pad(obj_trajs_data, ((
+            0, 0), (0, max_num_agents - obj_trajs_data.shape[1]), (0, 0), (0, 0)))
+        obj_trajs_mask = np.pad(
+            obj_trajs_mask, ((0, 0), (0, max_num_agents - obj_trajs_mask.shape[1]), (0, 0)))
+        obj_trajs_pos = np.pad(obj_trajs_pos, ((
+            0, 0), (0, max_num_agents - obj_trajs_pos.shape[1]), (0, 0), (0, 0)))
+        obj_trajs_last_pos = np.pad(obj_trajs_last_pos,
+                                    ((0, 0), (0, max_num_agents - obj_trajs_last_pos.shape[1]), (0, 0)))
+        obj_trajs_future_state = np.pad(obj_trajs_future_state,
+                                        ((0, 0), (0, max_num_agents - obj_trajs_future_state.shape[1]), (0, 0), (0, 0)))
+        obj_trajs_future_mask = np.pad(obj_trajs_future_mask,
+                                       ((0, 0), (0, max_num_agents - obj_trajs_future_mask.shape[1]), (0, 0)))
+
+        # Returning data in a structured dictionary
+        return {
+            "obj_trajs_data": obj_trajs_data,
+            "obj_trajs_mask": obj_trajs_mask.astype(bool),
+            "obj_trajs_pos": obj_trajs_pos,
+            "obj_trajs_last_pos": obj_trajs_last_pos,
+            "obj_trajs_future_state": obj_trajs_future_state,
+            "obj_trajs_future_mask": obj_trajs_future_mask,
+            "center_gt_trajs": center_gt_trajs,
+            "center_gt_trajs_mask": center_gt_trajs_mask,
+            "center_gt_final_valid_idx": center_gt_final_valid_idx,
+            "track_index_to_predict_new": track_index_to_predict_new
+        }
 
     def process_data(self, internal_format: Dict) -> None:
         """
-        Process the loaded data
+        Process the loaded data 
         """
         info: Dict[str, Any] = internal_format
         current_time_index: int = info['current_time_index']
-        # timestamps: np.array = np.array(
-        #     info['time'][:current_time_index + 1], dtype=np.float32)
+        timestamps: np.array = np.array(
+            info['time'][:current_time_index + 1], dtype=np.float32)
         track_infos: Dict[str, Any] = info['track_info']
         # tracks_to_predict: Dict[str, Any] = info['tracks_to_predict']
 
@@ -411,24 +559,106 @@ class BaseDataset(Dataset):
 
         sample_num: int = center_objects.shape[0]
 
-        self.get_agent_data(
+        agent_data: Dict[str, Any] = self.get_agent_data(
             center_objects=center_objects,
             obj_trajs_past=obj_trajs_past,
             obj_trajs_future=obj_trajs_future,
             track_index_to_predict=track_index_to_predict_selected,
             sdc_track_index=0,
-            timestamps=np.array(info['time']),
+            timestamps=timestamps,
             obj_types=obj_types
         )
 
+        # Unpacking the dictionary
+        obj_trajs_data = agent_data["obj_trajs_data"]
+        obj_trajs_mask = agent_data["obj_trajs_mask"]
+        obj_trajs_pos = agent_data["obj_trajs_pos"]
+        obj_trajs_last_pos = agent_data["obj_trajs_last_pos"]
+        obj_trajs_future_state = agent_data["obj_trajs_future_state"]
+        obj_trajs_future_mask = agent_data["obj_trajs_future_mask"]
+        center_gt_trajs = agent_data["center_gt_trajs"]
+        center_gt_trajs_mask = agent_data["center_gt_trajs_mask"]
+        center_gt_final_valid_idx = agent_data["center_gt_final_valid_idx"]
+        track_index_to_predict_new = agent_data["track_index_to_predict_new"]
+
+        ret_dict = {
+            'scenario_id': info['name'],
+            'obj_trajs': obj_trajs_data,
+            'obj_trajs_mask': obj_trajs_mask,
+            # used to select center-features
+            'track_index_to_predict': track_index_to_predict_new,
+            'obj_trajs_pos': obj_trajs_pos,
+            'obj_trajs_last_pos': obj_trajs_last_pos,
+
+            'center_objects_world': center_objects,
+            'center_objects_id': np.array(track_infos['object_id'])[track_index_to_predict],
+            'center_objects_type': np.array(track_infos['object_type'])[track_index_to_predict],
+
+            'obj_trajs_future_state': obj_trajs_future_state,
+            'obj_trajs_future_mask': obj_trajs_future_mask,
+            'center_gt_trajs': center_gt_trajs,
+            'center_gt_trajs_mask': center_gt_trajs_mask,
+            'center_gt_final_valid_idx': center_gt_final_valid_idx,
+            'center_gt_trajs_src': obj_trajs_full[track_index_to_predict]
+        }
+
+        # change every thing to float32
+        for k, v in ret_dict.items():
+            if isinstance(v, np.ndarray) and v.dtype == np.float64:
+                ret_dict[k] = v.astype(np.float32)
+
+        return ret_dict
+
     def __len__(self):
-        pass
-        # return len(self.data_loaded)
+        # length = 0
+        # for k, v in self.final_data.items():
+        #     length += len(v)
+        # return length
+        return len(self.overall_data)
 
     def __getitem__(self, idx: int):
-        pass
-        # if self.config['store_data_in_memory']:
-        #     return self.data_loaded_memory[idx]
-        # else:
-        #     with open(self.data_loaded_keys[idx], 'rb') as f:
-        #         return pickle.load(f)
+        return self.overall_data[idx]
+
+    def collate_fn(self, data_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Custom collate function to create batches from a list of data samples.
+
+        Args:
+            data_list (List[Dict[str, Any]]): List of data samples, where each sample is a dictionary.
+
+        Returns:
+            Dict[str, Any]: Collated batch dictionary with tensor data.
+        """
+        batch_list = []
+        for sample in data_list:
+            batch_list.append(sample)
+
+        batch_size = len(batch_list)
+        key_to_list = {}
+
+        # Extract lists for each key across all samples in the batch
+        for key in batch_list[0].keys():
+            key_to_list[key] = [sample[key] for sample in batch_list]
+
+        input_dict = {}
+        for key, val_list in key_to_list.items():
+            # Stack values into tensors if they are numpy arrays or lists
+            try:
+                input_dict[key] = torch.from_numpy(np.stack(val_list, axis=0))
+            except Exception as e:
+                # Keep it as a list if stacking fails
+                input_dict[key] = val_list
+
+        # You can include specific handling if certain keys need special treatment
+        # if 'center_objects_type' in input_dict:
+        #     input_dict['center_objects_type'] = torch.tensor(
+        #         input_dict['center_objects_type'])
+
+        input_dict['center_objects_type'] = input_dict['center_objects_type']
+
+        batch_dict = {
+            'batch_size': batch_size,
+            'input_dict': input_dict,
+            'batch_sample_count': batch_size
+        }
+        return batch_dict

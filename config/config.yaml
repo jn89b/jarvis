@@ -7,7 +7,7 @@ use_pursuer_heuristics: false
 dt: 0.1
 ai_pursuers: true
 bubble_radius: 5
-capture_radius: 10.0
+capture_radius: 10.0  
 min_spawn_distance: 100
 max_spawn_distance: 300
 sim_frequency: 100 #hz
