@@ -21,24 +21,25 @@ class CarTrajectoryDataset(Dataset):
     def __len__(self) -> int:
         return len(self.data)  # Number of sequences
 
-    def __getitem__(self, idx: int) -> List[dict]:
-        # Return the entire sequence (multiple time steps)
-        return self.data[idx]
-
-# Collate function for padding sequences
+    def __getitem__(self, idx: int) -> Tuple[int, List[dict]]:
+        # Return the index along with the entire sequence (multiple time steps)
+        return idx, self.data[idx]
 
 
-def collate_fn(batch: List[List[dict]]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    ego_seq = [torch.tensor([step['ego'] for step in b],
-                            dtype=torch.float32) for b in batch]
-    vehicles_seq = [torch.tensor(
-        [step['vehicles'] for step in b], dtype=torch.float32) for b in batch]
-    waypoints = [torch.tensor([step['future_waypoints']
-                              for step in b], dtype=torch.float32) for b in batch]
+def collate_fn(batch: List[Tuple[int, List[dict]]]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, int]:
+    idx, sequence = batch[0]  # Since batch size is 1, just take the first item
+    ego_seq = torch.tensor([step['ego']
+                           for step in sequence], dtype=torch.float32)
+    vehicles_seq = torch.tensor([step['vehicles']
+                                for step in sequence], dtype=torch.float32)
+    waypoints = torch.tensor([step['future_waypoints']
+                             for step in sequence], dtype=torch.float32)
 
-    # Pad sequences
-    padded_ego = pad_sequence(ego_seq, batch_first=True)
-    padded_vehicles = pad_sequence(vehicles_seq, batch_first=True)
-    padded_waypoints = pad_sequence(waypoints, batch_first=True)
+    # Pad sequences to make them consistent
+    # Add batch dimension (1, seq_len, features)
+    padded_ego = ego_seq.unsqueeze(0)
+    # (1, seq_len, num_vehicles, features)
+    padded_vehicles = vehicles_seq.unsqueeze(0)
+    padded_waypoints = waypoints.unsqueeze(0)  # (1, seq_len, features)
 
-    return padded_ego, padded_vehicles, padded_waypoints
+    return padded_ego, padded_vehicles, padded_waypoints, idx

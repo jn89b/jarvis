@@ -62,7 +62,8 @@ class EvaderTransformer(nn.Module):
 
         # Load pretrained model (checkpoint as per PlanT paper)
         hf_checkpoint: str = 'prajjwal1/bert-medium'
-        self.model: nn.Module = AutoModel.from_pretrained(hf_checkpoint)
+        self.model: nn.Module = AutoModel.from_pretrained(
+            hf_checkpoint)
         n_embd: int = self.model.config.hidden_size  # Hidden size from the BERT model
 
         # Token embedding for vehicle data
@@ -80,12 +81,13 @@ class EvaderTransformer(nn.Module):
         self.wp_relu: nn.ReLU = nn.ReLU()
         self.wp_output: nn.Linear = nn.Linear(64, 2)
 
-    def forward(self, vehicles_data: Tensor, target_point: Tensor) -> Tuple[Tensor, Tuple[Tensor]]:
+    def forward(self, vehicles_data: Tensor, waypoints: Tensor, target_point: Tensor) -> Tuple[Tensor, Tuple[Tensor]]:
         """
         Forward pass for predicting waypoints and returning attention maps.
 
         Args:
             vehicles_data (Tensor): Vehicles' data with shape [batch_size, num_vehicles, num_attributes].
+            waypoints (Tensor): Ground truth waypoints with shape [batch_size, num_waypoints, 2].
             target_point (Tensor): Target future waypoint with shape [batch_size, 2].
 
         Returns:
@@ -110,20 +112,6 @@ class EvaderTransformer(nn.Module):
         output: Tuple[Tensor, Tuple[Tensor]] = self.model(
             **{"inputs_embeds": x}, output_attentions=True)
         x, attn_map = output.last_hidden_state, output.attentions
-        # # Stack the adjusted attention maps
-        # attn_map = torch.stack(attn_map, dim=0)
-
-        distances = compute_distances(vehicles_data)
-
-        # # Adjust attention based on distances
-        # adjusted_attn_weights = []
-        # for layer in attn_map:
-        #     adjusted_layer_attn = adjust_attention_based_on_distance(
-        #         layer[:, :, 0, 1:], distances)
-        #     adjusted_attn_weights.append(adjusted_layer_attn)
-
-        # # Stack the adjusted attention maps
-        # attn_map = torch.stack(attn_map, dim=0)
 
         # Waypoint prediction
         z: Tensor = self.wp_head(x[:, 0, :])
@@ -134,11 +122,20 @@ class EvaderTransformer(nn.Module):
             (z.shape[0], 2), dtype=z.dtype).to(z.device)
 
         # Autoregressively generate waypoints
-        for _ in range(4):  # Predict up to 4 waypoints
-            x_in: Tensor = torch.cat(
-                [pred_wp, target_point.unsqueeze(0)], dim=1)
+        for t in range(waypoints.shape[1]):  # Loop through waypoints (up to 4)
+            if self.training and torch.rand(1).item() < 0.5:
+                # Teacher forcing: use ground truth waypoint with 50% probability
+                x_in = torch.cat(
+                    [waypoints[:, t, :], target_point.unsqueeze(0)], dim=1)
+            else:
+                # Use predicted waypoint
+                x_in = torch.cat([pred_wp, target_point.unsqueeze(0)], dim=1)
+
+            # Pass through the GRU cell
             z: Tensor = self.wp_decoder(x_in, z)
             dx: Tensor = self.wp_output(z)
+
+            # Update predicted waypoint
             pred_wp = pred_wp + dx
             output_wp.append(pred_wp)
 

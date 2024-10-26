@@ -14,7 +14,7 @@ the attention weights tructure is a tuple of 8 since there are 8 layers of atten
         - [batch_size, num_heads, seq_length, seq_length]
         - num_heads = number of attention heads so 8
         - seq_length is the total number of tokens so if we have 1 ego and 2 vehicles will be 3
-        
+
 """
 
 
@@ -32,8 +32,9 @@ def extract_avg_attention_with_ego(attention_weights: torch.Tensor) -> torch.Ten
     Extracts the average attention from the ego vehicle (token 0) to itself and other vehicles.
 
     Args:
-        attention_weights (torch.Tensor): Attention weights from the transformer. 
-                                          Shape: (batch_size, num_heads, seq_length, seq_length)
+        attention_weights (torch.Tensor): Attention weights from the transformer.
+                                          Shape: (batch_size, num_heads,
+                                                  seq_length, seq_length)
 
     Returns:
         torch.Tensor: Average attention from ego to itself and other vehicles. Shape: (batch_size, seq_length)
@@ -56,11 +57,11 @@ def extract_avg_attention_to_vehicles(attention_weights: Tuple[torch.Tensor]) ->
     Extract and average attention from the ego vehicle to all other vehicles across all layers.
 
     Args:
-        attention_weights (Tuple[torch.Tensor]): Attention weights from all layers, 
+        attention_weights (Tuple[torch.Tensor]): Attention weights from all layers,
                                                  each with shape (batch_size, num_heads, seq_length, seq_length).
 
     Returns:
-        torch.Tensor: Average attention from ego to other vehicles across all layers 
+        torch.Tensor: Average attention from ego to other vehicles across all layers
                       and heads, with shape (batch_size, num_vehicles).
     """
     # List to store averaged attention from each layer
@@ -143,14 +144,16 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Load multiple JSON files for the dataset
 file_lists = []
-for data in range(1):
+
+for data in range(1, 4):
     file_name = 'data/' + 'simulation_data_' + str(data) + '.json'
     json_data = open_json_file(file_name)
     file_lists.append(json_data)
 
-
+# print(f"Loaded {len(file_lists)} data files")
+dataset = CarTrajectoryDataset(file_lists)
 test_dataloader = DataLoader(
-    file_lists, batch_size=1, shuffle=False, collate_fn=collate_fn)
+    dataset, batch_size=32, shuffle=True, collate_fn=collate_fn)
 
 
 # Initiis alize the model architecture
@@ -159,7 +162,7 @@ model = EvaderTransformer().to(device)
 # Load the saved model parameters (weights and biases)
 # model.load_state_dict(torch.load('evader_transformer_model_100.pth'))
 optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
-checkpoint_path = 'evader_transformer_model_10.pth'
+checkpoint_path = 'evader_transformer_model.pth'
 checkpoint = torch.load(checkpoint_path)
 model.load_state_dict(checkpoint['model_state_dict'])
 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -188,21 +191,22 @@ pursuer_2_heading = []
 with torch.no_grad():
     for batch in test_dataloader:
         # Extract input data
-        padded_ego, padded_vehicles, waypoints = batch
+        padded_ego, padded_vehicles, waypoints, idx = batch
         padded_ego = padded_ego.to(device)
         padded_vehicles = padded_vehicles.to(device)
         waypoints = waypoints.to(device)
 
-        batch_size, seq_length, _ = padded_ego.shape
+        seq_length = padded_ego.shape[1]
 
-        for t in range(0, 200):
+        for t in range(0, 100):
             ego_data_t = padded_ego[:, t, :]
             vehicles_data_t = padded_vehicles[:, t, :, :]
             waypoints_t = waypoints[:, t, :]
             last_wp = waypoints_t[0, -1, :]
 
             # Get predictions
-            pred_waypoints, attn_weights = model(vehicles_data_t, last_wp)
+            pred_waypoints, attn_weights = model(
+                vehicles_data_t, waypoints_t, last_wp)
 
             # print(f"Predicted waypoints: {pred_waypoints}")
             # print(f"Actual waypoints: {waypoints_t}")
