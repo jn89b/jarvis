@@ -392,10 +392,10 @@ class BaseDataset(Dataset):
         # Expand obj_trajs_past to have an additional dimension for num_center_objects
         # Now object_trajs will have shape (num_center_objects, num_objects, num_timestamps, feature_dim)
         obj_trajs = np.tile(obj_trajs_past, (num_center_objects, 1, 1, 1))
-
         object_onehot_mask = np.zeros(
             (num_center_objects, num_objects, num_timestamps, 5))
         object_onehot_mask[:, obj_types == 1, :, 0] = 1
+
         # object_onehot_mask[:, obj_types == 2, :, 1] = 1
         # object_onehot_mask[:, obj_types == 3, :, 2] = 1
 
@@ -514,7 +514,6 @@ class BaseDataset(Dataset):
                                         ((0, 0), (0, max_num_agents - obj_trajs_future_state.shape[1]), (0, 0), (0, 0)))
         obj_trajs_future_mask = np.pad(obj_trajs_future_mask,
                                        ((0, 0), (0, max_num_agents - obj_trajs_future_mask.shape[1]), (0, 0)))
-
         # Returning data in a structured dictionary
         return {
             "obj_trajs_data": obj_trajs_data,
@@ -622,43 +621,31 @@ class BaseDataset(Dataset):
     def collate_fn(self, data_list: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Custom collate function to create batches from a list of data samples.
-
-        Args:
-            data_list (List[Dict[str, Any]]): List of data samples, where each sample is a dictionary.
-
-        Returns:
-            Dict[str, Any]: Collated batch dictionary with tensor data.
         """
-        batch_list = []
-        for sample in data_list:
-            batch_list.append(sample)
-
-        batch_size = len(batch_list)
-        key_to_list = {}
-
-        # Extract lists for each key across all samples in the batch
-        for key in batch_list[0].keys():
-            key_to_list[key] = [sample[key] for sample in batch_list]
+        batch_size = len(data_list)
+        key_to_list = {key: [sample[key] for sample in data_list]
+                       for key in data_list[0].keys()}
 
         input_dict = {}
         for key, val_list in key_to_list.items():
-            # Stack values into tensors if they are numpy arrays or lists
             try:
-                input_dict[key] = torch.from_numpy(np.stack(val_list, axis=0))
+                # Conditionally handle keys that should not add a new dimension (e.g., 'agents_in')
+                if key == 'obj_trajs' or key == 'obj_trajs_mask':
+                    # Concatenate along the desired axis if no new batch dimension is needed
+                    input_dict[key] = torch.cat(
+                        [torch.from_numpy(arr) for arr in val_list], dim=0)
+                else:
+                    # For other data, stack normally
+                    # input_dict[key] = torch.from_numpy(
+                    #     np.stack(val_list, axis=0))
+                    input_dict[key] = torch.cat(
+                        [torch.from_numpy(arr) for arr in val_list], dim=0)
             except Exception as e:
-                # Keep it as a list if stacking fails
+                # Fallback to list if stacking fails
                 input_dict[key] = val_list
 
-        # You can include specific handling if certain keys need special treatment
-        # if 'center_objects_type' in input_dict:
-        #     input_dict['center_objects_type'] = torch.tensor(
-        #         input_dict['center_objects_type'])
-
-        input_dict['center_objects_type'] = input_dict['center_objects_type']
-
-        batch_dict = {
+        return {
             'batch_size': batch_size,
             'input_dict': input_dict,
             'batch_sample_count': batch_size
         }
-        return batch_dict
