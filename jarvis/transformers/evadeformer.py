@@ -3,6 +3,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import pytorch_lightning as pl
+from torch import optim
+
 from torch import optim
 from typing import Optional, Any, Dict
 from jarvis.transformers.evadeformer_utils import (
@@ -35,164 +38,45 @@ def init(
     return module
 
 
-class EvadeFormer(nn.Module):
+class EvadeFormer(pl.LightningModule):
     def __init__(self, config: Dict[str, Any]) -> None:
         super().__init__()
-        self.config: Dict[str, Any] = config
+        self.config = config
 
         def init_(m): return init(m, nn.init.xavier_normal_,
                                   lambda x: nn.init.constant_(x, 0), np.sqrt(2))
 
-        self.fisher_information: Optional[torch.Tensor] = None
         self.map_attr: int = config['num_map_feature']
         self.k_attr: int = config['num_agent_feature']
         self.d_k: int = config['hidden_size']
         self._M: int = config['max_num_agents']
         self.c: int = config['num_modes']
         self.T: int = config['future_len']
-        self.L_enc: int = config['num_encoder_layers']
-        self.dropout: float = config['dropout']
-        self.num_heads: int = config['tx_num_heads']
-        self.L_dec: int = config['num_decoder_layers']
-        self.tx_hidden_size: int = config['tx_hidden_size']
-        self.use_map_img: bool = config['use_map_image']
-        self.use_map_lanes: bool = config['use_map_lanes']
-        self.past_T: int = config['past_len']
-        self.max_points_per_lane: int = config['max_points_per_lane']
-        self.max_num_roads: int = config['max_num_roads']
         self.num_queries_enc: int = config['num_queries_enc']
         self.num_queries_dec: int = config['num_queries_dec']
 
-        # Network Layers and Modules
-        self.road_pts_lin: nn.Sequential = nn.Sequential(
+        # Define network layers
+        self.road_pts_lin = nn.Sequential(
             init_(nn.Linear(self.map_attr, self.d_k)))
-
-        self.agents_dynamic_encoder: nn.Sequential = nn.Sequential(
+        self.agents_dynamic_encoder = nn.Sequential(
             init_(nn.Linear(self.k_attr, self.d_k)))
-
-        self.perceiver_encoder: PerceiverEncoder = PerceiverEncoder(
-            self.num_queries_enc, self.d_k,
-            num_cross_attention_qk_channels=self.d_k,
-            num_cross_attention_v_channels=self.d_k,
-            num_self_attention_qk_channels=self.d_k,
-            num_self_attention_v_channels=self.d_k
-        )
-
-        output_query_provider: TrainableQueryProvider = TrainableQueryProvider(
-            num_queries=config['num_queries_dec'],
-            num_query_channels=self.d_k,
-            init_scale=0.1,
-        )
+        self.perceiver_encoder = PerceiverEncoder(
+            self.num_queries_enc, self.d_k)
+        output_query_provider = TrainableQueryProvider(
+            num_queries=config['num_queries_dec'], num_query_channels=self.d_k, init_scale=0.1)
+        self.perceiver_decoder = PerceiverDecoder(
+            output_query_provider, self.d_k)
+        self.prob_predictor = nn.Sequential(init_(nn.Linear(self.d_k, 1)))
+        self.output_model = nn.Sequential(
+            init_(nn.Linear(self.d_k, 5 * self.T)))
+        self.selu = nn.SELU(inplace=True)
+        self.criterion = Criterion(config)
 
         # Positional Embeddings
-        self.agents_positional_embedding: nn.Parameter = nn.parameter.Parameter(
-            torch.zeros((1, 1, (self._M + 1), self.d_k)),
-            requires_grad=True
-        )
-
-        self.temporal_positional_embedding: nn.Parameter = nn.parameter.Parameter(
-            torch.zeros((1, self.past_T, 1, self.d_k)),
-            requires_grad=True
-        )
-
-        # Optional map positional embedding
-        # self.map_positional_embedding: nn.Parameter = nn.parameter.Parameter(
-        #     torch.zeros((1, self.max_points_per_lane * self.max_num_roads, self.d_k)), requires_grad=True
-        # )
-
-        self.perceiver_decoder: PerceiverDecoder = PerceiverDecoder(
-            output_query_provider, self.d_k)
-
-        self.prob_predictor: nn.Sequential = nn.Sequential(
-            init_(nn.Linear(self.d_k, 1)))
-
-        self.output_model: nn.Sequential = nn.Sequential(
-            init_(nn.Linear(self.d_k, 5 * self.T)))
-
-        self.selu: nn.SELU = nn.SELU(inplace=True)
-
-        self.criterion: Criterion = Criterion(config)
-
-        self.fisher_information: Optional[torch.Tensor] = None
-        self.optimal_params: Optional[torch.Tensor] = None
-        self.optimizer = optim.AdamW(
-            self.parameters(), lr=config['learning_rate'], eps=0.0001)
-
-    def process_observations(self, ego, agents):
-        '''
-        :param observations: (B, T, N+2, A+1) where N+2 is [ego, other_agents, env]
-        :return: a tensor of only the agent dynamic states, active_agent masks and env masks.
-        '''
-        # ego stuff
-        ego_tensor = ego[:, :, :self.k_attr]
-        env_masks_orig = ego[:, :, -1]
-        env_masks = (1.0 - env_masks_orig).to(torch.bool)
-        env_masks = env_masks.unsqueeze(1).repeat(1, self.num_queries_dec, 1).view(ego.shape[0] * self.num_queries_dec,
-                                                                                   -1)
-
-        # Agents stuff
-        temp_masks = torch.cat(
-            (torch.ones_like(env_masks_orig.unsqueeze(-1)), agents[:, :, :, -1]), dim=-1)
-        opps_masks = (1.0 - temp_masks).to(torch.bool)  # only for agents.
-        opps_tensor = agents[:, :, :, :self.k_attr]  # only opponent states
-
-        return ego_tensor, opps_tensor, opps_masks, env_masks
-
-    def _forward(self, inputs):
-        '''
-        :param ego_in: [B, T_obs, k_attr+1] with last values being the existence mask.
-        :param agents_in: [B, T_obs, M-1, k_attr+1] with last values being the existence mask.
-        :param roads: [B, S, P, map_attr+1] representing the road network if self.use_map_lanes or
-                      [B, 3, 128, 128] image representing the road network if self.use_map_img or
-                      [B, 1, 1] if self.use_map_lanes and self.use_map_img are False.
-        :return:
-            pred_obs: shape [c, T, B, 5] c trajectories for the ego agents with every point being the params of
-                                        Bivariate Gaussian distribution.
-            mode_probs: shape [B, c] mode probability predictions P(z|X_{1:T_obs})
-        '''
-
-        ego_in, agents_in = inputs['ego_in'], inputs['agents_in']
-
-        B = ego_in.size(0)
-        num_agents = agents_in.shape[2] + 1
-        # Encode all input observations (k_attr --> d_k)
-        ego_tensor, _agents_tensor, opps_masks_agents, env_masks = self.process_observations(
-            ego_in, agents_in)
-        agents_tensor = torch.cat(
-            (ego_tensor.unsqueeze(2), _agents_tensor), dim=2)
-        agents_emb = self.selu(self.agents_dynamic_encoder(agents_tensor))
-        agents_emb = (agents_emb + self.agents_positional_embedding[:, :,
-                                                                    :num_agents] + self.temporal_positional_embedding).view(B, -1, self.d_k)
-        mixed_input_features = torch.concat(
-            [agents_emb], dim=1)
-        mixed_input_masks = torch.concat(
-            [opps_masks_agents.view(B, -1)], dim=1)
-        # Process through Wayformer's encoder
-
-        context = self.perceiver_encoder(
-            mixed_input_features, mixed_input_masks)
-
-        # Wazformer-Ego Decoding
-
-        out_seq = self.perceiver_decoder(context)
-
-        out_dists = self.output_model(
-            out_seq[:, :self.c]).reshape(B, self.c, self.T, -1)
-
-        # Mode prediction
-
-        mode_probs = self.prob_predictor(
-            out_seq[:, :self.c]).reshape(B, self.c)
-
-        # return  [c, T, B, 5], [B, c]
-        output = {}
-        output['predicted_probability'] = mode_probs  # #[B, c]
-        # [B, c, T, 5] to be able to parallelize code
-        output['predicted_trajectory'] = out_dists
-        output['scene_emb'] = out_seq[:, :self.num_queries_dec].reshape(B, -1)
-        if len(np.argwhere(np.isnan(out_dists.detach().cpu().numpy()))) > 1:
-            breakpoint()
-        return output
+        self.agents_positional_embedding = nn.parameter.Parameter(
+            torch.zeros((1, 1, self._M + 1, self.d_k)), requires_grad=True)
+        self.temporal_positional_embedding = nn.parameter.Parameter(
+            torch.zeros((1, config['past_len'], 1, self.d_k)), requires_grad=True)
 
     def forward(self, batch: Dict):
         # Ensure tensors are on the model's device
@@ -226,24 +110,78 @@ class EvadeFormer(nn.Module):
         model_input['ego_in'] = ego_in
         model_input['agents_in'] = agents_in
         output = self._forward(model_input)
-
+        # TODO: Remove this shit
+        inputs['center_gt_trajs'][0, :, :2]
         ground_truth = torch.cat([inputs['center_gt_trajs'][..., :2], inputs['center_gt_trajs_mask'].unsqueeze(-1)],
                                  dim=-1)
         loss = self.criterion(output, ground_truth,
                               inputs['center_gt_final_valid_idx'])
+        # loss = waypoint_mae_loss(output['predicted_trajectory'], ground_truth)
         output['dataset_name'] = 'test'  # inputs['dataset_name']
         output['predicted_probability'] = F.softmax(
             output['predicted_probability'], dim=-1)
+
+        if not torch.isfinite(loss).all():
+            print("Warning: Loss contains NaN or Inf values.")
+
         return output, loss
+
+    def _forward(self, inputs):
+        ego_in, agents_in = inputs['ego_in'], inputs['agents_in']
+        B = ego_in.size(0)
+        num_agents = agents_in.shape[2] + 1
+
+        agents_emb = self.selu(self.agents_dynamic_encoder(
+            torch.cat((ego_in.unsqueeze(2), agents_in), dim=2)))
+        agents_emb = (
+            agents_emb + self.agents_positional_embedding[:, :, :num_agents] + self.temporal_positional_embedding).view(B, -1, self.d_k)
+        mixed_input_features = torch.concat([agents_emb], dim=1)
+
+        context = self.perceiver_encoder(mixed_input_features)
+        out_seq = self.perceiver_decoder(context)
+        out_dists = self.output_model(
+            out_seq[:, :self.c]).reshape(B, self.c, self.T, -1)
+        mode_probs = self.prob_predictor(
+            out_seq[:, :self.c]).reshape(B, self.c)
+
+        output = {
+            'predicted_probability': F.softmax(mode_probs, dim=-1),
+            'predicted_trajectory': out_dists,
+            'scene_emb': out_seq[:, :self.num_queries_dec].reshape(B, -1)
+        }
+        return output
+
+    def training_step(self, batch, batch_idx) -> torch.Tensor:
+        output, loss = self(batch)
+        self.log("train_loss", loss, on_step=True,
+                 on_epoch=True, prog_bar=True, logger=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx) -> torch.Tensor:
+        output, loss = self(batch)
+        self.log("val_loss", loss, on_step=False,
+                 on_epoch=True, prog_bar=True, logger=True)
+        return loss
 
     def configure_optimizers(self):
         optimizer = optim.AdamW(
             self.parameters(), lr=self.config['learning_rate'], eps=0.0001)
 
-        scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.0002, steps_per_epoch=1, epochs=150,
-                                                        pct_start=0.02, div_factor=100.0, final_div_factor=10)
+        # Calculate total_steps based on DataLoader length and total epochs
+        # Assuming 'dataloader' is your train DataLoader
+        # Define OneCycleLR with total_steps directly
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=0.0002,
+            epochs=100,
+            steps_per_epoch=100,
+            # total_steps=total_steps,
+            pct_start=0.02,
+            div_factor=100.0,
+            final_div_factor=10
+        )
 
-        return [optimizer], [scheduler]
+        return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
 
 class Criterion(nn.Module):
@@ -255,8 +193,10 @@ class Criterion(nn.Module):
         self,
         out: Dict[str, torch.Tensor],
         gt: torch.Tensor,
-        center_gt_final_valid_idx: torch.Tensor
+        center_gt_final_valid_idx: torch.Tensor,
+        use_mae: bool = False
     ) -> torch.Tensor:
+
         return self.nll_loss_gmm_direct(
             out['predicted_probability'],
             out['predicted_trajectory'],
@@ -276,24 +216,6 @@ class Criterion(nn.Module):
         log_std_range: Tuple[float, float] = (-1.609, 5.0),
         rho_limit: float = 0.5
     ) -> torch.Tensor:
-        """
-        GMM Loss for Motion Transformer (MTR): https://arxiv.org/abs/2209.13508
-        Written by Shaoshuai Shi
-
-        Args:
-            pred_scores: Tensor of shape (batch_size, num_modes)
-            pred_trajs: Tensor of shape (batch_size, num_modes, num_timestamps, 5 or 3)
-            gt_trajs: Tensor of shape (batch_size, num_timestamps, 3)
-            center_gt_final_valid_idx: Tensor of valid indices
-            pre_nearest_mode_idxs: Optional tensor of mode indices
-            timestamp_loss_weight: Optional tensor of loss weights per timestamp
-            use_square_gmm: Boolean flag for square GMM usage
-            log_std_range: Range for standard deviation clipping
-            rho_limit: Limit for correlation coefficient
-
-        Returns:
-            torch.Tensor: The calculated GMM loss.
-        """
         if use_square_gmm:
             assert pred_trajs.shape[-1] == 3
         else:
@@ -312,9 +234,17 @@ class Criterion(nn.Module):
 
         nearest_mode_bs_idxs = torch.arange(
             batch_size).type_as(nearest_mode_idxs)
-
         nearest_trajs = pred_trajs[nearest_mode_bs_idxs, nearest_mode_idxs]
-        res_trajs = gt_trajs[..., :2] - nearest_trajs[:, :, 0:2]
+        res_trajs = gt_trajs[..., 0:2] - nearest_trajs[:, :, 0:2]
+
+        # Extract and print ground truth and predicted trajectories as 2xN
+        # for i in range(batch_size):
+        #     gt_trajectory = gt_trajs[i, :, :2].T  # Shape (2, T)
+        #     pred_trajectory = nearest_trajs[i, :, :2].T  # Shape (2, T)
+
+        #     print(f"Ground Truth Trajectory (Sample {i}):\n", gt_trajectory)
+        # print(f"Predicted Trajectory (Sample {i}):\n", pred_trajectory)
+
         dx = res_trajs[:, :, 0]
         dy = res_trajs[:, :, 1]
 
@@ -333,20 +263,47 @@ class Criterion(nn.Module):
             rho = torch.clip(
                 nearest_trajs[:, :, 4], min=-rho_limit, max=rho_limit)
 
-        gt_valid_mask = gt_valid_mask.type_as(pred_scores)
-        if timestamp_loss_weight is not None:
-            gt_valid_mask = gt_valid_mask * timestamp_loss_weight[None, :]
-
         reg_gmm_log_coefficient = log_std1 + \
             log_std2 + 0.5 * torch.log(1 - rho ** 2)
         reg_gmm_exp = (0.5 * 1 / (1 - rho ** 2)) * (
             (dx ** 2) / (std1 ** 2) + (dy ** 2) /
             (std2 ** 2) - 2 * rho * dx * dy / (std1 * std2)
         )
-
         reg_loss = ((reg_gmm_log_coefficient + reg_gmm_exp)
                     * gt_valid_mask).sum(dim=-1)
         loss_cls = F.cross_entropy(
             input=pred_scores, target=nearest_mode_idxs, reduction='none')
 
-        return (reg_loss + loss_cls).mean()
+        # if torch.isnan(dx).any() or torch.isnan(dy).any():
+        #     print("NaN in dx or dy values")
+        # if torch.isnan(log_std1).any() or torch.isnan(log_std2).any():
+        #     print("NaN in log_std values")
+        # if torch.isnan(rho).any():
+        #     print("NaN in rho values")
+
+        # return (reg_loss + loss_cls).mean()
+        loss = torch.abs(res_trajs).mean()
+
+        return loss
+
+
+def waypoint_mae_loss(pred_trajs: torch.Tensor, gt_trajs: torch.Tensor) -> torch.Tensor:
+    """
+    Calculate the Mean Absolute Error between predicted and ground truth waypoints.
+
+    Args:
+        pred_trajs (torch.Tensor): Predicted trajectories, shape (batch_size, num_waypoints, 2).
+        gt_trajs (torch.Tensor): Ground truth trajectories, shape (batch_size, num_waypoints, 2).
+
+    Returns:
+        torch.Tensor: The MAE loss for the trajectories.
+    """
+    # Ensure the input shapes are compatible
+    print("pred_trajs.shape: ", pred_trajs.shape)
+    print("gt_trajs.shape: ", gt_trajs.shape)
+    assert pred_trajs.shape == gt_trajs.shape, "Shape mismatch between predicted and ground truth trajectories."
+
+    # Calculate Mean Absolute Error
+    loss = torch.abs(pred_trajs - gt_trajs).mean()
+
+    return loss

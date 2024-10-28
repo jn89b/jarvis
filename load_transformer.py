@@ -1,304 +1,119 @@
-import matplotlib.pyplot as plt
+from sklearn.metrics import mean_squared_error
 import torch
-import numpy as np
-from typing import Tuple
-# from jarvis.transformers.test import CarTransformer
-from jarvis.transformers.evader_transformer import EvaderTransformer
-from jarvis.transformers.data_loader import (
-    CarTrajectoryDataset, collate_fn, DataLoader, open_json_file)
+from torch.utils.data import DataLoader
+from jarvis.transformers.evadeformer import EvadeFormer
+from jarvis.datasets.base_dataset import BaseDataset
+import yaml
+import matplotlib.pyplot as plt
+import os
+# Path to the best model checkpoint
+# checkpoint_path = "checkpoints/evadeformer-epoch=176-val_loss=0.52.ckpt"
 
-"""
-Random notes
-the attention weights tructure is a tuple of 8 since there are 8 layers of attention
-- If index to one of the values it is size:
-        - [batch_size, num_heads, seq_length, seq_length]
-        - num_heads = number of attention heads so 8
-        - seq_length is the total number of tokens so if we have 1 ego and 2 vehicles will be 3
+# Check if there's an existing checkpoint to resume from
+checkpoint_dir = "checkpoints/"
+latest_checkpoint = None
+if os.path.exists(checkpoint_dir):
+    checkpoint_files = sorted(
+        [os.path.join(checkpoint_dir, f)
+         for f in os.listdir(checkpoint_dir) if f.endswith(".ckpt")],
+        key=os.path.getmtime
+    )
+    if checkpoint_files:
+        latest_checkpoint = checkpoint_files[-1]
+        print(f"Resuming training from checkpoint: {latest_checkpoint}")
 
-"""
-
-
-def get_ego_attention_weights(
-        attn_weights: torch.Tensor, layer: int = 0) -> torch.TensorType:
-    """
-    Get the attention weights for the ego vehicle
-    """
-    ego_attn_weights = attn_weights[layer][0, :, 0, :]
-    return ego_attn_weights
-
-
-def extract_avg_attention_with_ego(attention_weights: torch.Tensor) -> torch.Tensor:
-    """
-    Extracts the average attention from the ego vehicle (token 0) to itself and other vehicles.
-
-    Args:
-        attention_weights (torch.Tensor): Attention weights from the transformer.
-                                          Shape: (batch_size, num_heads,
-                                                  seq_length, seq_length)
-
-    Returns:
-        torch.Tensor: Average attention from ego to itself and other vehicles. Shape: (batch_size, seq_length)
-    """
-    avg_attention_per_layer = []
-    for layer_attention in attention_weights:
-        ego_attention_all_tokens = layer_attention[:, :, 0, :]
-        avg_attention_all_tokens = ego_attention_all_tokens.mean(dim=1)
-        avg_attention_per_layer.append(avg_attention_all_tokens)
-
-    avg_attention_stacked = torch.stack(avg_attention_per_layer, dim=0)
-    avg_attention = avg_attention_stacked.mean(dim=0)
-
-    # convert to numpy cpu
-    return avg_attention.cpu().numpy()
-
-
-def extract_avg_attention_to_vehicles(attention_weights: Tuple[torch.Tensor]) -> torch.Tensor:
-    """
-    Extract and average attention from the ego vehicle to all other vehicles across all layers.
-
-    Args:
-        attention_weights (Tuple[torch.Tensor]): Attention weights from all layers,
-                                                 each with shape (batch_size, num_heads, seq_length, seq_length).
-
-    Returns:
-        torch.Tensor: Average attention from ego to other vehicles across all layers
-                      and heads, with shape (batch_size, num_vehicles).
-    """
-    # List to store averaged attention from each layer
-    avg_attention_per_layer = []
-
-    # Iterate through each layer in the attention weights
-    for layer_attention in attention_weights:
-        # Extract attention from ego (token 0) to all vehicles (tokens 1 onward)
-        # Shape: (batch_size, num_heads, num_vehicles)
-        ego_attention_to_vehicles = layer_attention[:, :, 0, 1:]
-
-        # Average the attention across heads for this layer
-        # Shape: (batch_size, num_vehicles)
-        avg_attention_to_vehicles_layer = ego_attention_to_vehicles.mean(dim=1)
-
-        # Store the averaged attention for this layer
-        avg_attention_per_layer.append(avg_attention_to_vehicles_layer)
-
-    # Stack the averaged attention from each layer
-    # Shape: (num_layers, batch_size, num_vehicles)
-    avg_attention_stacked = torch.stack(avg_attention_per_layer, dim=0)
-
-    # Finally, average across layers
-    # Shape: (batch_size, num_vehicles)
-    avg_attention_to_vehicles = avg_attention_stacked.mean(dim=0)
-
-    # convert to numpy cpu
-    return avg_attention_to_vehicles.cpu().numpy()
-
-
-def get_avg_attention_per_vehicle(attn_weights: torch.Tensor) -> torch.Tensor:
-    """
-    Averages attention weights across heads and layers to get attention values for each vehicle.
-
-    Args:
-        attn_weights (torch.Tensor): Attention weights from all layers,
-                                     shape [num_layers, batch_size, num_heads, num_vehicles].
-
-    Returns:
-        torch.Tensor: Average attention per vehicle, shape [batch_size, num_vehicles].
-    """
-    # Average across heads (dimension 2) to get [num_layers, batch_size, num_vehicles]
-    avg_head_attention = attn_weights.mean(dim=2)
-
-    # Average across layers (dimension 0) to get [batch_size, num_vehicles]
-    avg_layer_attention = avg_head_attention.mean(dim=0)
-
-    return avg_layer_attention.cpu().numpy()
-
-
-def get_pursuer_distances(vehicle_data: torch.Tensor) -> torch.Tensor:
-    """
-    Computes the norm distance
-    """
-    pursuers = vehicle_data.squeeze()
-    pursuers = pursuers[:, :2]
-    # Compute L2 norm across the rows
-    distances = torch.norm(pursuers, p=2, dim=1)
-
-    return distances.cpu().numpy()
-
-
-def get_pursuer_heading(vehicle_data: torch.Tensor) -> torch.Tensor:
-    """
-    Computes the heading of the pursuers
-    """
-    pursuers = vehicle_data.squeeze()
-    pursuers = pursuers[:, 2]
-    # Compute L2 norm across the rows
-
-    return pursuers.cpu().numpy()
-
-# Example usage:
-# attention_weights = output.attentions  # Extracted from the transformer model's output
-# avg_attention = extract_avg_attention_to_vehicles(attention_weights)
-
+model_config = 'config/data_config.yaml'
+with open(model_config, 'r') as f:
+    model_config = yaml.safe_load(f)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# Load the model from the checkpoint
+model = EvadeFormer.load_from_checkpoint(
+    checkpoint_path=latest_checkpoint, hparams_file='config/data_config.yaml',
+    config=model_config)
+model.to("cpu")  # Move the model to the same device as the data
+model.eval()  # Set the model to evaluation mode
 
 
-# Load multiple JSON files for the dataset
-file_lists = []
-
-for data in range(1, 4):
-    file_name = 'data/' + 'simulation_data_' + str(data) + '.json'
-    json_data = open_json_file(file_name)
-    file_lists.append(json_data)
-
-# print(f"Loaded {len(file_lists)} data files")
-dataset = CarTrajectoryDataset(file_lists)
-test_dataloader = DataLoader(
-    dataset, batch_size=32, shuffle=True, collate_fn=collate_fn)
+# Load the data configuration
+data_config = "config/data_config.yaml"
+with open(data_config, 'r') as f:
+    data_config = yaml.safe_load(f)
+batch_size: int = 5
+dataset = BaseDataset(config=data_config, is_validation=False)
+dataloader = DataLoader(dataset, batch_size=1, shuffle=True,
+                        collate_fn=dataset.collate_fn)
 
 
-# Initiis alize the model architecture
-model = EvaderTransformer().to(device)
+all_mse_errors = []
 
-# Load the saved model parameters (weights and biases)
-# model.load_state_dict(torch.load('evader_transformer_model_100.pth'))
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
-checkpoint_path = 'evader_transformer_model.pth'
-checkpoint = torch.load(checkpoint_path)
-model.load_state_dict(checkpoint['model_state_dict'])
-optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-start_epoch = checkpoint['epoch'] + 1
-print(f"Resuming training from epoch {start_epoch}")
+# Loop over test batches
+for batch in dataloader:
+    # Extract ground truth trajectories from the batch
+    # Shape: (batch_size, T, 2)
+    vals = batch['input_dict']
+    ground_truth_trajectories = vals['center_gt_trajs']
+    # Move data to the same device as the model
+    batch = {k: v.to(model.device) if isinstance(
+        v, torch.Tensor) else v for k, v in batch.items()}
 
+    ground_truth_test = torch.cat([vals['center_gt_trajs'][..., :2], vals['center_gt_trajs_mask'].unsqueeze(-1)],
+                                  dim=-1)
 
-# Make sure to set the model in evaluation mode
-model.eval()
+    # Run the model to get predictions
+    with torch.no_grad():
+        output, _ = model(batch)  # Assuming model returns output and loss
+        # Shape: (batch_size, T, 2)
+        predicted_trajectories = output['predicted_trajectory']
+        predicted_probability = output['predicted_probability']
 
-# Define loss function and optimizer
-test_loss_fn = torch.nn.L1Loss()
-# Calculate total loss on the test set
-total_test_loss = 0.0
+    # # Convert predictions and ground truth to numpy for comparison
+    # predicted_trajectories = predicted_trajectories.cpu().numpy()
+    # ground_truth_trajectories = ground_truth_trajectories.cpu().numpy()
 
-# Run inference loop without calculating gradients
-ground_truth_list = []
-predicted_list = []
-pursuer_1_attention = []
-pursuer_2_attention = []
-pursuer_1_distance = []
-pursuer_2_distance = []
-pursuer_1_heading = []
-pursuer_2_heading = []
+    # # Calculate MSE for each trajectory in the batch
+    # print(predicted_trajectories)
+    # Assume predicted_probability has shape [batch_size, num_modes]
+    # and predicted_trajectories has shape [batch_size, num_modes, timesteps, params]
 
-with torch.no_grad():
-    for batch in test_dataloader:
-        # Extract input data
-        padded_ego, padded_vehicles, waypoints, idx = batch
-        padded_ego = padded_ego.to(device)
-        padded_vehicles = padded_vehicles.to(device)
-        waypoints = waypoints.to(device)
+    # Get the index of the most probable mode for each sample in the batch
+    most_probable_mode = predicted_probability.argmin(dim=1)  # Shape: [15]
 
-        seq_length = padded_ego.shape[1]
+    # Select the trajectory corresponding to the most probable mode
+    # predicted_trajectories has shape [15, 6, 60, 5]
+    best_predicted_trajectories = predicted_trajectories[
+        torch.arange(predicted_trajectories.size(0)), most_probable_mode
+    ]  # Shape: [15, 60, 5]
 
-        for t in range(0, 100):
-            ego_data_t = padded_ego[:, t, :]
-            vehicles_data_t = padded_vehicles[:, t, :, :]
-            waypoints_t = waypoints[:, t, :]
-            last_wp = waypoints_t[0, -1, :]
+    # Extract only x and y coordinates from the predicted trajectories
+    predicted_xy = best_predicted_trajectories[..., :2]  # Shape: [15, 60, 2]
 
-            # Get predictions
-            pred_waypoints, attn_weights = model(
-                vehicles_data_t, waypoints_t, last_wp)
+# Convert tensors to numpy for easier plotting, if they are not already
+gt_trajectories = ground_truth_trajectories.cpu().numpy()
+pred_trajectories = predicted_xy.cpu().numpy()
+predicted_xy = predicted_xy.cpu().numpy()
 
-            # print(f"Predicted waypoints: {pred_waypoints}")
-            # print(f"Actual waypoints: {waypoints_t}")
-            # print("\n")
-            # Compute the loss
-            loss = test_loss_fn(pred_waypoints, waypoints_t)
-            total_test_loss += loss.item()
-            ground_truth_list.append(waypoints_t.cpu().numpy().squeeze(0))
-            predicted_list.append(pred_waypoints.cpu().numpy().squeeze(0)[1:])
-            attention_weight = extract_avg_attention_with_ego(attn_weights)
-            # attention_weight = get_avg_attention_per_vehicle(attn_weights)
-            distances = get_pursuer_distances(vehicles_data_t)
-            headings = get_pursuer_heading(vehicles_data_t)
-            pursuer_1_distance.append(distances[0])
-            pursuer_2_distance.append(distances[1])
-            pursuer_1_attention.append(attention_weight[0][0])
-            pursuer_2_attention.append(attention_weight[0][1])
-            pursuer_1_heading.append(np.rad2deg(headings[0]))
-            pursuer_2_heading.append(np.rad2deg(headings[1]))
-            # print("ego_data_t: ", ego_data_t)
-            # print(
-            #     f"Predicted waypoints: {pred_waypoints.cpu().numpy().squeeze(0)[1:]}")
-            # print(f"Actual waypoints: {waypoints_t}")
-            # print("\n")
-# Calculate average test loss
-avg_test_loss = total_test_loss / len(test_dataloader)
-print(f"Average test loss: {avg_test_loss:.4f}")
+# Create the plot
+plt.figure(figsize=(10, 8))
 
+# Plot each trajectory in the batch
+# Loop through each sample in the batch
+for i in range(gt_trajectories.shape[0]):
+    plt.plot(gt_trajectories[i, :, 0], gt_trajectories[i, :, 1],
+             color="blue", alpha=0.6, linestyle="--", label="GT" if i == 0 else "")
+    plt.plot(pred_trajectories[i, :, 0], pred_trajectories[i, :, 1],
+             color="red", alpha=0.6, linestyle="--", label="Predicted" if i == 0 else "")
 
-def plot_trajectory(ground_truth, predicted, title="Trajectory Prediction"):
-    plt.figure(figsize=(8, 6))
-    plt.plot(ground_truth[:, 0], ground_truth[:, 1],
-             label='Ground Truth', color='green')
-    plt.plot(predicted[:, 0], predicted[:, 1],
-             label='Predicted', color='red', linestyle='dashed')
-    plt.title(title)
-    plt.xlabel('X')
-    plt.ylabel('Y')
-    plt.legend()
-    plt.show()
-
-
-gx_list = []
-gy_list = []
-px_list = []
-py_list = []
-for g, p in zip(ground_truth_list, predicted_list):
-    gx_list.extend(g[:, 0])
-    gy_list.extend(g[:, 1])
-    last_row = p[0]
-    px_list.append(last_row[0])
-    py_list.append(last_row[1])
-    # px_list.extend(p[:, 0])
-    # py_list.extend(p[:, 1])
-
-
-fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-ax.plot(gx_list, gy_list, label='Ground Truth', color='green')
-ax.scatter(gx_list[0], gy_list[0], label='Start', color='blue', s=100)
-ax.plot(px_list, py_list, label='Predicted', color='red', linestyle='dashed')
-ax.scatter(px_list[0], py_list[0], label='Start', color='blue', s=100)
-ax.set_title('Trajectory Prediction')
-ax.set_xlabel('X')
-ax.set_ylabel('Y')
-ax.legend()
-
-fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-ax.plot(pursuer_1_attention, label='Pursuer 1 Attention', color='blue')
-ax.plot(pursuer_2_attention, label='Pursuer 2 Attention', color='red')
-ax.set_title('Average Attention to Pursuers')
-ax.set_xlabel('Time Step')
-ax.set_ylabel('Attention')
-ax.legend()
-
-fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-ax.plot(pursuer_1_distance, label='Pursuer 1 Distance', color='blue')
-ax.plot(pursuer_2_distance, label='Pursuer 2 Distance', color='red')
-ax.set_title('Distance to Evader')
-ax.set_xlabel('Time Step')
-ax.set_ylabel('Distance')
-ax.legend()
-
-fig = plt.figure(figsize=(8, 6))
-ax = fig.add_subplot(111)
-ax.plot(pursuer_1_heading, label='Pursuer 1 Heading', color='blue')
-ax.plot(pursuer_2_heading, label='Pursuer 2 Heading', color='red')
-ax.set_title('Heading of Pursuers')
-ax.set_xlabel('Time Step')
-ax.set_ylabel('Heading')
-ax.legend()
+# Add labels and title
+plt.xlabel("X Coordinate")
+plt.ylabel("Y Coordinate")
+plt.title("Overall Trajectory Comparison: Ground Truth vs Predicted")
+plt.legend()
+plt.grid(True)
+plt.axis("equal")  # Ensures equal scaling for accurate spatial comparison
 
 plt.show()
 
-# # Example: Plot predicted vs ground truth waypoints
-# plot_trajectory(ground_truth_list, predicted_list)
+# # Calculate the average MSE across all trajectories
+# average_mse = sum(all_mse_errors) / len(all_mse_errors)
+# print(f"Average MSE for the test dataset: {average_mse}")

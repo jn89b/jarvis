@@ -1,55 +1,69 @@
+from pytorch_lightning import Trainer
 import yaml
 import torch
 from jarvis.datasets.base_dataset import BaseDataset
 from torch.utils.data import DataLoader
 from jarvis.transformers.evadeformer import EvadeFormer
+from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.callbacks import ModelCheckpoint
+import os
 
-# if __name__ == "__main__":
+# Load the dataset configuration
 data_config = "config/data_config.yaml"
-# Load the YAML file
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 with open(data_config, 'r') as f:
     data_config = yaml.safe_load(f)
-batch_size: int = 5
-dataset = BaseDataset(config=data_config, is_validation=False)
-dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True,
-                        collate_fn=dataset.collate_fn)
 
-print("len of dataloader: ", len(dataloader))
+# Initialize device
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Prepare dataset and dataloader
+batch_size = 5
+dataset = BaseDataset(config=data_config, is_validation=False)
+dataloader = DataLoader(dataset, batch_size=batch_size,
+                        shuffle=True, collate_fn=dataset.collate_fn)
+
+# Load model configuration
 model_config = 'config/data_config.yaml'
 with open(model_config, 'r') as f:
     model_config = yaml.safe_load(f)
 
-model = EvadeFormer(
-    config=model_config
-).to(device)
-optimizer = model.optimizer
+# Initialize your model
+model = EvadeFormer(model_config)
 
-epochs: int = 10
-print_every: int = 15
+# TensorBoard logger
+logger = TensorBoardLogger("tb_logs", name="evadeformer")
 
-print("Model device:", next(model.parameters()).device)
+# Checkpoint callback
+checkpoint_callback = ModelCheckpoint(
+    monitor="val_loss",
+    dirpath="checkpoints/",
+    filename="evadeformer-{epoch:02d}-{val_loss:.2f}",
+    save_top_k=5,
+    mode="min"
+)
 
-for epoch in range(epochs):
-    model.train()
-    i = 0
-    for batch in dataloader:
-        # for k, v in batch.items():
-        #     if isinstance(v, torch.Tensor):
-        #         print(f"Batch key '{k}' is on device: {v.device}")
-        # Forward pass
-        output, loss = model(batch)
+# Check if there's an existing checkpoint to resume from
+checkpoint_dir = "checkpoints/"
+latest_checkpoint = None
+if os.path.exists(checkpoint_dir):
+    checkpoint_files = sorted(
+        [os.path.join(checkpoint_dir, f)
+         for f in os.listdir(checkpoint_dir) if f.endswith(".ckpt")],
+        key=os.path.getmtime
+    )
+    if checkpoint_files:
+        latest_checkpoint = checkpoint_files[-1]
+        print(f"Resuming training from checkpoint: {latest_checkpoint}")
 
-        # Zero the gradients, perform the backward pass, and update weights
-        optimizer.zero_grad()    # Reset gradients
-        loss.backward()          # Compute gradients
-        optimizer.step()         # Update weights
+# Initialize the Trainer
+trainer = Trainer(
+    devices=1,
+    max_epochs=800,
+    logger=logger,
+    callbacks=[checkpoint_callback],
+    gradient_clip_val=1.0,
+)
 
-        # # get the loss
-        # loss = model.loss.item()
-        # print(loss)
-
-        if i % print_every == 0:
-            print(
-                f"Epoch {epoch + 1}/{epochs}, Batch {i}/{len(dataloader)}, Loss: {loss:.4f}")
+# Train the model, resuming from the latest checkpoint if it exists
+trainer.fit(model, train_dataloaders=dataloader,
+            val_dataloaders=dataloader, ckpt_path=latest_checkpoint)

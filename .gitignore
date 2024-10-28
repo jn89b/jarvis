@@ -43,6 +43,8 @@ share/python-wheels/
 MANIFEST
 
 runs/
+checkpoints/
+tb_logs/
 transform_models/
 *.pth
 

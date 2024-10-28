@@ -7,6 +7,7 @@ import os
 import torch
 import time
 import numpy as np
+import pickle
 from torch.utils.data import DataLoader, Dataset
 from typing import List, Tuple, Dict, Any, Optional
 from torch.nn.utils.rnn import pad_sequence
@@ -52,8 +53,6 @@ class BaseDataset(Dataset):
     """
     Base class for creating custom datasets.
     Specify the training and validation datasets using this class
-
-
     """
 
     def __init__(self, config: Dict[str, Any],
@@ -116,7 +115,7 @@ class BaseDataset(Dataset):
                 "time": []
             }
 
-            for s in split:
+            for i, s in enumerate(split):
                 # check if time_step is in the dictionary
                 if 'ego' in s:
                     tracks["ego"].append(s['ego'])
@@ -199,12 +198,26 @@ class BaseDataset(Dataset):
             for samples in sample_batches:
                 samples: Dict[str, Any]
 
+                with open("sample.pkl", "wb") as f:
+                    pickle.dump(samples, f)
+
                 output: Dict[str, Any] = self.preprocess_data(
                     data=samples, filename=k, idx=i)
 
+                # save this data as pickle
+                with open("intermediate.pkl", "wb") as f:
+                    pickle.dump(output, f)
+
                 output = self.process_data(output)
+                # save this data as pickle
+                with open("output_data.pkl", "wb") as f:
+                    pickle.dump(output, f)
+
                 self.final_data[k].append(output)
                 self.overall_data.append(output)
+
+        # TODO: REMOVE THIS LINE
+        # self.overall_data = [self.overall_data[0]]
 
     def preprocess_data(self, data: Dict[str, Any], filename: str,
                         idx: int) -> Dict[str, Any]:
@@ -237,8 +250,9 @@ class BaseDataset(Dataset):
         }
         for k, v in data.items():
             if k == 'ego':
-                object_type: Enum = ObjectTypes.EGO
+                object_type: Enum = ObjectTypes.PURSUERS
                 combined_state: np.array = np.array(v)
+                combined_state -= combined_state[0, :]
                 # combined_state = np.concatenate(
                 #     combined_state, axis=-1
                 # )
@@ -248,15 +262,15 @@ class BaseDataset(Dataset):
             elif k == 'time':
                 pass
                 # print("Time", v)
-            else:
-                object_type: Enum = ObjectTypes.PURSUERS
-                combined_state: np.array = np.array(v)
-                # combined_state = np.concatenate(
-                #     combined_state, axis=-1
-                # )
-                track_infos['object_id'].append(k)
-                track_infos['object_type'].append(object_type)
-                track_infos['trajs'].append(combined_state)
+            # else:
+            #     object_type: Enum = ObjectTypes.PURSUERS
+            #     combined_state: np.array = np.array(v)
+            #     # combined_state = np.concatenate(
+            #     #     combined_state, axis=-1
+            #     # )
+            #     track_infos['object_id'].append(k)
+            #     track_infos['object_type'].append(object_type)
+            #     track_infos['trajs'].append(combined_state)
 
         # Stack trajectory information and apply frequency mask
         track_infos['trajs'] = np.stack(track_infos['trajs'], axis=0)
@@ -387,11 +401,15 @@ class BaseDataset(Dataset):
 
         num_center_objects = center_objects.shape[0]
         num_objects, num_timestamps, box_dim = obj_trajs_past.shape
-
+        center_xyz = center_objects[:, 0:3]
         # the data is already made to be relative to the center object or the ego vehicle
         # Expand obj_trajs_past to have an additional dimension for num_center_objects
         # Now object_trajs will have shape (num_center_objects, num_objects, num_timestamps, feature_dim)
-        obj_trajs = np.tile(obj_trajs_past, (num_center_objects, 1, 1, 1))
+        obj_trajs = np.tile(
+            obj_trajs_past[None, :, :, :], (num_center_objects, 1, 1, 1))
+        obj_trajs[:, :, :, 0:center_xyz.shape[1]
+                  ] -= center_xyz[:, None, None, :]
+        # obj_trajs = np.tile(obj_trajs_past, (num_center_objects, 1, 1, 1))
         object_onehot_mask = np.zeros(
             (num_center_objects, num_objects, num_timestamps, 5))
         object_onehot_mask[:, obj_types == 1, :, 0] = 1
@@ -435,10 +453,13 @@ class BaseDataset(Dataset):
         obj_trajs_mask = obj_trajs[:, :, :, -1]
         obj_trajs_data[obj_trajs_mask == 0] = 0
 
-        obj_trajs_future = obj_trajs_future.astype(np.float32)
+        # obj_trajs_future = obj_trajs_future.astype(np.float32)
         obj_trajs_future = np.tile(
-            obj_trajs_future, (num_center_objects, 1, 1, 1))
-
+            obj_trajs_future[None, :, :, :], (num_center_objects, 1, 1, 1))
+        # obj_trajs_future = np.tile(
+        #     obj_trajs_future, (num_center_objects, 1, 1, 1))
+        obj_trajs_future[:, :, :, 0:center_xyz.shape[1]
+                         ] -= center_xyz[:, None, None, :]
         obj_trajs_future_state = obj_trajs_future[:, :, :, [
             StateIndex.X.value, StateIndex.Y.value, StateIndex.VX.value, StateIndex.VY.value]]  # (x, y, vx, vy)
 
@@ -500,6 +521,10 @@ class BaseDataset(Dataset):
             obj_trajs_future_mask, topk_idxs[..., 0], axis=1)
         track_index_to_predict_new = np.zeros(
             len(track_index_to_predict), dtype=np.int64)
+
+        # dump the center_gt_trajs
+        with open("center_gt_trajs.pkl", "wb") as f:
+            pickle.dump(center_gt_trajs, f)
 
         # add padding in case the number of agents is less than max_num_agents
         obj_trajs_data = np.pad(obj_trajs_data, ((
@@ -595,7 +620,7 @@ class BaseDataset(Dataset):
 
             'obj_trajs_future_state': obj_trajs_future_state,
             'obj_trajs_future_mask': obj_trajs_future_mask,
-            'center_gt_trajs': center_gt_trajs,
+            'center_gt_trajs': agent_data["center_gt_trajs"],
             'center_gt_trajs_mask': center_gt_trajs_mask,
             'center_gt_final_valid_idx': center_gt_final_valid_idx,
             'center_gt_trajs_src': obj_trajs_full[track_index_to_predict]
@@ -617,6 +642,7 @@ class BaseDataset(Dataset):
 
     def __getitem__(self, idx: int):
         return self.overall_data[idx]
+        # return self.overall_data[0]
 
     def collate_fn(self, data_list: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -629,17 +655,17 @@ class BaseDataset(Dataset):
         input_dict = {}
         for key, val_list in key_to_list.items():
             try:
-                # Conditionally handle keys that should not add a new dimension (e.g., 'agents_in')
-                if key == 'obj_trajs' or key == 'obj_trajs_mask':
-                    # Concatenate along the desired axis if no new batch dimension is needed
-                    input_dict[key] = torch.cat(
-                        [torch.from_numpy(arr) for arr in val_list], dim=0)
-                else:
-                    # For other data, stack normally
-                    # input_dict[key] = torch.from_numpy(
-                    #     np.stack(val_list, axis=0))
-                    input_dict[key] = torch.cat(
-                        [torch.from_numpy(arr) for arr in val_list], dim=0)
+                # # Conditionally handle keys that should not add a new dimension (e.g., 'agents_in')
+                # if key == 'obj_trajs' or key == 'obj_trajs_mask':
+                #     # Concatenate along the desired axis if no new batch dimension is needed
+                #     input_dict[key] = torch.cat(
+                #         [torch.from_numpy(arr) for arr in val_list], dim=0)
+                # else:
+                #     # For other data, stack normally
+                #     # input_dict[key] = torch.from_numpy(
+                #     #     np.stack(val_list, axis=0))
+                input_dict[key] = torch.cat(
+                    [torch.from_numpy(arr) for arr in val_list], dim=0)
             except Exception as e:
                 # Fallback to list if stacking fails
                 input_dict[key] = val_list
