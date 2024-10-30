@@ -6,6 +6,8 @@ from jarvis.datasets.base_dataset import BaseDataset
 import yaml
 import matplotlib.pyplot as plt
 import os
+import time
+import seaborn as sns
 # Path to the best model checkpoint
 # checkpoint_path = "checkpoints/evadeformer-epoch=176-val_loss=0.52.ckpt"
 
@@ -41,7 +43,7 @@ with open(data_config, 'r') as f:
     data_config = yaml.safe_load(f)
 batch_size: int = 5
 dataset = BaseDataset(config=data_config, is_validation=False)
-dataloader = DataLoader(dataset, batch_size=1, shuffle=True,
+dataloader = DataLoader(dataset, batch_size=1, shuffle=False,
                         collate_fn=dataset.collate_fn)
 
 
@@ -59,14 +61,26 @@ for batch in dataloader:
 
     ground_truth_test = torch.cat([vals['center_gt_trajs'][..., :2], vals['center_gt_trajs_mask'].unsqueeze(-1)],
                                   dim=-1)
-
+    ground_truth_uncentered = vals['uncentered_trajs_future']
     # Run the model to get predictions
     with torch.no_grad():
+        init_time = time.time()
         output, _ = model(batch)  # Assuming model returns output and loss
+        final_time = time.time() - init_time
+        print("final time", final_time)
         # Shape: (batch_size, T, 2)
         predicted_trajectories = output['predicted_trajectory']
         predicted_probability = output['predicted_probability']
+        decoder_attn = output['decoder_attention']
+        encoder_attn = output['encoder_attention']
+        # we are compressing from the 4 attention by computing the mean
+        avg_attn = [layer.mean(dim=1) for layer in decoder_attn]  # Averaging across heads
+        avg_attn = [layer.cpu().numpy() for layer in avg_attn]
+        temporal_attn = [layer.sum(dim=-1) for layer in decoder_attn]  # Summing across embedding dimension
+        temporal_attn = [layer.cpu().numpy() for layer in temporal_attn]
+        avg_attention = encoder_attn[0].mean(dim=-1).cpu().detach().numpy()  # Shape: (3, 192)
 
+    
     # # Convert predictions and ground truth to numpy for comparison
     # predicted_trajectories = predicted_trajectories.cpu().numpy()
     # ground_truth_trajectories = ground_truth_trajectories.cpu().numpy()
@@ -88,31 +102,82 @@ for batch in dataloader:
     # Extract only x and y coordinates from the predicted trajectories
     predicted_xy = best_predicted_trajectories[..., :2]  # Shape: [15, 60, 2]
 
-# Convert tensors to numpy for easier plotting, if they are not already
-gt_trajectories = ground_truth_trajectories.cpu().numpy()
-pred_trajectories = predicted_xy.cpu().numpy()
-predicted_xy = predicted_xy.cpu().numpy()
+    # Convert tensors to numpy for easier plotting, if they are not already
+    gt_trajectories = ground_truth_trajectories.cpu().numpy()
+    pred_trajectories = predicted_xy.cpu().numpy()
+    predicted_xy = predicted_xy.cpu().numpy()
+    ground_truth_uncentered = ground_truth_uncentered.cpu().numpy()
+    
+    # Create the plot
+    plt.figure(figsize=(10, 8))
 
-# Create the plot
-plt.figure(figsize=(10, 8))
+    # Plot each trajectory in the batch
+    # Loop through each sample in the batch
+    # Define colors for the pursuers
+    pursuer_colors = ["green", "orange", "purple", "teal"]
 
-# Plot each trajectory in the batch
-# Loop through each sample in the batch
-for i in range(gt_trajectories.shape[0]):
-    plt.plot(gt_trajectories[i, :, 0], gt_trajectories[i, :, 1],
-             color="blue", alpha=0.6, linestyle="--", label="GT" if i == 0 else "")
-    plt.plot(pred_trajectories[i, :, 0], pred_trajectories[i, :, 1],
-             color="red", alpha=0.6, linestyle="--", label="Predicted" if i == 0 else "")
+    # Loop through each sample in the batch
+    # Define colors for the pursuers
+    pursuer_colors = ["green", "orange", "purple", "teal"]
 
-# Add labels and title
-plt.xlabel("X Coordinate")
-plt.ylabel("Y Coordinate")
-plt.title("Overall Trajectory Comparison: Ground Truth vs Predicted")
-plt.legend()
-plt.grid(True)
-plt.axis("equal")  # Ensures equal scaling for accurate spatial comparison
+    # # Loop through each agent in the batch
+    # for agent_idx in range(decoder_attn[0].shape[0]):  # Assuming decoder_attn[0] has shape (3, 4, 64, 192)
+    #     for layer_idx, layer in enumerate(decoder_attn):  # Loop through each layer in decoder_attn
+    #         for head_idx in range(layer.shape[1]):  # Loop through each head in the layer
+                
+    #             # Extract attention weights for the specific agent, layer, and head
+    #             attn_weights = layer[agent_idx, head_idx].cpu().detach().numpy()  # Shape (64, 192)
+    
+    #             # Create a heatmap
+    #             plt.figure(figsize=(10, 6))
+    #             sns.heatmap(attn_weights, cmap="viridis")
+    #             plt.title(f"Attention Weights for Agent {agent_idx}, Layer {layer_idx}, Head {head_idx}")
+    #             plt.xlabel("Embedding Dimension")
+    #             plt.ylabel("Timestep")
+    
 
-plt.show()
+    for agent_idx in range(avg_attention.shape[0]):
+        plt.figure(figsize=(10, 4))
+        plt.plot(avg_attention[agent_idx], label=f"Agent {agent_idx}")
+        plt.xlabel("Position (Token Index)")
+        plt.ylabel("Average Attention Value")
+        plt.title(f"Encoder Attention Across Positions for Agent {agent_idx}")
+        plt.legend()
+        plt.show()
+
+    # Loop through each sample in the batch
+    for i in range(gt_trajectories.shape[0]):
+        # Plot evader (index 0)
+        x_init = ground_truth_uncentered[i,0,0]
+        y_init = ground_truth_uncentered[i,0,1]
+        if i == 0:
+            plt.plot(gt_trajectories[i, :, 0]+x_init, gt_trajectories[i, :, 1]+y_init,
+                     color="blue", alpha=0.6, linestyle="-", label="Evader GT")
+            plt.plot(pred_trajectories[i, :, 0]+x_init, pred_trajectories[i, :, 1]+y_init,
+                     color="red", alpha=0.6, linestyle="--", label="Evader Predicted")
+            # Start position marker for evader
+            plt.scatter(gt_trajectories[i, 0, 0]+x_init, gt_trajectories[i, 0, 1]+y_init,
+                        color="blue", edgecolor="black", s=50, label="Evader Start")
+        else:
+            # Plot pursuers with different colors
+            color = pursuer_colors[(i - 1) % len(pursuer_colors)]
+            plt.plot(gt_trajectories[i, :, 0]+x_init, gt_trajectories[i, :, 1]+y_init,
+                     color=color, alpha=0.6, linestyle="-", label=f"Pursuer {i} GT")
+            plt.plot(pred_trajectories[i, :, 0]+x_init, pred_trajectories[i, :, 1]+y_init,
+                     color=color, alpha=0.6, linestyle="--", label=f"Pursuer {i} Predicted")
+            # Start position marker for each pursuer
+            plt.scatter(gt_trajectories[i, 0, 0]+x_init, gt_trajectories[i, 0, 1]+y_init,
+                        color=color, edgecolor="black", s=50, label=f"Pursuer {i} Start")
+
+    # Add labels and title
+    plt.xlabel("X Coordinate")
+    plt.ylabel("Y Coordinate")
+    plt.title("Overall Trajectory Comparison: Ground Truth vs Predicted")
+    plt.legend()
+    plt.grid(True)
+    plt.axis("equal")  # Ensures equal scaling for accurate spatial comparison
+
+    plt.show()
 
 # # Calculate the average MSE across all trajectories
 # average_mse = sum(all_mse_errors) / len(all_mse_errors)

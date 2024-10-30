@@ -5,6 +5,9 @@ import torch
 from einops import rearrange
 from torch import nn as nn
 
+ENCODER_ATTN_WEIGHTS = []
+DECODER_ATTN_WEIGHTS = []
+
 
 class QueryProvider:
     """Provider of cross-attention query input."""
@@ -211,7 +214,8 @@ class MultiHeadAttention(nn.Module):
         :return: attention result of shape (B, N, F) where B is the batch size, N the query sequence length and F the
                 number of output channels (= `num_output_channels`)
         """
-
+        global DECODER_ATTN_WEIGHTS
+        DECODER_ATTN_WEIGHTS = []  # Reset global variable before each forward pass
         q = self.q_proj(x_q)
         k = self.k_proj(x_kv)
         v = self.v_proj(x_kv)
@@ -263,8 +267,10 @@ class MultiHeadAttention(nn.Module):
                 attn.masked_fill_(causal_mask, attn_max_neg)
 
             attn = attn.softmax(dim=-1)
+            attn_weights = attn
+            DECODER_ATTN_WEIGHTS = attn_weights
+            self.attn_weights = attn
             attn = self.dropout(attn)
-
             o_chunk = torch.einsum(
                 "b h i j, b h j c -> b h i c", attn, v_chunk)
             o_chunks.append(o_chunk)
@@ -273,7 +279,7 @@ class MultiHeadAttention(nn.Module):
         o = rearrange(o, "b h n c -> b n (h c)", h=self.num_heads)
         o = self.o_proj(o)
 
-        return ModuleOutput(last_hidden_state=o, kv_cache=kv_cache)
+        return ModuleOutput(last_hidden_state=o, attn_weights=attn_weights, kv_cache=kv_cache)
 
 
 class CrossAttention(nn.Module):
@@ -331,9 +337,23 @@ class CrossAttention(nn.Module):
         else:
             x_kv = self.kv_norm(x_kv)
 
-        return self.attention(
+        output = self.attention(
             x_q, x_kv, pad_mask=pad_mask, rot_pos_emb_q=rot_pos_emb_q, rot_pos_emb_k=rot_pos_emb_k, kv_cache=kv_cache
         )
+        # Confirm attn_weights is accessible here
+
+        module_output = ModuleOutput(
+            last_hidden_state=output.last_hidden_state,
+            attn_weights=output.attn_weights,
+            kv_cache=output.kv_cache,
+        )
+        return module_output
+        # return ModuleOutput(last_hidden_state=output.last_hidden_state, attn_weights=output.attn_weights, kv_cache=output.kv_cache)
+        # return {
+        # "last_hidden_state": output.last_hidden_state,
+        # "attn_weights": output.attn_weights,
+        # "kv_cache": output.kv_cache,
+        # }
 
 
 class SelfAttention(nn.Module):
@@ -698,12 +718,13 @@ class PerceiverEncoder(nn.Module):
 
         cross_attn_n = self.cross_attn_n if self.extra_cross_attention_layer else self.cross_attn_1
         self_attn_n = self.self_attn_n if self.extra_self_attention_block else self.self_attn_1
-
+        self.encoder_attention_values = []
         for i in range(1, self.num_self_attention_blocks):
             if i < self.num_cross_attention_layers:
                 x_latent = cross_attn_n(
                     x_latent, x_adapted, pad_mask=pad_mask).last_hidden_state
             x_latent = self_attn_n(x_latent).last_hidden_state
+            self.encoder_attention_values.append(x_latent)
 
         if return_adapted_input:
             return x_latent, x_adapted
@@ -778,12 +799,33 @@ class PerceiverDecoder(nn.Module):
 
     def forward(self, x_latent, x_adapted=None, **kwargs):
         output_query = self.output_query_provider(x_adapted)
+        self.decoder_attention_values = []
 
-        output = self.cross_attn[0](output_query, x_latent).last_hidden_state
+        # Process the initial cross-attention layer and capture attention weights
+        cross_attn_output = self.cross_attn[0](output_query, x_latent)
+        self.decoder_attention_values.append(
+            DECODER_ATTN_WEIGHTS)  # Store the attention weights
+        # self.decoder_attention_values.append(
+        #     cross_attn_output.attn_weights)  # Store the attention weights
+        output = cross_attn_output.last_hidden_state
 
         for i in range(1, len(self.cross_attn)):
+            # Process self-attention layer
             output = self.self_attn[i - 1](output).last_hidden_state
-            output = self.cross_attn[i](output, x_latent).last_hidden_state
 
+            # Process cross-attention layer and capture attention weights
+            cross_attn_output = self.cross_attn[i](
+                output, x_latent)  # Store the attention weights
+            self.decoder_attention_values.append(
+                DECODER_ATTN_WEIGHTS)
+            # self.decoder_attention_values.append(
+            #     cross_attn_output.attn_weights)  # Store the attention weights
+            output = cross_attn_output.last_hidden_state
+
+        # Process the final self-attention layer
         output = self.self_attn[-1](output).last_hidden_state
+
         return output
+
+    def get_attention_weights(self):
+        return self.decoder_attention_values

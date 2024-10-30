@@ -2,7 +2,7 @@
 model_name: wayformer
 
 # model
-use_map_image: False
+use_map_image: False  
 use_map_lanes: True
 num_modes: 6
 num_agent_feature: 39

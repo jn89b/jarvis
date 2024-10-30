@@ -7,7 +7,7 @@ from jarvis.transformers.evadeformer import EvadeFormer
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 import os
-
+import matplotlib.pyplot as plt
 # Load the dataset configuration
 data_config = "config/data_config.yaml"
 with open(data_config, 'r') as f:
@@ -58,7 +58,7 @@ if os.path.exists(checkpoint_dir):
 # Initialize the Trainer
 trainer = Trainer(
     devices=1,
-    max_epochs=800,
+    max_epochs=2000,
     logger=logger,
     callbacks=[checkpoint_callback],
     gradient_clip_val=1.0,

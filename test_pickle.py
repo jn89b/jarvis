@@ -2,6 +2,7 @@ import pickle as pkl
 import numpy as np
 from typing import Dict, Tuple, Any
 from enum import Enum
+import matplotlib.pyplot as plt
 # open data.pkl file in read mode
 
 
@@ -17,13 +18,29 @@ class StateIndex(Enum):
 with open('sample.pkl', 'rb') as file:
     sample = pkl.load(file)
 
+
+ego = np.array(sample['ego'])
+vehicle_0 = np.array(sample['vehicle_0'])
+vehicle_1 = np.array(sample['vehicle_1'])
+
+fig, ax = plt.subplots()
+ax.plot(ego[:, 0], ego[:, 1], label='ego')
+ax.scatter(ego[0, 0], ego[0, 1], label='start', color='red')
+ax.plot(vehicle_0[:, 0], vehicle_0[:, 1], label='vehicle_0')
+ax.scatter(vehicle_0[0, 0], vehicle_0[0, 1], label='start', color='red')
+ax.plot(vehicle_1[:, 0], vehicle_1[:, 1], label='vehicle_1')
+ax.scatter(vehicle_1[0, 0], vehicle_1[0, 1], label='start', color='red')
+ax.legend()
+plt.show()
+
+
 with open('intermediate.pkl', 'rb') as file:
-    inter_data= pkl.load(file)
+    inter_data = pkl.load(file)
 
 
-### Testing what is going on in the process data function
+# Testing what is going on in the process data function
 info = inter_data
-current_time_index:int = 21
+current_time_index: int = 21
 track_infos: Dict[str, Any] = info['track_info']
 obj_types = np.array(track_infos['object_type'])
 # (num_objects, num_timestamp, 10)
@@ -57,7 +74,7 @@ center_gt_trajs[center_gt_trajs_mask == 0] = 0
 
 
 with open('output_data.pkl', 'rb') as file:
-    output_data= pkl.load(file)
+    output_data = pkl.load(file)
 
 
 with open("center_gt_trajs.pkl", "rb") as file:

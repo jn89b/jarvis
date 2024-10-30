@@ -250,9 +250,9 @@ class BaseDataset(Dataset):
         }
         for k, v in data.items():
             if k == 'ego':
-                object_type: Enum = ObjectTypes.PURSUERS
+                object_type: Enum = ObjectTypes.EGO
                 combined_state: np.array = np.array(v)
-                combined_state -= combined_state[0, :]
+                # combined_state[:, 0:2] -= combined_state[0, 0:2]
                 # combined_state = np.concatenate(
                 #     combined_state, axis=-1
                 # )
@@ -262,15 +262,15 @@ class BaseDataset(Dataset):
             elif k == 'time':
                 pass
                 # print("Time", v)
-            # else:
-            #     object_type: Enum = ObjectTypes.PURSUERS
-            #     combined_state: np.array = np.array(v)
-            #     # combined_state = np.concatenate(
-            #     #     combined_state, axis=-1
-            #     # )
-            #     track_infos['object_id'].append(k)
-            #     track_infos['object_type'].append(object_type)
-            #     track_infos['trajs'].append(combined_state)
+            else:
+                object_type: Enum = ObjectTypes.PURSUERS
+                combined_state: np.array = np.array(v)
+                # combined_state = np.concatenate(
+                #     combined_state, axis=-1
+                # )
+                track_infos['object_id'].append(k)
+                track_infos['object_type'].append(object_type)
+                track_infos['trajs'].append(combined_state)
 
         # Stack trajectory information and apply frequency mask
         track_infos['trajs'] = np.stack(track_infos['trajs'], axis=0)
@@ -401,7 +401,11 @@ class BaseDataset(Dataset):
 
         num_center_objects = center_objects.shape[0]
         num_objects, num_timestamps, box_dim = obj_trajs_past.shape
-        center_xyz = center_objects[:, 0:3]
+        center_xyz = center_objects[:, 0:2]
+        ego_init = center_xyz[sdc_track_index, 0:2]
+        # center_xyz = center_objects[sdc_track_index, 0:2]
+        # print("Center XYZ", center_xyz.shape)
+        # get the first
         # the data is already made to be relative to the center object or the ego vehicle
         # Expand obj_trajs_past to have an additional dimension for num_center_objects
         # Now object_trajs will have shape (num_center_objects, num_objects, num_timestamps, feature_dim)
@@ -409,7 +413,8 @@ class BaseDataset(Dataset):
             obj_trajs_past[None, :, :, :], (num_center_objects, 1, 1, 1))
         obj_trajs[:, :, :, 0:center_xyz.shape[1]
                   ] -= center_xyz[:, None, None, :]
-        # obj_trajs = np.tile(obj_trajs_past, (num_center_objects, 1, 1, 1))
+
+        # # obj_trajs = np.tile(obj_trajs_past, (num_center_objects, 1, 1, 1))
         object_onehot_mask = np.zeros(
             (num_center_objects, num_objects, num_timestamps, 5))
         object_onehot_mask[:, obj_types == 1, :, 0] = 1
@@ -563,7 +568,6 @@ class BaseDataset(Dataset):
             info['time'][:current_time_index + 1], dtype=np.float32)
         track_infos: Dict[str, Any] = info['track_info']
         # tracks_to_predict: Dict[str, Any] = info['tracks_to_predict']
-
         track_index_to_predict = np.array(
             info['tracks_to_predict']['track_index'])
         obj_types = np.array(track_infos['object_type'])
@@ -623,7 +627,9 @@ class BaseDataset(Dataset):
             'center_gt_trajs': agent_data["center_gt_trajs"],
             'center_gt_trajs_mask': center_gt_trajs_mask,
             'center_gt_final_valid_idx': center_gt_final_valid_idx,
-            'center_gt_trajs_src': obj_trajs_full[track_index_to_predict]
+            'center_gt_trajs_src': obj_trajs_full[track_index_to_predict],
+            'uncentered_trajs_past': obj_trajs_full[:, :current_time_index + 1],
+            'uncentered_trajs_future': obj_trajs_full[:, current_time_index + 1:],
         }
 
         # change every thing to float32

@@ -111,7 +111,7 @@ class EvadeFormer(pl.LightningModule):
         model_input['agents_in'] = agents_in
         output = self._forward(model_input)
         # TODO: Remove this shit
-        inputs['center_gt_trajs'][0, :, :2]
+        # inputs['center_gt_trajs'][0, :, :2]
         ground_truth = torch.cat([inputs['center_gt_trajs'][..., :2], inputs['center_gt_trajs_mask'].unsqueeze(-1)],
                                  dim=-1)
         loss = self.criterion(output, ground_truth,
@@ -120,7 +120,11 @@ class EvadeFormer(pl.LightningModule):
         output['dataset_name'] = 'test'  # inputs['dataset_name']
         output['predicted_probability'] = F.softmax(
             output['predicted_probability'], dim=-1)
-
+        # Access attention values
+        # encoder_attention = self.perceiver_encoder.encoder_attention_values
+        # decoder_attention = self.perceiver_decoder.decoder_attention_values
+        output['encoder_attention'] = self.perceiver_encoder.encoder_attention_values
+        output['decoder_attention'] = self.perceiver_decoder.decoder_attention_values
         if not torch.isfinite(loss).all():
             print("Warning: Loss contains NaN or Inf values.")
 
@@ -137,7 +141,11 @@ class EvadeFormer(pl.LightningModule):
             agents_emb + self.agents_positional_embedding[:, :, :num_agents] + self.temporal_positional_embedding).view(B, -1, self.d_k)
         mixed_input_features = torch.concat([agents_emb], dim=1)
 
-        context = self.perceiver_encoder(mixed_input_features)
+        context = self.perceiver_encoder(
+            mixed_input_features)
+        # encoder_latents = context.last_hidden_state, context.attention
+        # out_seq = self.perceiver_decoder(context)
+        # Decoder with attention
         out_seq = self.perceiver_decoder(context)
         out_dists = self.output_model(
             out_seq[:, :self.c]).reshape(B, self.c, self.T, -1)
@@ -147,7 +155,9 @@ class EvadeFormer(pl.LightningModule):
         output = {
             'predicted_probability': F.softmax(mode_probs, dim=-1),
             'predicted_trajectory': out_dists,
-            'scene_emb': out_seq[:, :self.num_queries_dec].reshape(B, -1)
+            'scene_emb': out_seq[:, :self.num_queries_dec].reshape(B, -1),
+            # 'encoder_attention': encoder_attention,
+            # 'decoder_attention': decoder_attention,
         }
         return output
 
