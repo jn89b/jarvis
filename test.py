@@ -21,7 +21,9 @@ batch_size = 5
 dataset = BaseDataset(config=data_config, is_validation=False)
 dataloader = DataLoader(dataset, batch_size=batch_size,
                         shuffle=True, collate_fn=dataset.collate_fn)
-
+val_dataset = BaseDataset(config=data_config, is_validation=True)
+val_dataloader = DataLoader(val_dataset, batch_size=batch_size,
+                            shuffle=True, collate_fn=dataset.collate_fn)
 # Load model configuration
 model_config = 'config/data_config.yaml'
 with open(model_config, 'r') as f:
@@ -66,4 +68,4 @@ trainer = Trainer(
 
 # Train the model, resuming from the latest checkpoint if it exists
 trainer.fit(model, train_dataloaders=dataloader,
-            val_dataloaders=dataloader, ckpt_path=latest_checkpoint)
+            val_dataloaders=val_dataloader, ckpt_path=latest_checkpoint)

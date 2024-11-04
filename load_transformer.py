@@ -42,7 +42,7 @@ data_config = "config/data_config.yaml"
 with open(data_config, 'r') as f:
     data_config = yaml.safe_load(f)
 batch_size: int = 5
-dataset = BaseDataset(config=data_config, is_validation=False)
+dataset = BaseDataset(config=data_config, is_validation=True)
 dataloader = DataLoader(dataset, batch_size=1, shuffle=False,
                         collate_fn=dataset.collate_fn)
 
@@ -136,14 +136,14 @@ for batch in dataloader:
     #             plt.ylabel("Timestep")
     
 
-    for agent_idx in range(avg_attention.shape[0]):
-        plt.figure(figsize=(10, 4))
-        plt.plot(avg_attention[agent_idx], label=f"Agent {agent_idx}")
-        plt.xlabel("Position (Token Index)")
-        plt.ylabel("Average Attention Value")
-        plt.title(f"Encoder Attention Across Positions for Agent {agent_idx}")
-        plt.legend()
-        plt.show()
+    # for agent_idx in range(avg_attention.shape[0]):
+    #     plt.figure(figsize=(10, 4))
+    #     plt.plot(avg_attention[agent_idx], label=f"Agent {agent_idx}")
+    #     plt.xlabel("Position (Token Index)")
+    #     plt.ylabel("Average Attention Value")
+    #     plt.title(f"Encoder Attention Across Positions for Agent {agent_idx}")
+    #     plt.legend()
+    #     plt.show()
 
     # Loop through each sample in the batch
     for i in range(gt_trajectories.shape[0]):
@@ -151,6 +151,7 @@ for batch in dataloader:
         x_init = ground_truth_uncentered[i,0,0]
         y_init = ground_truth_uncentered[i,0,1]
         if i == 0:
+            print(x_init, y_init)
             plt.plot(gt_trajectories[i, :, 0]+x_init, gt_trajectories[i, :, 1]+y_init,
                      color="blue", alpha=0.6, linestyle="-", label="Evader GT")
             plt.plot(pred_trajectories[i, :, 0]+x_init, pred_trajectories[i, :, 1]+y_init,
