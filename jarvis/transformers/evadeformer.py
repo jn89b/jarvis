@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, Callable
 import numpy as np
 import torch
 import torch.nn as nn
@@ -6,13 +6,8 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 from torch import optim
 
-from torch import optim
-from typing import Optional, Any, Dict
 from jarvis.transformers.evadeformer_utils import (
     PerceiverEncoder, PerceiverDecoder, TrainableQueryProvider)
-
-
-from typing import Callable
 
 
 def init(

@@ -42,7 +42,7 @@ data_config = "config/data_config.yaml"
 with open(data_config, 'r') as f:
     data_config = yaml.safe_load(f)
 batch_size: int = 5
-dataset = BaseDataset(config=data_config, is_validation=True)
+dataset = BaseDataset(config=data_config, is_validation=False)
 dataloader = DataLoader(dataset, batch_size=1, shuffle=False,
                         collate_fn=dataset.collate_fn)
 
