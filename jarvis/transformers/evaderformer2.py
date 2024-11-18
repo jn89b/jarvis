@@ -29,8 +29,10 @@ class EvaderFormer(pl.LightningModule):
         super().__init__()
         self.config: Dict[str, Any] = config
         self.object_types: int = 1  # vehicles + padding and wp embedding
-        self.num_attributes: int = 6  # x, y, psi, v, vx, vy
-
+        # self.num_attributes: int = 6  # x, y, psi, v, vx, vy
+        self.num_attributes: int = 7  # for uav x,y,z, roll, pitch, yaw, v
+        self.wp_size: int = 3
+        self.num_wps_predict: int = 4
         hf_checkpoint: str = 'prajjwal1/bert-medium'
         self.model: nn.Module = AutoModel.from_pretrained(hf_checkpoint)
         n_embd: int = self.model.config.hidden_size
@@ -52,9 +54,10 @@ class EvaderFormer(pl.LightningModule):
 
         # Waypoint decoder
         self.wp_head = nn.Linear(n_embd, 65)
-        self.wp_decoder = nn.GRUCell(input_size=4, hidden_size=65)
+        self.wp_decoder = nn.GRUCell(
+            input_size=self.num_wps_predict, hidden_size=65)
         self.wp_relu = nn.ReLU()
-        self.wp_output = nn.Linear(65, 2)
+        self.wp_output = nn.Linear(65, self.wp_size)
 
         self.criterion = nn.L1Loss()  # L1 loss for waypoint prediction
 
@@ -81,6 +84,17 @@ class EvaderFormer(pl.LightningModule):
 
             input_batch.append(x_seq)
 
+        # pad sequence is used to pad the sequence to the
+        # longest sequence in the batch
+        # so for example if we have a batch of 3 sequences
+        # with lengths 3, 4, 5
+        # the sequences will be padded to length 5
+        # so the output will be of size 5 x 3
+
+        # we then use swapaxes to get the batch first and then the sequence
+        # so for example if it was 3 x 1 x 5
+        # it will be 1 x 3 x 5
+        # I might use einops to do this instead
         padded = torch.swapaxes(pad_sequence(input_batch), 0, 1)
         input_batch = padded[:B]
         return input_batch
@@ -91,6 +105,7 @@ class EvaderFormer(pl.LightningModule):
 
         x_batched = torch.cat(idx, dim=0)
         input_batch = self.pad_sequence_batch(x_batched)
+        # we get the object types from this line
         input_batch_type = input_batch[:, :, 0]
         input_batch_data = input_batch[:, :, 1:]
 
@@ -118,6 +133,7 @@ class EvaderFormer(pl.LightningModule):
         embedding = [
             (embedding + obj_embeddings[i]) * masks[i] for i in range(self.object_types)
         ]
+        # stack becomes [1,1,n_pursuers+cls, d_head]
         embedding = torch.sum(torch.stack(embedding, dim=1), dim=1)
         # embedding dropout
         x = self.drop(embedding)
@@ -131,15 +147,15 @@ class EvaderFormer(pl.LightningModule):
         output_wp = list()
 
         # initial input variable to GRU
-        x = torch.zeros(size=(z.shape[0], 2), dtype=z.dtype)
+        x = torch.zeros(size=(z.shape[0], self.wp_size), dtype=z.dtype)
         x = x.type_as(z)
 
         # autoregressive generation of output waypoints
         last_waypoint = waypoints[:, -1, :]
-        for _ in range(4):
+        for _ in range(self.num_wps_predict):
             x_in = torch.cat([x, last_waypoint], dim=1)
 
-            z = self.wp_decoder(x_in, z)
+            z = self.wp_decoder(x_in[:, self.wp_size-1:], z)
             dx = self.wp_output(z)
             x = dx + x
             output_wp.append(x)

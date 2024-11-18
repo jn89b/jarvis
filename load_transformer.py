@@ -74,13 +74,15 @@ for batch in dataloader:
         decoder_attn = output['decoder_attention']
         encoder_attn = output['encoder_attention']
         # we are compressing from the 4 attention by computing the mean
-        avg_attn = [layer.mean(dim=1) for layer in decoder_attn]  # Averaging across heads
+        # Averaging across heads
+        avg_attn = [layer.mean(dim=1) for layer in decoder_attn]
         avg_attn = [layer.cpu().numpy() for layer in avg_attn]
-        temporal_attn = [layer.sum(dim=-1) for layer in decoder_attn]  # Summing across embedding dimension
+        # Summing across embedding dimension
+        temporal_attn = [layer.sum(dim=-1) for layer in decoder_attn]
         temporal_attn = [layer.cpu().numpy() for layer in temporal_attn]
-        avg_attention = encoder_attn[0].mean(dim=-1).cpu().detach().numpy()  # Shape: (3, 192)
+        avg_attention = encoder_attn[0].mean(
+            dim=-1).cpu().detach().numpy()  # Shape: (3, 192)
 
-    
     # # Convert predictions and ground truth to numpy for comparison
     # predicted_trajectories = predicted_trajectories.cpu().numpy()
     # ground_truth_trajectories = ground_truth_trajectories.cpu().numpy()
@@ -107,7 +109,7 @@ for batch in dataloader:
     pred_trajectories = predicted_xy.cpu().numpy()
     predicted_xy = predicted_xy.cpu().numpy()
     ground_truth_uncentered = ground_truth_uncentered.cpu().numpy()
-    
+
     # Create the plot
     plt.figure(figsize=(10, 8))
 
@@ -124,17 +126,16 @@ for batch in dataloader:
     # for agent_idx in range(decoder_attn[0].shape[0]):  # Assuming decoder_attn[0] has shape (3, 4, 64, 192)
     #     for layer_idx, layer in enumerate(decoder_attn):  # Loop through each layer in decoder_attn
     #         for head_idx in range(layer.shape[1]):  # Loop through each head in the layer
-                
+
     #             # Extract attention weights for the specific agent, layer, and head
     #             attn_weights = layer[agent_idx, head_idx].cpu().detach().numpy()  # Shape (64, 192)
-    
+
     #             # Create a heatmap
     #             plt.figure(figsize=(10, 6))
     #             sns.heatmap(attn_weights, cmap="viridis")
     #             plt.title(f"Attention Weights for Agent {agent_idx}, Layer {layer_idx}, Head {head_idx}")
     #             plt.xlabel("Embedding Dimension")
     #             plt.ylabel("Timestep")
-    
 
     # for agent_idx in range(avg_attention.shape[0]):
     #     plt.figure(figsize=(10, 4))
@@ -148,8 +149,8 @@ for batch in dataloader:
     # Loop through each sample in the batch
     for i in range(gt_trajectories.shape[0]):
         # Plot evader (index 0)
-        x_init = ground_truth_uncentered[i,0,0]
-        y_init = ground_truth_uncentered[i,0,1]
+        x_init = ground_truth_uncentered[i, 0, 0]
+        y_init = ground_truth_uncentered[i, 0, 1]
         if i == 0:
             print(x_init, y_init)
             plt.plot(gt_trajectories[i, :, 0]+x_init, gt_trajectories[i, :, 1]+y_init,

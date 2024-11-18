@@ -193,13 +193,19 @@ class Pursuer(Agent):
         elif error < -np.pi:
             error = error + 2*np.pi
         roll_cmd = np.clip(error, -np.pi/4, np.pi/4)
-        # vel_cmd = 25.0  # self.pursuer_control_limits["v_cmd"]['max']
+        vel_cmd = self.pursuer_control_limits["v_cmd"]['max']
+
+        huge_error = np.rad2deg(25)
+        if abs(error) <= huge_error:
+            vel_cmd = self.pursuer_control_limits["v_cmd"]['min']
+        else:
+            vel_cmd = self.pursuer_control_limits["v_cmd"]['max']
 
         distance = np.sqrt(dx**2 + dy**2)
-        if distance >= self.capture_distance + 50.0:
-            vel_cmd = 25.0
-        else:
-            vel_cmd = 25.0
+        # if distance >= self.capture_distance + 50.0:
+        #     vel_cmd = self.pursuer_control_limits["v_cmd"]['min']
+        # else:
+        #     vel_cmd = self.pursuer_control_limits["v_cmd"]['max']
         alt_cmd = target.state_vector.z
         action = np.array(
             [roll_cmd, alt_cmd, vel_cmd, heading_cmd])
@@ -233,7 +239,7 @@ class Pursuer(Agent):
             theta_new: float = np.arctan2(dx, dy)
             RTM_new = np.array([dx_old, dy_old, 0])
             RTM_old = np.array([self.previous_target_state.x - self.previous_ego_state.x,
-                                self.previous_target_state.y - self.previous_ego_state.y, 0])
+                               self.previous_target_state.y - self.previous_ego_state.y, 0])
 
             if np.linalg.norm(RTM_old) == 0:
                 LOS_Delta = np.array([0, 0, 0])

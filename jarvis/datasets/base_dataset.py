@@ -49,6 +49,19 @@ class StateIndex(Enum):
     VY = 5
 
 
+class UAVStateIndex(Enum):
+    X = 0
+    Y = 1
+    Z = 2
+    ROLL = 3
+    PITCH = 4
+    YAW = 5
+    VEL = 6
+    VX = 7
+    VY = 8
+    VZ = 9
+
+
 default_value = 0
 # object_type = defaultdict(lambda: default_value, ObjectTypes)
 
@@ -708,6 +721,7 @@ class PlanTDataset(Dataset):
         self.include_ego: bool = include_ego
         self.num_waypoints: int = num_waypoints
         self.data = []  # Store processed data here
+        self.data_info = {}  # Store metadata here
         self.num_workers: int = 8
         self.load_data()
 
@@ -749,9 +763,12 @@ class PlanTDataset(Dataset):
         processed_samples = []
         with open(j_file) as f:
             data = json.load(f)
+            if j_file not in self.data_info:
+                self.data_info[j_file] = []
             for i in range(len(data) - self.num_waypoints):
                 processed_sample = self.process_data(i, data, j_file)
                 processed_samples.append(processed_sample)
+                self.data_info[j_file].append(processed_sample)
         return processed_samples
 
     def process_data(self, idx: int, data: List, filename: str) -> Dict[str, Any]:
@@ -797,6 +814,240 @@ class PlanTDataset(Dataset):
                 # convert back to list
                 waypoints_norm = waypoints_norm.tolist()
                 sample['waypoints'].append(waypoints_norm[0:2])
+
+        return sample
+
+    def __len__(self) -> int:
+        return len(self.data)
+
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
+        return self.data[idx]
+
+    def collate_fn(self, data_batch):
+        input_batch, output_batch = [], []
+        bias_batch = []
+
+        for element_id, sample in enumerate(data_batch):
+            input_item = torch.tensor(sample["input"], dtype=torch.float32)
+            output_item = torch.tensor(sample["output"])
+
+            input_indices = torch.tensor(
+                [element_id] * len(input_item)).unsqueeze(1)
+            output_indices = torch.tensor(
+                [element_id] * len(output_item)).unsqueeze(1)
+
+            input_batch.append(torch.cat([input_indices, input_item], dim=1))
+            output_batch.append(
+                torch.cat([output_indices, output_item], dim=1))
+        waypoints_batch = torch.tensor(
+            [sample["waypoints"] for sample in data_batch])
+
+        bias_batch = torch.tensor([sample["bias_position"]
+                                   for sample in data_batch])
+        # input_batch = torch.stack(input_batch)
+        output_batch = torch.stack(output_batch)
+
+        return {
+            'input': input_batch,
+            'output': output_batch,
+            'waypoints': waypoints_batch,
+            'bias_position': bias_batch
+        }
+
+
+class UAVTDataset(Dataset):
+    """
+    Create a dataset similar to the PlanT dataset structure.
+
+    Where information for ego is as follows:
+    - x (m), 
+    - y (m),
+    - z (m),
+    - roll_dg, 
+    - pitch_dg, 
+    - yaw_dg, 
+    - speed (m/s)
+
+    Dataset looks like this
+    [
+        {
+            "time_step": 0.0,
+            "ego": [
+                9.779018117383561,
+                5.058054740137868,
+                -26.980997907024623,
+                -39.35414094837699,
+                0.6980153738058079,
+                64.65098455185156,
+                20.175262905802008
+            ],
+            "controls": [
+                -39.35414094837699,
+                0.6980153738058079,
+                64.65098455185156,
+                20.175262905802008
+            ],
+            "vehicles": [
+                [
+                    76.45334525442603,
+                    -187.5774560838528,
+                    -28.61200932915509,
+                    42.25509021986197,
+                    -4.517448141700997,
+                    23.76787960031739,
+                    21.802251141464772
+                ]
+            ]
+        },
+        {
+            "time_step": 0.1,
+            "ego": [
+                11.619165063917082,
+                5.967507250072207,
+                -26.979639702773095,
+                -39.26616821573146,
+                3.9570479923085764,
+                61.240780076088114,
+                20.7282353566921
+            ],
+            "controls": [
+                -39.26616821573146,
+                3.9570479923085764,
+                61.240780076088114,
+                20.7282353566921
+            ],
+            "vehicles": [
+                [
+                    77.35364358922736,
+                    -185.59522400022547,
+                    -28.799686501139405,
+                    41.891553554883714,
+                    2.285081421706043,
+                    25.233813017925815,
+                    21.65403837838362
+                ]
+            ]
+        },
+    .... ]
+    """
+
+    def __init__(self, config: Dict[str, Any],
+                 is_validation: bool = False,
+                 include_ego: bool = False,
+                 num_waypoints: int = 4) -> None:
+        super().__init__()
+        self.is_validation: bool = is_validation
+        if is_validation:
+            self.data_path: str = config['val_data_path']
+        else:
+            self.data_path: str = config['train_data_path']
+
+        self.config: Dict[str, Any] = config
+        self.num_samples: int = config['num_samples']
+        self.include_ego: bool = include_ego
+        self.num_waypoints: int = num_waypoints
+        self.data = []  # Store processed data here
+        self.data_info = {}  # Store metadata here
+        self.num_workers: int = 8
+        self.load_data()
+
+    def load_data(self) -> None:
+        """
+        Load the dataset from the specified path in parallel.
+        """
+        if self.is_validation:
+            print("Loading validation data...")
+        else:
+            print("Loading training data...")
+
+        if not os.path.exists(self.data_path):
+            raise FileNotFoundError(f"Path {self.data_path} does not exist")
+
+        # Get all JSON files
+        json_files: List[str] = glob.glob(
+            os.path.join(self.data_path, "*.json")
+        )
+
+        if self.num_samples is not None:
+            json_files = json_files[:self.num_samples]
+
+        # Process files in parallel with specified number of workers
+        # Use self.num_workers
+        with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
+            futures = [executor.submit(self.process_file, j_file)
+                       for j_file in json_files]
+            for future in as_completed(futures):
+                processed_samples = future.result()
+                # Extend the main data list with processed samples
+                self.data.extend(processed_samples)
+
+    def process_file(self, j_file: str) -> List[Dict[str, Any]]:
+        """
+        Load and process data from a single JSON file.
+        Returns a list of processed samples.
+        """
+        processed_samples = []
+        with open(j_file) as f:
+            data = json.load(f)
+            if j_file not in self.data_info:
+                self.data_info[j_file] = []
+            for i in range(len(data) - self.num_waypoints):
+                processed_sample = self.process_data(i, data, j_file)
+                processed_samples.append(processed_sample)
+                self.data_info[j_file].append(processed_sample)
+        return processed_samples
+
+    def process_data(self, idx: int, data: List, filename: str) -> Dict[str, Any]:
+        """
+        Process data for a single sample.
+        """
+        sample: Dict[str, Any] = {
+            'scene_id': None,
+            'input': [],
+            'output': [],
+            'waypoints': [],
+            'bias_position': None,
+            'filename': filename,
+            'idx': idx
+        }
+        roll_idx: int = UAVStateIndex.ROLL.value
+        pitch_idx: int = UAVStateIndex.PITCH.value
+        yaw_idx: int = UAVStateIndex.YAW.value
+        speed_idx: int = UAVStateIndex.VEL.value
+
+        current_data: Dict[str, Any] = data[idx]
+
+        if 'ego' in current_data:
+            bias_position = current_data['ego']
+            sample['bias_position'] = bias_position
+
+        if 'vehicles' in current_data:
+            for vehicle in current_data['vehicles']:
+                vehicle_attributes: List = []
+                vehicle_state_norm = np.array(
+                    vehicle) - np.array(bias_position)
+                vehicle_state_norm = vehicle_state_norm.tolist()
+                vehicle_state_norm[3:] = vehicle[3:]
+                vehicle_state_norm[roll_idx] = np.deg2rad(vehicle[roll_idx])
+                vehicle_state_norm[pitch_idx] = np.deg2rad(vehicle[pitch_idx])
+                vehicle_state_norm[yaw_idx] = np.deg2rad(vehicle[yaw_idx])
+
+                # keep everything else the same
+                vehicle_attributes.append(
+                    ObjectTypes.PURSUERS.value)  # Example object type
+                vehicle_attributes.extend(vehicle_state_norm)
+                sample['input'].append(vehicle_attributes)
+
+        # Add waypoints from the following frames
+        next_waypoints = idx + self.num_waypoints
+        for i in range(idx, next_waypoints):
+            next_data = data[i]
+            if 'ego' in next_data:
+                waypoints = next_data['ego']
+                waypoints_norm = np.array(waypoints) - np.array(bias_position)
+                # convert back to list
+                waypoints_norm = waypoints_norm.tolist()
+                sample['waypoints'].append(waypoints_norm[0:3])
 
         return sample
 

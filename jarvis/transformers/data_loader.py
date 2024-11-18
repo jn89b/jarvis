@@ -5,7 +5,7 @@ from typing import List, Tuple
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.tensorboard import SummaryWriter  # Import the SummaryWriter
 # Assuming this is your transformer
-from jarvis.transformers.test import CarTransformer
+from jarvis.transformers.example import CarTransformer
 
 
 def open_json_file(file_path: str) -> dict:

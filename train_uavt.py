@@ -10,26 +10,32 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import Trainer
 
 from jarvis.transformers.evaderformer2 import EvaderFormer
-from jarvis.datasets.base_dataset import PlanTDataset
+# from jarvis.datasets.base_dataset import PlanTDataset
+from jarvis.datasets.base_dataset import UAVTDataset
 
 # Load the dataset configuration
 data_config = "config/data_config.yaml"
 with open(data_config, 'r') as f:
     data_config = yaml.safe_load(f)
-dataset = PlanTDataset(config=data_config, is_validation=False)
-dataloader = DataLoader(dataset, batch_size=3,
+dataset = UAVTDataset(config=data_config, is_validation=False)
+dataloader = DataLoader(dataset, batch_size=5,
                         shuffle=True, collate_fn=dataset.collate_fn)
+valdataset = UAVTDataset(config=data_config, is_validation=True)
+valdataloader = DataLoader(valdataset, batch_size=5,
+                           shuffle=True, collate_fn=dataset.collate_fn)
 
 model_config: Dict[str, Any] = {}
 model = EvaderFormer(model_config)
-logger = TensorBoardLogger("tb_logs", name="evadeformer")
+name = "uavt"
+logger = TensorBoardLogger("tb_logs", name=name)
 
 # Checkpoint callback
-checkpoint_dir = "evader_former_checkpoint/"
+checkpoint_dir = name+"_checkpoint/"
+# checkpoint_dir = "evader_former_checkpoint/"
 checkpoint_callback = ModelCheckpoint(
     monitor="val_loss",
     dirpath=checkpoint_dir,
-    filename="evadeformer-{epoch:02d}-{val_loss:.2f}",
+    filename="uavt-{epoch:02d}-{val_loss:.2f}",
     save_top_k=5,
     mode="min"
 )

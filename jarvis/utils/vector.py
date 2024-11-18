@@ -1,8 +1,19 @@
 from dataclasses import dataclass, field
 import numpy as np
 
+X_IDX: int = 0
+Y_IDX: int = 1
+Z_IDX: int = 2
+ROLL_IDX: int = 3
+PITCH_IDX: int = 4
+YAW_IDX: int = 5
+SPEED_IDX: int = 6
+VX_IDX: int = 7
+VY_IDX: int = 8
+VZ_IDX: int = 9
 
-@dataclass
+
+# @dataclass
 class StateVector:
     """
     Units are in meters and radians.
@@ -18,13 +29,20 @@ class StateVector:
         self.pitch_rad = pitch_rad
         self.yaw_rad = yaw_rad
         self.speed = speed
+        self.compute_speed_components()
+
+    def compute_speed_components(self):
+        self.vx = self.speed * np.cos(self.yaw_rad)*np.cos(self.pitch_rad)
+        self.vy = self.speed * np.sin(self.yaw_rad)*np.cos(self.pitch_rad)
+        self.vz = self.speed * np.sin(self.pitch_rad)
 
     @property
     def array(self) -> np.ndarray:
         return np.array([self.x, self.y, self.z,
                          self.roll_rad, self.pitch_rad,
                          self.yaw_rad,
-                         self.speed])
+                         self.speed,
+                         self.vx, self.vy, self.vz])
 
     def update(self, x=None, y=None, z=None,
                roll_rad=None, pitch_rad=None,
@@ -47,23 +65,30 @@ class StateVector:
         if speed is not None:
             self.speed = speed
 
+        self.vx = self.speed * np.cos(self.yaw_rad)*np.cos(self.pitch_rad)
+        self.vy = self.speed * np.sin(self.yaw_rad)*np.cos(self.pitch_rad)
+        self.vz = self.speed * np.sin(self.pitch_rad)
+
     def __add__(self, other: "StateVector") -> "StateVector":
         value = self.array + other.array
-        return StateVector(
-            value[0], value[1], value[2], value[3], value[4], value[5],
-            value[6])
+        # return StateVector(
+        #     value[0], value[1], value[2], value[3], value[4], value[5],
+        #     value[6])
+        return StateVector(*value[X_IDX:SPEED_IDX+1])
 
     def __sub__(self, other: "StateVector") -> "StateVector":
         value = self.array - other.array
-        return StateVector(value[0], value[1], value[2],
-                           value[3], value[4], value[5],
-                           value[6])
+        # return StateVector(value[0], value[1], value[2],
+        #                    value[3], value[4], value[5],
+        #                    value[6])
+        return StateVector(*value[X_IDX:SPEED_IDX+1])
 
     def __mul__(self, other: float) -> "StateVector":
         value = self.array * other
-        return StateVector(value[0], value[1], value[2],
-                           value[3], value[4], value[5],
-                           value[6])
+        return StateVector(*value[X_IDX:SPEED_IDX])
+        # return StateVector(value[0], value[1], value[2],
+        #                    value[3], value[4], value[5],
+        #                    value[6])
 
     def __repr__(self) -> str:
         return f"StateVector({self.x}, {self.y}, {self.z}, \
@@ -207,7 +232,7 @@ class StateVector:
         return heading_diff_rad
 
 
-@dataclass
+@ dataclass
 class PositionVector:
     """
     Units are in meters.
@@ -234,7 +259,7 @@ class PositionVector:
         return PositionVector(value[0], value[1], value[2])
 
 
-@dataclass
+@ dataclass
 class RPYVector():
     roll_rad: float
     pitch_rad: float

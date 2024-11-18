@@ -1,7 +1,11 @@
 *.pyc
 __pycache__/
 
+*.pkl
+
 data/
+evader_data/*
+evader_data_1/*
 TUTR/
 jarvis/__pycache__/
 models/*

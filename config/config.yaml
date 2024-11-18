@@ -2,19 +2,31 @@ x_bounds: [-3000, 3000]
 y_bounds: [-3000, 3000]
 z_bounds: [-100, 100]
 num_evaders: 1
-num_pursuers: 2
+num_pursuers: 3
 use_pursuer_heuristics: false
 dt: 0.1
 ai_pursuers: true
 bubble_radius: 5
-capture_radius: 10.0  
+capture_radius: 20.0  
 min_spawn_distance: 100
 max_spawn_distance: 300
 sim_frequency: 100 #hz
-low_rel_pos: 0.0
+
+low_rel_x: -500.0
+high_rel_x: 500.0
+
+low_rel_y: -500.0
+high_rel_y: 500.0
+
+low_rel_z: -500.0
+high_rel_z: 500.0
+
 high_rel_pos: 500.0
+
 low_rel_vel: -75.0
 high_rel_vel: 75.0
+
 low_rel_att: 0.0
 high_rel_att: 3.14159 
-sim_end_time : 30.0
+
+sim_end_time : 35.0

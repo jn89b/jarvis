@@ -3,7 +3,7 @@ import gymnasium
 import yaml
 import numpy as np
 import random
-
+import os
 from typing import Dict, List, Optional, Text, Tuple, TypeVar
 from abc import ABC, abstractmethod
 from gymnasium import spaces
@@ -33,13 +33,27 @@ class EnvConfig:
     min_spawn_distance: int = 10
     max_spawn_distance: int = 50
     sim_frequency: int = 100
+
+    low_rel_x: float = -300.0
+    high_rel_x: float = 300.0
+
+    low_rel_y: float = -300.0
+    high_rel_y: float = 300.0
+
+    low_rel_z: float = -300.0
+    high_rel_z: float = 300.0
+
     low_rel_pos: float = 0.0
     high_rel_pos: float = 500.0
+
     low_rel_vel: float = 0.0
     high_rel_vel: float = 100.0
+
     low_rel_att: float = 0.0
+
     high_rel_att: float = 2 * np.pi
     sim_end_time: float = 30.0
+
     # multiply by 1/freq * num_env_steps to get total sim time
     num_env_steps: int = int(sim_end_time*sim_frequency)
 
@@ -82,6 +96,7 @@ class AbstractBattleEnv(gymnasium.Env):
         self.config_file_dir: str = config_file_dir
         self.config = self.default_config()
         self.current_step: int = 0
+        self.aircraft_config: str = aircraft_config_dir
         self.control_limits, self.state_limits = self.load_limit_config(
             aircraft_config_dir)
         self.pursuer_config_dir: str = pursuer_config_dir
@@ -115,6 +130,8 @@ class AbstractBattleEnv(gymnasium.Env):
 
     def default_config(self) -> EnvConfig:
         # Path to the YAML configuration file
+        # get the current directory
+        cwd = os.getcwd()
         config_file = 'config/' + self.config_file_dir
         try:
             # Read the YAML configuration file
@@ -124,6 +141,7 @@ class AbstractBattleEnv(gymnasium.Env):
             raise FileNotFoundError(
                 f"Configuration file '{config_file}' not found.")
         except yaml.YAMLError:
+            agent
             raise ValueError(
                 f"Configuration file '{config_file}' is not a valid YAML file.")
 
@@ -318,6 +336,9 @@ class DynamicThreatAvoidance(AbstractBattleEnv):
         self.ctrl_time_index = int(self.ctrl_time * self.config.sim_frequency)
         self.ctrl_counter: int = 0  # control counter
 
+    def get_freq(self) -> int:
+        return self.config.sim_frequency
+
     def __getstate__(self):
         # Copy the object's state and remove unpicklable parts
         state = self.__dict__.copy()
@@ -455,6 +476,23 @@ class DynamicThreatAvoidance(AbstractBattleEnv):
         return self.get_agent_observation_space(controlled_agent.id)
 
     def get_agent_observation_space(self, agent_id: int) -> spaces.Box:
+        """
+        Observation Space for the agent will be:
+        - x
+        - y
+        - z 
+        - roll
+        - pitch
+        - yaw
+        - speed
+        - vx
+        - vy 
+        - vz
+        - relative distance from pursuer 
+        - relative heading from pursuer
+        - relative velocity from pursuer
+
+        """
         high_obs: List[float] = []
         low_obs: List[float] = []
         agent: Agent = self.battlespace.all_agents[agent_id]
@@ -466,14 +504,39 @@ class DynamicThreatAvoidance(AbstractBattleEnv):
             # we need to store the relative position, heading, and velocity of evader
             # adding this into the observation space
             for i in range(n_evaders):
+
+                low_rel_x = self.config.low_rel_x
+                high_rel_x = self.config.high_rel_x
+
+                low_rel_y = self.config.low_rel_y
+                high_rel_y = self.config.high_rel_y
+
+                low_rel_z = self.config.low_rel_z
+                high_rel_z = self.config.high_rel_z
+
                 low_rel_pos = self.config.low_rel_pos
                 high_rel_pos = self.config.high_rel_pos
+
                 low_rel_vel = self.config.low_rel_vel
                 high_rel_vel = self.config.high_rel_vel
+
                 low_rel_heading = self.config.low_rel_att
                 high_rel_heading = self.config.high_rel_att
-                low = [low_rel_pos, low_rel_vel, low_rel_heading]
-                high = [high_rel_pos, high_rel_vel, high_rel_heading]
+
+                low = [low_rel_x,
+                       low_rel_y,
+                       low_rel_z,
+                       low_rel_pos,
+                       low_rel_vel,
+                       low_rel_heading]
+                # high = [high_rel_pos, high_rel_vel, high_rel_heading]
+                high = [high_rel_x,
+                        high_rel_y,
+                        high_rel_z,
+                        high_rel_pos,
+                        high_rel_vel,
+                        high_rel_heading]
+
                 low_obs.extend(low)
                 high_obs.extend(high)
         else:
@@ -482,14 +545,38 @@ class DynamicThreatAvoidance(AbstractBattleEnv):
 
             n_pursuers = self.config.num_pursuers
             for i in range(n_pursuers):
+                low_rel_x = self.config.low_rel_x
+                high_rel_x = self.config.high_rel_x
+
+                low_rel_y = self.config.low_rel_y
+                high_rel_y = self.config.high_rel_y
+
+                low_rel_z = self.config.low_rel_z
+                high_rel_z = self.config.high_rel_z
+
                 low_rel_pos = self.config.low_rel_pos
                 high_rel_pos = self.config.high_rel_pos
+
                 low_rel_vel = self.config.low_rel_vel
                 high_rel_vel = self.config.high_rel_vel
+
                 low_rel_heading = self.config.low_rel_att
                 high_rel_heading = self.config.high_rel_att
-                low = [low_rel_pos, low_rel_vel, low_rel_heading]
-                high = [high_rel_pos, high_rel_vel, high_rel_heading]
+
+                low = [low_rel_x,
+                       low_rel_y,
+                       low_rel_z,
+                       low_rel_pos,
+                       low_rel_vel,
+                       low_rel_heading]
+                # high = [high_rel_pos, high_rel_vel, high_rel_heading]
+                high = [high_rel_x,
+                        high_rel_y,
+                        high_rel_z,
+                        high_rel_pos,
+                        high_rel_vel,
+                        high_rel_heading]
+
                 low_obs.extend(low)
                 high_obs.extend(high)
 
@@ -520,10 +607,21 @@ class DynamicThreatAvoidance(AbstractBattleEnv):
         for other_agent in self.battlespace.all_agents:
             if other_agent.id == agent_id or not other_agent.is_pursuer:
                 continue
+            dx = other_agent.state_vector.x - agent.state_vector.x
+            dy = other_agent.state_vector.y - agent.state_vector.y
+            dz = other_agent.state_vector.z - agent.state_vector.z
+
             # pursuer: Pursuer = other_agent
             rel_distance: float = other_agent.distance_to(agent)
             rel_velocity: float = agent.state_vector.speed - other_agent.state_vector.speed
             rel_heading: float = other_agent.heading_difference(agent)
+
+            dx: float = np.clip(dx, self.config.low_rel_x,
+                                self.config.high_rel_x)
+            dy: float = np.clip(dy, self.config.low_rel_y,
+                                self.config.high_rel_y)
+            dz: float = np.clip(dz, self.config.low_rel_z,
+                                self.config.high_rel_z)
 
             # clip distance
             rel_distance: float = np.clip(rel_distance, self.config.low_rel_pos,
@@ -534,7 +632,7 @@ class DynamicThreatAvoidance(AbstractBattleEnv):
                                          self.config.high_rel_att)
 
             observation = np.append(
-                observation, [rel_distance, rel_velocity, rel_heading])
+                observation, [dx, dy, dz, rel_distance, rel_velocity, rel_heading])
 
         # clip airspeed
         observation[ObservationIndex.AIRSPEED.value] = np.clip(
@@ -571,9 +669,13 @@ class DynamicThreatAvoidance(AbstractBattleEnv):
         # closest_pursuer: int = np.argmin(rel_distances)
 
         distance_reward: float = closest_distance - self.old_distance_from_pursuer
-        reward: float = distance_reward + time_reward
+        self.old_distance_from_pursuer = closest_distance
+        reward: float = distance_reward * 0.1
 
         return reward
+
+    def altitude_reward(self, obs: np.ndarray) -> float:
+        pass
 
     def get_info(self) -> Dict:
         info_dict: Dict = {}

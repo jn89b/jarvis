@@ -1,13 +1,13 @@
 from setuptools import find_packages, setup
 
-with open("aircraftsim/README.md", "r") as f:
+with open("jarvis/README.md", "r") as f:
     long_description = f.read()
 
 setup(
-    name="aircraftsim",
+    name="Jarvis",
     version="1.0.01",
-    description="A wrapper that utilizes JSBSim or Kinematics \
-        to simulate aircraft dynamics",
+    description="Used to train AI for UAV \
+        applications",
     packages=find_packages(),
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -31,7 +31,7 @@ setup(
         "Shapely>=2.0.6",
         "simple_pid>=2.0.1"],
     extras_require={
-        "dev": ["pytest>=7.0", "twine>=4.0.2"],
+        "dev": ["pytest>=7.0", "twine>=4.0.2", "unittest>=2.0.1"],
     },
     python_requires=">=3.10",
 )
