@@ -9,7 +9,8 @@ import os
 import matplotlib
 import time
 import json
-
+from matplotlib.animation import FuncAnimation
+from matplotlib.gridspec import GridSpec
 from typing import Dict, Any, List, Tuple
 from torch.utils.data import DataLoader
 from jarvis.transformers.evaderformer2 import EvaderFormer
@@ -216,7 +217,7 @@ data_info = dataset.data_info
 keys = list(data_info.keys())
 # get all the values of the first key
 # 30 is FUCKING WILD
-samples = data_info[keys[30]] # this is 30
+samples = data_info[keys[10]] # this is 30
 ego = AgentHistory()
 pursuer_1 = AgentHistory()
 pursuer_2 = AgentHistory()
@@ -325,7 +326,7 @@ ax.legend()
 ax.set_title("Attention Scores for Pursuers")
 
 # Let's look at the error between the predicted waypoints and the actual waypoints
-fig, ax = plt.subplots(3, 1, figsize=(10, 15))
+fig, ax = plt.subplots(3, 1, figsize=(10, 12))
 # ax[0].plot(ego.pred_waypoints_x, label='Predicted Waypoints X')
 # ax[0].plot(ego.waypoints_x, label='Actual Waypoints X')
 error_x = np.abs(np.array(ego.pred_waypoints_x) -
@@ -342,12 +343,6 @@ mse_y = np.mean(error_y)
 ax[1].plot(error_y, label='Error Y')
 ax[1].set_title(f"Y Coordinates, MSE: {mse_y:.2f}")
 
-# ax[2].plot(ego.pred_waypoints_x, ego.pred_waypoints_y,
-#            label='Predicted Waypoints')
-# ax[2].plot(ego.waypoints_x, ego.waypoints_y, label='Actual Waypoints')
-# ax[2].plot(ego.pred_waypoints_x, ego.pred_waypoints_y,
-#            label='Predicted Waypoints')
-# ax[2].set_title("Predicted vs Actual Waypoints")
 error_z = np.abs(np.array(ego.pred_waypoints_x) -
                  np.array(ego.waypoints_x))
 mse_z = np.mean(error_z)
@@ -477,40 +472,136 @@ for a in ax:
 
 # plt.show()
 
-# Set up the 3D figure
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
+# # Set up the 3D figure
+# fig = plt.figure()
+# ax = fig.add_subplot(111, projection='3d')
 
-# Set up color normalization and colormap
+# # Set up color normalization and colormap
+# norm = Normalize(vmin=0, vmax=0.6)
+# cmap = plt.get_cmap("plasma")
+
+# # Initialize lines for ego and pursuers
+# ego_line, = ax.plot([], [], [], label='Ego', color='blue')
+# pursuer_1_line, = ax.plot([], [], [], label='Pursuer 1',
+#                           color='red', linestyle='--')  # Dashed line
+# pursuer_2_line, = ax.plot([], [], [], label='Pursuer 2',
+#                           color='orange', linestyle=':')  # Dotted line
+# pursuer_3_line, = ax.plot([], [], [], label='Pursuer 3',
+#                           color='green', linestyle='-.')  # Dash-dot line
+
+# # Color bar setup
+# # Color bar setup
+# sm = ScalarMappable(norm=norm, cmap=cmap)
+# sm.set_array([])  # Dummy array for color bar
+# cbar = fig.colorbar(sm, ax=ax, label="Attention Score")
+
+# # Set limits for the 3D plot
+# ax.set_xlim(-200, 400)
+# ax.set_ylim(-200, 400)
+# ax.set_zlim(-30, 30)  # Adjust Z limits based on your data
+
+# # Set labels for axes
+# ax.set_xlabel("X")
+# ax.set_ylabel("Y")
+# ax.set_zlabel("Z")
+
+
+# def init():
+#     ego_line.set_data([], [])
+#     ego_line.set_3d_properties([])
+#     pursuer_1_line.set_data([], [])
+#     pursuer_1_line.set_3d_properties([])
+#     pursuer_2_line.set_data([], [])
+#     pursuer_2_line.set_3d_properties([])
+#     pursuer_3_line.set_data([], [])
+#     pursuer_3_line.set_3d_properties([])
+#     return ego_line, pursuer_1_line, pursuer_2_line, pursuer_3_line
+
+# # Update function for the animation
+
+# def update(frame):
+#     # show only the last 20 frames
+#     last_frame = 75
+#     if frame < last_frame:
+#         start_frame = 0
+#     else:
+#         start_frame = frame - last_frame
+#     # Ego vehicle update
+#     ego_line.set_data(ego.x[start_frame:frame], ego.y[start_frame:frame])
+#     ego_line.set_3d_properties(ego.z[start_frame:frame])
+
+#     # Pursuer updates
+#     frame_span = slice(start_frame, frame)
+#     pursuer_1_line.set_data(pursuer_1.x[frame_span], pursuer_1.y[frame_span])
+#     pursuer_1_line.set_3d_properties(pursuer_1.z[frame_span])
+
+#     pursuer_2_line.set_data(pursuer_2.x[frame_span], pursuer_2.y[frame_span])
+#     pursuer_2_line.set_3d_properties(pursuer_2.z[frame_span])
+
+#     pursuer_3_line.set_data(pursuer_3.x[frame_span], pursuer_3.y[frame_span])
+#     pursuer_3_line.set_3d_properties(pursuer_3.z[frame_span])
+
+#     # Update line colors based on attention scores
+#     pursuer_1_color = cmap(norm(pursuer_1.attention_scores[frame]))
+#     pursuer_2_color = cmap(norm(pursuer_2.attention_scores[frame]))
+#     pursuer_3_color = cmap(norm(pursuer_3.attention_scores[frame]))
+#     pursuer_1_line.set_color(pursuer_1_color)
+#     pursuer_2_line.set_color(pursuer_2_color)
+#     pursuer_3_line.set_color(pursuer_3_color)
+
+#     return ego_line, pursuer_1_line, pursuer_2_line, pursuer_3_line
+
+
+# # Create animation
+# ani = animation.FuncAnimation(fig, update, frames=len(ego.x),
+#                               init_func=init, blit=True, interval=40)
+
+# ax.legend()
+# plt.show()
+# Set up the figure with a 3D subplot and a bar chart subplot
+fig = plt.figure(figsize=(12, 6))
+gs = GridSpec(1, 2, width_ratios=[1, 1])  # 2 columns: 3D plot and bar chart
+
+# 3D plot on the right
+ax_3d = fig.add_subplot(gs[1], projection='3d')
+
+# Bar chart on the left
+ax_bar = fig.add_subplot(gs[0])
+ax_bar.set_ylim(0, 0.6)  # Attention score range
+bar_labels = ['Pursuer 1', 'Pursuer 2', 'Pursuer 3']
+bars = ax_bar.bar(bar_labels, [0, 0, 0], color=['red', 'orange', 'green'])
+ax_bar.set_ylabel('Attention Score')
+ax_bar.set_title('Attention Values')
+
+# Set up color normalization and colormap for the 3D plot
 norm = Normalize(vmin=0, vmax=0.6)
 cmap = plt.get_cmap("plasma")
 
 # Initialize lines for ego and pursuers
-ego_line, = ax.plot([], [], [], label='Ego', color='blue')
-pursuer_1_line, = ax.plot([], [], [], label='Pursuer 1',
-                          color='red', linestyle='--')  # Dashed line
-pursuer_2_line, = ax.plot([], [], [], label='Pursuer 2',
-                          color='orange', linestyle=':')  # Dotted line
-pursuer_3_line, = ax.plot([], [], [], label='Pursuer 3',
-                          color='green', linestyle='-.')  # Dash-dot line
+ego_line, = ax_3d.plot([], [], [], label='Ego', color='blue')
+pursuer_1_line, = ax_3d.plot([], [], [], label='Pursuer 1',
+                             color='red')  # Dashed line
+pursuer_2_line, = ax_3d.plot([], [], [], label='Pursuer 2',
+                             color='orange')  # Dotted line
+pursuer_3_line, = ax_3d.plot([], [], [], label='Pursuer 3',
+                             color='green')  # Dash-dot line
 
 # Color bar setup
-# Color bar setup
-sm = ScalarMappable(norm=norm, cmap=cmap)
-sm.set_array([])  # Dummy array for color bar
-cbar = fig.colorbar(sm, ax=ax, label="Attention Score")
+# sm = ScalarMappable(norm=norm, cmap=cmap)
+# sm.set_array([])  # Dummy array for color bar
+# cbar = fig.colorbar(sm, ax=ax_3d, label="Attention Score")
 
 # Set limits for the 3D plot
-ax.set_xlim(-400, 400)
-ax.set_ylim(-400, 400)
-ax.set_zlim(-30, 30)  # Adjust Z limits based on your data
+ax_3d.set_xlim(-300, 400)
+ax_3d.set_ylim(-300, 400)
+ax_3d.set_zlim(-30, 30)  # Adjust Z limits based on your data
 
 # Set labels for axes
-ax.set_xlabel("X")
-ax.set_ylabel("Y")
-ax.set_zlabel("Z")
+ax_3d.set_xlabel("X")
+ax_3d.set_ylabel("Y")
+ax_3d.set_zlabel("Z")
 
-
+# Animation initialization function
 def init():
     ego_line.set_data([], [])
     ego_line.set_3d_properties([])
@@ -520,40 +611,60 @@ def init():
     pursuer_2_line.set_3d_properties([])
     pursuer_3_line.set_data([], [])
     pursuer_3_line.set_3d_properties([])
-    return ego_line, pursuer_1_line, pursuer_2_line, pursuer_3_line
+    for bar in bars:
+        bar.set_height(0)  # Initialize bar heights to zero
+    return ego_line, pursuer_1_line, pursuer_2_line, pursuer_3_line, *bars
 
 # Update function for the animation
-
-
 def update(frame):
-    # Ego vehicle update
-    ego_line.set_data(ego.x[:frame], ego.y[:frame])
-    ego_line.set_3d_properties(ego.z[:frame])
+    # Define the frame range for trailing effect
+    last_frame = 75
+    start_frame = max(0, frame - last_frame)
+    frame_span = slice(start_frame, frame)
 
-    # Pursuer updates
-    pursuer_1_line.set_data(pursuer_1.x[:frame], pursuer_1.y[:frame])
-    pursuer_1_line.set_3d_properties(pursuer_1.z[:frame])
+    # Update 3D trajectories
+    ego_line.set_data(ego.x[frame_span], ego.y[frame_span])
+    ego_line.set_3d_properties(ego.z[frame_span])
 
-    pursuer_2_line.set_data(pursuer_2.x[:frame], pursuer_2.y[:frame])
-    pursuer_2_line.set_3d_properties(pursuer_2.z[:frame])
+    pursuer_1_line.set_data(pursuer_1.x[frame_span], pursuer_1.y[frame_span])
+    pursuer_1_line.set_3d_properties(pursuer_1.z[frame_span])
 
-    pursuer_3_line.set_data(pursuer_3.x[:frame], pursuer_3.y[:frame])
-    pursuer_3_line.set_3d_properties(pursuer_3.z[:frame])
+    pursuer_2_line.set_data(pursuer_2.x[frame_span], pursuer_2.y[frame_span])
+    pursuer_2_line.set_3d_properties(pursuer_2.z[frame_span])
+
+    pursuer_3_line.set_data(pursuer_3.x[frame_span], pursuer_3.y[frame_span])
+    pursuer_3_line.set_3d_properties(pursuer_3.z[frame_span])
 
     # Update line colors based on attention scores
-    pursuer_1_color = cmap(norm(pursuer_1.attention_scores[frame]))
-    pursuer_2_color = cmap(norm(pursuer_2.attention_scores[frame]))
-    pursuer_3_color = cmap(norm(pursuer_3.attention_scores[frame]))
+    # pursuer_1_color = cmap(norm(pursuer_1.attention_scores[frame]))
+    # pursuer_2_color = cmap(norm(pursuer_2.attention_scores[frame]))
+    # pursuer_3_color = cmap(norm(pursuer_3.attention_scores[frame]))
+    pursuer_1_color = 'red'
+    pursuer_2_color = 'orange'
+    pursuer_3_color = 'green'
     pursuer_1_line.set_color(pursuer_1_color)
     pursuer_2_line.set_color(pursuer_2_color)
     pursuer_3_line.set_color(pursuer_3_color)
 
-    return ego_line, pursuer_1_line, pursuer_2_line, pursuer_3_line
+    # Update bar chart
+    bar_heights = [
+        pursuer_1.attention_scores[frame],
+        pursuer_2.attention_scores[frame],
+        pursuer_3.attention_scores[frame],
+    ]
+    for bar, height in zip(bars, bar_heights):
+        bar.set_height(height)
 
+    return ego_line, pursuer_1_line, pursuer_2_line, pursuer_3_line, *bars
 
 # Create animation
-ani = animation.FuncAnimation(fig, update, frames=len(ego.x),
-                              init_func=init, blit=True, interval=40)
+ani = FuncAnimation(fig, update, frames=len(ego.x),
+                    init_func=init, blit=True, interval=40)
 
-ax.legend()
+ax_3d.legend()
+plt.tight_layout()
+#save the video
+writervideo = animation.FFMpegWriter(fps=60) 
+ani.save('3d_animation.mp4', writer=writervideo)
 plt.show()
+

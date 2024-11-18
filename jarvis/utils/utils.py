@@ -1,7 +1,7 @@
 import numpy as np
 from stable_baselines3.common.running_mean_std import RunningMeanStd
 from stable_baselines3.common.vec_env import VecNormalize
-
+from typing import List
 # def normalize_obs(self, obs: np.ndarray, obs_rms: RunningMeanStd) -> np.ndarray:
 #     """
 #     Helper to normalize observation.
