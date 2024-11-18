@@ -217,7 +217,7 @@ data_info = dataset.data_info
 keys = list(data_info.keys())
 # get all the values of the first key
 # 30 is FUCKING WILD
-samples = data_info[keys[10]] # this is 30
+samples = data_info[keys[10]]  # this is 30
 ego = AgentHistory()
 pursuer_1 = AgentHistory()
 pursuer_2 = AgentHistory()
@@ -592,8 +592,8 @@ pursuer_3_line, = ax_3d.plot([], [], [], label='Pursuer 3',
 # cbar = fig.colorbar(sm, ax=ax_3d, label="Attention Score")
 
 # Set limits for the 3D plot
-ax_3d.set_xlim(-300, 400)
-ax_3d.set_ylim(-300, 400)
+ax_3d.set_xlim(-500, 400)
+ax_3d.set_ylim(-500, 400)
 ax_3d.set_zlim(-30, 30)  # Adjust Z limits based on your data
 
 # Set labels for axes
@@ -602,6 +602,8 @@ ax_3d.set_ylabel("Y")
 ax_3d.set_zlabel("Z")
 
 # Animation initialization function
+
+
 def init():
     ego_line.set_data([], [])
     ego_line.set_3d_properties([])
@@ -616,6 +618,8 @@ def init():
     return ego_line, pursuer_1_line, pursuer_2_line, pursuer_3_line, *bars
 
 # Update function for the animation
+
+
 def update(frame):
     # Define the frame range for trailing effect
     last_frame = 75
@@ -657,14 +661,14 @@ def update(frame):
 
     return ego_line, pursuer_1_line, pursuer_2_line, pursuer_3_line, *bars
 
+
 # Create animation
 ani = FuncAnimation(fig, update, frames=len(ego.x),
                     init_func=init, blit=True, interval=40)
 
 ax_3d.legend()
 plt.tight_layout()
-#save the video
-writervideo = animation.FFMpegWriter(fps=60) 
-ani.save('3d_animation.mp4', writer=writervideo)
+# save the video
+# writervideo = animation.FFMpegWriter(fps=60)
+# ani.save('3d_animation.mp4', writer=writervideo)
 plt.show()
-
