@@ -7,14 +7,15 @@ import yaml
 import torch
 import os
 import matplotlib
+import einops
 import time
 import json
 from matplotlib.animation import FuncAnimation
 from matplotlib.gridspec import GridSpec
 from typing import Dict, Any, List, Tuple
 from torch.utils.data import DataLoader
-from jarvis.transformers.evaderformer2 import EvaderFormer
-from jarvis.datasets.base_dataset import PlanTDataset, UAVTDataset
+from jarvis.transformers.evaderformer2 import HEvadrFormer
+from jarvis.datasets.base_dataset import PlanTDataset, HATDataset
 plt.close('all')
 
 
@@ -84,13 +85,13 @@ def compute_attention_scores(attention_map: Tuple[torch.tensor]) -> np.ndarray:
     # normalize the scores
     normalized_scores = avg_relevance_scores / avg_relevance_scores.sum()
 
-    normalized_scores[0] = 0
+    # normalized_scores[0] = 0
     sum_normalized_scores = normalized_scores.sum()
-    new_normalized_scores = normalized_scores / sum_normalized_scores
+    # new_normalized_scores = normalized_scores / sum_normalized_scores
 
     # disregard the first index
 
-    return new_normalized_scores
+    return normalized_scores
 
 
 # matplotlib.use('TkAgg')
@@ -100,13 +101,13 @@ with open(data_config_path, 'r') as f:
     data_config = yaml.safe_load(f)
 
 # Set up the dataset and dataloader
-dataset = UAVTDataset(config=data_config, is_validation=False)
+dataset = HATDataset(config=data_config, is_validation=False)
 dataloader = DataLoader(dataset, batch_size=1,
                         shuffle=False, collate_fn=dataset.collate_fn)
 
 # Load the latest checkpoint
 # checkpoint_dir = "evader_former_checkpoint/"
-checkpoint_dir = "uavt_checkpoint/"
+checkpoint_dir = "havt_checkpoint/"
 checkpoint_files = sorted(
     [os.path.join(checkpoint_dir, f)
      for f in os.listdir(checkpoint_dir) if f.endswith(".ckpt")],
@@ -120,7 +121,7 @@ if checkpoint_files:
     print(f"Loading model from checkpoint: {latest_checkpoint}")
 
     # Load the model directly from the checkpoint using the class method
-    model = EvaderFormer.load_from_checkpoint(
+    model = HEvadrFormer.load_from_checkpoint(
         latest_checkpoint, config=model_config)
 else:
     raise FileNotFoundError("No checkpoint found in the directory.")
@@ -133,6 +134,7 @@ model.eval()  # Set the model to evaluation mode
 # Run inference on a batch
 with torch.no_grad():  # Disable gradient calculation for inference
     for i, batch in enumerate(dataloader):
+
         # idx, target, waypoints = batch['input'], batch['output'], batch['waypoints']
         # print("Predicted Waypoints:", predicted_waypoints)
         # print("Attention Map:", attn_map)  # This is the attention values
@@ -185,7 +187,7 @@ with torch.no_grad():  # Disable gradient calculation for inference
         # normalize the scores
         normalized_scores = avg_relevance_scores / avg_relevance_scores.sum()
 
-        pursuer_indices = [1, 2, 3]
+        pursuer_indices = [0, 1, 2]
         # Extract relevance scores for pursuers
         # Shape: (number of pursuers,)
         pursuer_relevance_scores = normalized_scores[pursuer_indices]
@@ -219,7 +221,7 @@ data_info = dataset.data_info
 keys = list(data_info.keys())
 # get all the values of the first key
 # 30 is FUCKING WILD
-samples = data_info[keys[10]]  # this is 30
+samples = data_info[keys[5]]  # this is 30
 ego = AgentHistory()
 pursuer_1 = AgentHistory()
 pursuer_2 = AgentHistory()
@@ -255,6 +257,7 @@ for i, s in enumerate(samples):
     inference_time.append(final_time - start_time)
     # print(f"Time taken for inference: {time.time() - start_time:.2f} seconds")
     norm_attention_scores = compute_attention_scores(attn_map)
+    print(norm_attention_scores)
     pursuer_relevance_scores = norm_attention_scores[pursuer_indices]
 
     # because the waypoints are in relative coordinates, we need to map them back to global coordinates
@@ -278,7 +281,7 @@ for i, s in enumerate(samples):
 
     # store the pursuer's information which is stored in the input
     # each row consists of a pursuer's information
-    pursuers = list(batch['input'][0].detach().numpy())
+    pursuers = list(batch['deconstructed'][0].detach().numpy())
     for i, p in enumerate(pursuers):
         # we need to unbias the pursuer's position
         x_idx: int = 2

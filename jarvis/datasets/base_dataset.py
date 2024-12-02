@@ -1031,7 +1031,6 @@ class UAVTDataset(Dataset):
                 vehicle_state_norm[roll_idx] = np.deg2rad(vehicle[roll_idx])
                 vehicle_state_norm[pitch_idx] = np.deg2rad(vehicle[pitch_idx])
                 vehicle_state_norm[yaw_idx] = np.deg2rad(vehicle[yaw_idx])
-
                 # keep everything else the same
                 vehicle_attributes.append(
                     ObjectTypes.PURSUERS.value)  # Example object type
@@ -1060,7 +1059,6 @@ class UAVTDataset(Dataset):
     def collate_fn(self, data_batch):
         input_batch, output_batch = [], []
         bias_batch = []
-
         for element_id, sample in enumerate(data_batch):
             input_item = torch.tensor(sample["input"], dtype=torch.float32)
             output_item = torch.tensor(sample["output"])
@@ -1073,6 +1071,7 @@ class UAVTDataset(Dataset):
             input_batch.append(torch.cat([input_indices, input_item], dim=1))
             output_batch.append(
                 torch.cat([output_indices, output_item], dim=1))
+
         waypoints_batch = torch.tensor(
             [sample["waypoints"] for sample in data_batch])
 
@@ -1086,4 +1085,130 @@ class UAVTDataset(Dataset):
             'output': output_batch,
             'waypoints': waypoints_batch,
             'bias_position': bias_batch
+        }
+
+
+class HATDataset(UAVTDataset):
+    def __init__(self, config: Dict[str, Any],
+                 is_validation: bool = False,
+                 include_ego: bool = False,
+                 num_waypoints: int = 4) -> None:
+        super().__init__(config, is_validation, include_ego, num_waypoints)
+
+    def process_data(self, idx: int, data: List, filename: str) -> Dict[str, Any]:
+        """
+        Process data for a single sample.
+        """
+        sample: Dict[str, Any] = {
+            'scene_id': None,
+            'input': [],
+            'output': [],
+            'waypoints': [],
+            'deconstructed': [],
+            'bias_position': None,
+            'filename': filename,
+            'idx': idx
+        }
+        roll_idx: int = UAVStateIndex.ROLL.value
+        pitch_idx: int = UAVStateIndex.PITCH.value
+        yaw_idx: int = UAVStateIndex.YAW.value
+        speed_idx: int = UAVStateIndex.VEL.value
+
+        current_data: Dict[str, Any] = data[idx]
+
+        if 'ego' in current_data:
+            bias_position = current_data['ego']
+            sample['bias_position'] = bias_position
+
+        # TODO: I'm not really using the ego information right now??
+        if 'vehicles' in current_data:
+            for vehicle in current_data['vehicles']:
+                vehicle_attributes: List[float] = []
+                vehicle_state_norm = np.array(
+                    vehicle) - np.array(bias_position)
+
+                lat_distance: float = np.linalg.norm(vehicle_state_norm[0:2])
+                dz: float = vehicle_state_norm[2]
+
+                vehicle_state_norm = vehicle_state_norm.tolist()
+                vehicle_state_norm[3:] = vehicle[3:]
+                vehicle_state_norm[roll_idx] = np.deg2rad(vehicle[roll_idx])
+                vehicle_state_norm[pitch_idx] = np.deg2rad(vehicle[pitch_idx])
+                vehicle_state_norm[yaw_idx] = np.deg2rad(vehicle[yaw_idx])
+                # keep everything else the same
+                # For this dataset we will have the following attributes:
+                # - Object type
+                # - Lateral distance
+                # - dz
+                # - pitch
+                # - yaw
+                vehicle_attributes.append(
+                    ObjectTypes.PURSUERS.value)  # Example object type
+                vehicle_attributes.append(lat_distance)
+                vehicle_attributes.append(dz)
+                vehicle_attributes.append(vehicle[pitch_idx])
+                vehicle_attributes.append(vehicle[yaw_idx])
+                vehicle_attributes.append(vehicle[speed_idx])
+                # vehicle_attributes.extend(vehicle_state_norm)
+                sample['input'].append(vehicle_attributes)
+                some_list: List = []
+                some_list.append(ObjectTypes.PURSUERS.value)
+                some_list.extend(vehicle_state_norm)
+                sample['deconstructed'].append(some_list)
+
+        # Add waypoints from the following frames
+        next_waypoints = idx + self.num_waypoints
+        for i in range(idx, next_waypoints):
+            next_data = data[i]
+            if 'ego' in next_data:
+                waypoints = next_data['ego']
+                waypoints_norm = np.array(waypoints) - np.array(bias_position)
+                # convert back to list
+                waypoints_norm = waypoints_norm.tolist()
+                sample['waypoints'].append(waypoints_norm[0:3])
+
+        return sample
+
+    def collate_fn(self, data_batch):
+        input_batch, output_batch = [], []
+        bias_batch = []
+        deconstructed_batch = []
+        for element_id, sample in enumerate(data_batch):
+            input_item = torch.tensor(sample["input"], dtype=torch.float32)
+            
+            deconstructed_item = torch.tensor(
+                sample["deconstructed"], dtype=torch.float32)
+            
+            output_item = torch.tensor(sample["output"])
+
+            input_indices = torch.tensor(
+                [element_id] * len(input_item)).unsqueeze(1)
+            output_indices = torch.tensor(
+                [element_id] * len(output_item)).unsqueeze(1)
+
+            deconstructed_indices = torch.tensor(
+                [element_id] * len(deconstructed_item)).unsqueeze(1)
+            
+            input_batch.append(torch.cat([input_indices, input_item], dim=1))
+            
+            output_batch.append(
+                torch.cat([output_indices, output_item], dim=1))
+            
+            deconstructed_batch.append(
+                torch.cat([deconstructed_indices, deconstructed_item], dim=1))
+
+        waypoints_batch = torch.tensor(
+            [sample["waypoints"] for sample in data_batch])
+
+        bias_batch = torch.tensor([sample["bias_position"]
+                                   for sample in data_batch])
+        # input_batch = torch.stack(input_batch)
+        output_batch = torch.stack(output_batch)
+
+        return {
+            'input': input_batch,
+            'output': output_batch,
+            'waypoints': waypoints_batch,
+            'bias_position': bias_batch,
+            'deconstructed': deconstructed_batch
         }

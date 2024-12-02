@@ -3,12 +3,16 @@ From the paper:
     For PlanT, we extract the
     relevance score by adding the attention weights of all layers and
     heads for the [CLS] token.
+https://medium.com/@geetkal67/attention-networks-a-simple-way-to-understand-self-attention-f5fb363c736d
+
 """
+from typing import Tuple
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
+import math
 from torch.nn.utils.rnn import pad_sequence
 
 from einops import rearrange
@@ -58,7 +62,6 @@ class EvaderFormer(pl.LightningModule):
             input_size=self.num_wps_predict, hidden_size=65)
         self.wp_relu = nn.ReLU()
         self.wp_output = nn.Linear(65, self.wp_size)
-
         self.criterion = nn.L1Loss()  # L1 loss for waypoint prediction
 
     def pad_sequence_batch(self, x_batched):
@@ -102,7 +105,6 @@ class EvaderFormer(pl.LightningModule):
     def forward(self, batch, target=None):
         idx = batch['input']
         waypoints = batch['waypoints']
-
         x_batched = torch.cat(idx, dim=0)
         input_batch = self.pad_sequence_batch(x_batched)
         # we get the object types from this line
@@ -196,3 +198,298 @@ class EvaderFormer(pl.LightningModule):
             final_div_factor=10
         )
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
+
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, d_model, num_heads):
+        super(MultiHeadAttention, self).__init__()
+        assert d_model % num_heads == 0, "d_model must be divisible by num_heads"
+
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.d_k = d_model // num_heads
+
+        self.W_q = nn.Linear(d_model, d_model)
+        self.W_k = nn.Linear(d_model, d_model)
+        self.W_v = nn.Linear(d_model, d_model)
+        self.W_o = nn.Linear(d_model, d_model)
+
+    def scaled_dot_product_attention(self, Q, K, V, mask=None):
+        attn_scores = torch.matmul(
+            Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
+
+        if mask is not None:
+            attn_scores = attn_scores.masked_fill(mask == 0, -1e9)
+
+        attn_probs = F.softmax(attn_scores, dim=-1)
+        output = torch.matmul(attn_probs, V)
+        return output
+
+    def split_heads(self, x):
+        batch_size, seq_length, d_model = x.size()
+        return x.view(batch_size, seq_length, self.num_heads, self.d_k).transpose(1, 2)
+
+    def combine_heads(self, x):
+        batch_size, num_heads, seq_length, d_k = x.size()
+        return x.transpose(1, 2).contiguous().view(batch_size, seq_length, self.d_model)
+
+    def forward(self, Q, K, V, mask=None):
+        Q = self.split_heads(self.W_q(Q))
+        K = self.split_heads(self.W_k(K))
+        V = self.split_heads(self.W_v(V))
+
+        attn_output = self.scaled_dot_product_attention(Q, K, V, mask)
+        output = self.W_o(self.combine_heads(attn_output))
+        return output
+
+
+class PursuerAttentionNetwork(nn.Module):
+    def __init__(self, n_attributes: int, d_model: int) -> None:
+        """
+        Initialize the Pursuer Attention Network.
+
+        Args:
+            n_attributes (int): Number of attributes (e.g., position, velocity, heading).
+            d_model (int): Higher-dimensional latent space for attention.
+        """
+        super(PursuerAttentionNetwork, self).__init__()
+        self.n_attributes = n_attributes
+        self.d_model = d_model
+
+        # Projection layers for Q, K, V
+        self.query_proj = nn.Linear(n_attributes, d_model)
+        self.key_proj = nn.Linear(n_attributes, d_model)
+        self.value_proj = nn.Linear(n_attributes, d_model)
+
+        # Back-projection to attribute space
+        self.output_proj = nn.Linear(d_model, n_attributes)
+
+        # Learnable attribute weights for scaling the final output
+        self.attr_weights = nn.Parameter(torch.ones(n_attributes))
+
+    def forward(self, pursuer_attributes: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass through the Pursuer Attention Network.
+
+        Args:
+            pursuer_attributes (torch.Tensor): Input tensor of shape
+                                               (batch_size, n_pursuers, n_attributes).
+
+        Returns:
+            torch.Tensor: Attention output of shape (batch_size, n_pursuers, n_attributes).
+        """
+        batch_size, n_pursuers, _ = pursuer_attributes.size()
+
+        # Project attributes into higher-dimensional space
+        # Shape: (batch_size, n_pursuers, d_model)
+        Q = self.query_proj(pursuer_attributes)
+        # Shape: (batch_size, n_pursuers, d_model)
+        K = self.key_proj(pursuer_attributes)
+        # Shape: (batch_size, n_pursuers, d_model)
+        V = self.value_proj(pursuer_attributes)
+
+        # Compute scaled dot-product attention
+        # Shape: (batch_size, n_pursuers, n_pursuers)
+        attention_scores = torch.matmul(
+            Q, K.transpose(-2, -1)) / (Q.size(-1) ** 0.5)
+        # Shape: (batch_size, n_pursuers, n_pursuers)
+        attention_probs = F.softmax(attention_scores, dim=-1)
+        # Apply attention to values
+        # Shape: (batch_size, n_pursuers, d_model)
+        attention_output = torch.matmul(attention_probs, V)
+        # Back-project to attribute space
+        # Shape: (batch_size, n_pursuers, n_attributes)
+        reduced_output = self.output_proj(attention_output)
+        # Scale by learnable attribute weights
+        # Shape: (batch_size, n_pursuers, n_attributes)
+        scaled_attention = reduced_output * \
+            self.attr_weights.unsqueeze(0).unsqueeze(0)
+        # apply softmax to the attention weights
+        # scaled_attention
+        return scaled_attention
+
+
+class HEvadrFormer(pl.LightningModule):
+    """
+    Hiearchial EvaderFormer:
+    Foundation of model is based from the paper:
+    https://www.cs.cmu.edu/~./hovy/papers/16HLT-hierarchical-attention-networks.pdf
+
+    Ideas:
+        - Each row would consist of :
+            - Features of the Pursuer [x, y, z, roll, pitch, yaw, v]
+            - Get the output of the transformer and the attention states
+            - Feed this into another attention layer
+    """
+
+    def __init__(self, config: Dict[str, Any]) -> None:
+        super().__init__()
+        self.config: Dict[str, Any] = config
+        self.config = config
+        self.num_attributes = 5  # x, y, z, roll, pitch, yaw, v
+        self.num_pursuers = config.get('num_pursuers', 3)
+        self.embedding_dim = config.get('embedding_dim', 512)
+
+        # Hugging Face Transformer
+        hf_checkpoint = 'prajjwal1/bert-medium'
+        self.transformer = AutoModel.from_pretrained(hf_checkpoint)
+
+        # Embedding layers for attributes
+        self.attr_emb = nn.Linear(
+            self.num_attributes, self.embedding_dim)
+        self.dropout = nn.Dropout(0.1)
+        self.num_wps_predict: int = 4
+        self.wp_size: int = 3
+        # Output decoder for waypoints
+        self.wp_head = nn.Linear(self.embedding_dim, 65)
+        self.wp_decoder = nn.GRUCell(
+            input_size=self.num_wps_predict, hidden_size=65)
+        self.wp_output = nn.Linear(65, self.wp_size)
+        self.criterion = nn.L1Loss()
+
+    def pad_sequence_batch(self, x_batched):
+        """
+        Pads a batch of sequences to the longest sequence in the batch.
+        """
+        # split input into components
+        x_batch_ids = x_batched[:, 0]
+
+        x_tokens = x_batched[:, 1:]
+
+        B = int(x_batch_ids[-1].item()) + 1
+        input_batch = []
+        for batch_id in range(B):
+            # get the batch of elements
+            x_batch_id_mask = x_batch_ids == batch_id
+
+            # get the batch of types
+            x_tokens_batch = x_tokens[x_batch_id_mask]
+
+            x_seq = torch.cat(
+                [self.cls_emb, x_tokens_batch], dim=0)
+
+            input_batch.append(x_seq)
+
+        # pad sequence is used to pad the sequence to the
+        # longest sequence in the batch
+        # so for example if we have a batch of 3 sequences
+        # with lengths 3, 4, 5
+        # the sequences will be padded to length 5
+        # so the output will be of size 5 x 3
+
+        # we then use swapaxes to get the batch first and then the sequence
+        # so for example if it was 3 x 1 x 5
+        # it will be 1 x 3 x 5
+        # I might use einops to do this instead
+
+        padded = torch.swapaxes(pad_sequence(input_batch), 0, 1)
+        input_batch = padded[:B]
+        # get a batch without the cls token
+        return input_batch
+
+    def forward(self, batch, target=None):
+        """
+        Args:
+            batch: dict with keys:
+                - input: (B, O, A), 
+                    where B=batch size, O=num pursuers, A=num attributes
+                - waypoints: Ground truth waypoints for training
+        Returns:
+            logits, predicted waypoints, attention maps
+        """
+        idx = batch['input']  # Shape: (B, O, A)
+        waypoints = batch['waypoints']
+        idx = torch.stack(idx, dim=0)
+        idx = idx[:, :, 2:]
+        # Flatten attributes for the Transformer
+        B, O, A = idx.shape
+        x_flat = rearrange(idx, "b o a -> b (o a) 1")
+        # Embed attributes
+        x_emb = self.attr_emb(x_flat)  # Shape: (B, O * A, embedding_dim)
+        x_emb = self.dropout(x_emb)
+        # x_emb = rearrange(x_emb, '(b t) h -> b t h', b=B,
+        #                   t=self.num_pursuers)  # Shape: (5, 3, 512)
+
+        # add one more dimension to the input
+        # Transformer forward pass
+        output = self.transformer(
+            **{"inputs_embeds": x_emb}, output_attentions=True)
+        x, attn_map = output.last_hidden_state, output.attentions
+        # Reshape back to (B, O, A, embedding_dim)
+        # Process waypoints
+        # Aggregate predictions over attributes
+        # get waypoint predictions
+
+        z = self.wp_head(x[:, 0, :])
+        # add traffic ligth flag
+        output_wp = list()
+
+        # initial input variable to GRU
+        x = torch.zeros(size=(z.shape[0], self.wp_size), dtype=z.dtype)
+        x = x.type_as(z)
+
+        # autoregressive generation of output waypoints
+        last_waypoint = waypoints[:, -1, :]
+        for _ in range(self.num_wps_predict):
+            x_in = torch.cat([x, last_waypoint], dim=1)
+
+            z = self.wp_decoder(x_in[:, self.wp_size-1:], z)
+            dx = self.wp_output(z)
+            x = dx + x
+            output_wp.append(x)
+
+        pred_wp = torch.stack(output_wp, dim=1)
+        logits = None
+        return logits, pred_wp, attn_map
+
+    def training_step(self, batch, batch_idx=None) -> torch.Tensor:
+        waypoints = batch['waypoints']
+        _, pred_wp, _ = self(batch)
+        # Compute L1 loss between predicted and true waypoints
+        loss = self.criterion(pred_wp, waypoints)
+        self.log("train_loss", loss, on_step=True,
+                 on_epoch=True, prog_bar=True, logger=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx=None) -> torch.Tensor:
+        waypoints = batch['waypoints']
+        _, pred_wp, _ = self(batch)
+
+        # Compute L1 loss for validation
+        loss = self.criterion(pred_wp, waypoints)
+        self.log("val_loss", loss, on_step=False,
+                 on_epoch=True, prog_bar=True, logger=True)
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = optim.AdamW(
+            self.parameters(), eps=0.0001)
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=0.0002,
+            epochs=100,
+            steps_per_epoch=100,
+            pct_start=0.02,
+            div_factor=100.0,
+            final_div_factor=10
+        )
+        return {"optimizer": optimizer, "lr_scheduler": scheduler}
+
+
+# # # Input: Batch of 2 pursuers, each with 7 attributes
+# batch_size = 1
+# n_pursuers = 4  # Number of pursuers
+# n_attributes = 7  # Attributes: e.g., position, velocity, heading
+# d_model = 8  # Dimensionality of attention mechanism
+
+# # Generate test input: random attributes for each pursuer in each batch
+# # Shape: (batch_size, n_pursuers, n_attributes)
+# test_input = torch.rand(batch_size, n_pursuers, n_attributes)
+
+# # Initialize the network
+# model = PursuerAttentionNetwork(n_attributes=n_attributes, d_model=d_model)
+# output = model(test_input)
+# print("output", output.shape)
+
+
+# hevader = HEvadrFormer(config={})

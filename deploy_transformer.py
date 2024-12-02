@@ -27,11 +27,13 @@ class Agent():
     def __init__(self,
                  x: float,
                  y: float,
+                 z: float,
                  psi: float,
                  dt: float = 0.1) -> None:
 
         self.x: float = x
         self.y: float = y
+        self.z: float = z
         self.psi: float = psi
         self.dt: float = dt
         self.v: float = 0
@@ -89,6 +91,7 @@ class EvaderFormerUtils():
         for p in pursuers:
             dx = ego.x - p.x
             dy = ego.y - p.y
+            dz = ego.z - p.z
             psi = ego.psi - p.psi
             v = ego.v - p.v
             vx = ego.vx - p.vx
@@ -96,13 +99,13 @@ class EvaderFormerUtils():
             dx -= ego.x
             dy -= ego.y
 
-            pursuer_state = [(0, 2, dx, dy, psi, v, vx, vy)]
+            pursuer_state = [(0, 2, dx, dy, dz, psi, v, vx, vy)]
             batch_data['input'].append(pursuer_state)
 
         N_waypoints = 4
         waypoints = []
         for i in range(N_waypoints):
-            coordinates = (5, 10)
+            coordinates = (5, 10, 50)
             waypoints.append(coordinates)
 
         # torn the batch_data into a torch tensor
@@ -110,7 +113,8 @@ class EvaderFormerUtils():
             batch_data['input'], dtype=torch.float32).squeeze()]
 
         batch_data['bias_position'] = torch.tensor(
-            [ego.x, ego.y, ego.psi, ego.v, ego.vx, ego.vy], dtype=torch.float32).squeeze()
+            [ego.x, ego.y, ego.z,
+             ego.psi, ego.v, ego.vx, ego.vy], dtype=torch.float32).squeeze()
 
         batch_data['waypoints'] = torch.tensor(
             [waypoints], dtype=torch.float32)
@@ -174,7 +178,7 @@ if __name__ == "__main__":
     #                         shuffle=False, collate_fn=dataset.collate_fn)
 
     # Load the latest checkpoint
-    checkpoint_dir = "evader_former_checkpoint/"
+    checkpoint_dir = "uavt_checkpoint/"
     checkpoint_files = sorted(
         [os.path.join(checkpoint_dir, f)
          for f in os.listdir(checkpoint_dir) if f.endswith(".ckpt")],
@@ -203,10 +207,10 @@ if __name__ == "__main__":
     waypoints = data['waypoints']
     evader_utiils = EvaderFormerUtils()
 
-    ego = Agent(0, 0, np.deg2rad(45))
+    ego = Agent(0, 0, 30, np.deg2rad(45))
 
-    pursuer_1 = Agent(-150, -75, 0)
-    pursuer_2 = Agent(0, -200, 0)
+    pursuer_1 = Agent(-150, -75, 50, 0)
+    pursuer_2 = Agent(0, -200, 50, 0)
     pursuers = [pursuer_1, pursuer_2]
     N_steps: int = 250
     pursuer_indices = [1, 2]
@@ -229,11 +233,11 @@ if __name__ == "__main__":
             attn_map)
         pursuer_relevance_scores = norm_attention_scores[pursuer_indices]
         bias_position = batch_data['bias_position'].detach().numpy().squeeze()
-        global_predicted_waypoints = predicted_waypoints + bias_position[:2]
+        global_predicted_waypoints = predicted_waypoints + bias_position[:3]
         waypoints_history.extend([global_predicted_waypoints[-1]])
         ego.move(20, 0)
         pursuer_1.move(15, heading_cmd_1)
-        pursuer_2.move(30, heading_cmd_1)
+        pursuer_2.move(30, heading_cmd_2)
 
         for i, p in enumerate(pursuers):
             p.agent_history.attention_scores.append(
