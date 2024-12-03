@@ -309,39 +309,32 @@ class PursuerAttentionNetwork(nn.Module):
         return scaled_attention
 
 
-class HEvadrFormer(pl.LightningModule):
-    """
-    Hiearchial EvaderFormer:
-    Foundation of model is based from the paper:
-    https://www.cs.cmu.edu/~./hovy/papers/16HLT-hierarchical-attention-networks.pdf
-
-    Ideas:
-        - Each row would consist of :
-            - Features of the Pursuer [x, y, z, roll, pitch, yaw, v]
-            - Get the output of the transformer and the attention states
-            - Feed this into another attention layer
-    """
-
+class HEvadrFormer(EvaderFormer):
     def __init__(self, config: Dict[str, Any]) -> None:
-        super().__init__()
-        self.config: Dict[str, Any] = config
-        self.config = config
-        self.num_attributes = 5  # x, y, z, roll, pitch, yaw, v
-        self.num_pursuers = config.get('num_pursuers', 3)
-        self.embedding_dim = config.get('embedding_dim', 512)
+        super().__init__(config=config)
+        self.num_attributes: int = 5  # x, y, z, roll, pitch, yaw, v
+        self.cls_emb = nn.Parameter(torch.randn(1, self.num_attributes + 1))
 
-        # Hugging Face Transformer
-        hf_checkpoint = 'prajjwal1/bert-medium'
-        self.transformer = AutoModel.from_pretrained(hf_checkpoint)
+        self.num_pursuers: int = config.get('num_pursuers', 3)
 
-        # Embedding layers for attributes
-        self.attr_emb = nn.Linear(
-            self.num_attributes, self.embedding_dim)
-        self.dropout = nn.Dropout(0.1)
-        self.num_wps_predict: int = 4
-        self.wp_size: int = 3
-        # Output decoder for waypoints
-        self.wp_head = nn.Linear(self.embedding_dim, 65)
+        hf_checkpoint: str = 'prajjwal1/bert-medium'
+        self.model: nn.Module = AutoModel.from_pretrained(hf_checkpoint)
+        n_embd: int = self.model.config.hidden_size
+
+        # Embedding for each attribute (per token)
+        self.tok_emb = nn.Linear(1, n_embd)
+        self.drop = nn.Dropout(0.1)
+
+        # Object type embeddings
+        self.obj_token = nn.ParameterList([
+            nn.Parameter(torch.randn(1, self.num_attributes)) for _ in range(self.num_pursuers)
+        ])
+        self.obj_emb = nn.ModuleList([
+            nn.Linear(self.num_attributes, n_embd) for _ in range(self.num_pursuers)
+        ])
+
+        # Waypoint decoder
+        self.wp_head = nn.Linear(n_embd, 65)
         self.wp_decoder = nn.GRUCell(
             input_size=self.num_wps_predict, hidden_size=65)
         self.wp_output = nn.Linear(65, self.wp_size)
@@ -351,89 +344,81 @@ class HEvadrFormer(pl.LightningModule):
         """
         Pads a batch of sequences to the longest sequence in the batch.
         """
-        # split input into components
         x_batch_ids = x_batched[:, 0]
-
         x_tokens = x_batched[:, 1:]
-
         B = int(x_batch_ids[-1].item()) + 1
         input_batch = []
+
         for batch_id in range(B):
-            # get the batch of elements
             x_batch_id_mask = x_batch_ids == batch_id
-
-            # get the batch of types
             x_tokens_batch = x_tokens[x_batch_id_mask]
-
-            x_seq = torch.cat(
-                [self.cls_emb, x_tokens_batch], dim=0)
-
+            x_seq = torch.cat([self.cls_emb, x_tokens_batch], dim=0)
             input_batch.append(x_seq)
-
-        # pad sequence is used to pad the sequence to the
-        # longest sequence in the batch
-        # so for example if we have a batch of 3 sequences
-        # with lengths 3, 4, 5
-        # the sequences will be padded to length 5
-        # so the output will be of size 5 x 3
-
-        # we then use swapaxes to get the batch first and then the sequence
-        # so for example if it was 3 x 1 x 5
-        # it will be 1 x 3 x 5
-        # I might use einops to do this instead
 
         padded = torch.swapaxes(pad_sequence(input_batch), 0, 1)
         input_batch = padded[:B]
-        # get a batch without the cls token
         return input_batch
 
     def forward(self, batch, target=None):
-        """
-        Args:
-            batch: dict with keys:
-                - input: (B, O, A), 
-                    where B=batch size, O=num pursuers, A=num attributes
-                - waypoints: Ground truth waypoints for training
-        Returns:
-            logits, predicted waypoints, attention maps
-        """
-        idx = batch['input']  # Shape: (B, O, A)
+        idx = batch['input']  # Shape: (B, P, A)
         waypoints = batch['waypoints']
-        idx = torch.stack(idx, dim=0)
-        idx = idx[:, :, 2:]
-        # Flatten attributes for the Transformer
-        B, O, A = idx.shape
-        x_flat = rearrange(idx, "b o a -> b (o a) 1")
-        # Embed attributes
-        x_emb = self.attr_emb(x_flat)  # Shape: (B, O * A, embedding_dim)
-        x_emb = self.dropout(x_emb)
-        # x_emb = rearrange(x_emb, '(b t) h -> b t h', b=B,
-        #                   t=self.num_pursuers)  # Shape: (5, 3, 512)
+        x_batched = torch.cat(idx, dim=0)
+        input_batch = self.pad_sequence_batch(x_batched)
 
-        # add one more dimension to the input
-        # Transformer forward pass
-        output = self.transformer(
-            **{"inputs_embeds": x_emb}, output_attentions=True)
+        input_batch_type = input_batch[:, :, 0]
+        input_batch_data = input_batch[:, :, 1:]
+
+        # Create masks by object type
+        car_mask = (input_batch_type == 2).unsqueeze(-1)
+        masks = [car_mask]
+
+        # Size of input
+        (B, O, A) = input_batch_data.shape
+
+        # Tokenize attributes individually
+        input_batch_data = rearrange(
+            input_batch_data, "b objects attributes -> (b objects attributes) 1"
+        )  # Flatten to treat each attribute as a token
+        # Shape: (B * O * A, n_embd)
+        embedding = self.tok_emb(input_batch_data)
+        embedding = rearrange(
+            embedding, "(b o a) d -> b (o a) d", b=B, o=O, a=A
+        )  # Reshape back to batch-first format
+
+        # Create object type embedding
+        obj_embeddings = [
+            self.obj_emb[i](self.obj_token[i]) for i in range(self.num_pursuers)
+        ]
+
+        # embedding = [
+        #     (embedding + obj_embeddings[i]) * masks[i] for i in range(self.num_pursuers)
+        # ]
+        # Object type embedding and mask application
+        embedding = [
+            (embedding + obj_embeddings[i].expand(B,
+                                                  embedding.size(1), -1)) * masks[i].expand_as(embedding)
+            for i in range(self.num_pursuers)
+        ]
+        embedding = torch.sum(torch.stack(embedding, dim=1), dim=1)
+
+        # Embedding dropout
+        x = self.drop(embedding)
+
+        # Transformer Encoder; Use embedding for Hugging Face model and get output states and attention map
+        output = self.model(
+            **{"inputs_embeds": embedding}, output_attentions=True)
         x, attn_map = output.last_hidden_state, output.attentions
-        # Reshape back to (B, O, A, embedding_dim)
-        # Process waypoints
-        # Aggregate predictions over attributes
-        # get waypoint predictions
 
+        # Waypoint prediction (same as before)
         z = self.wp_head(x[:, 0, :])
-        # add traffic ligth flag
         output_wp = list()
-
-        # initial input variable to GRU
-        x = torch.zeros(size=(z.shape[0], self.wp_size), dtype=z.dtype)
-        x = x.type_as(z)
-
-        # autoregressive generation of output waypoints
+        x = torch.zeros(
+            size=(z.shape[0], self.wp_size), dtype=z.dtype).type_as(z)
         last_waypoint = waypoints[:, -1, :]
+
         for _ in range(self.num_wps_predict):
             x_in = torch.cat([x, last_waypoint], dim=1)
-
-            z = self.wp_decoder(x_in[:, self.wp_size-1:], z)
+            z = self.wp_decoder(x_in[:, self.wp_size - 1:], z)
             dx = self.wp_output(z)
             x = dx + x
             output_wp.append(x)
@@ -490,6 +475,5 @@ class HEvadrFormer(pl.LightningModule):
 # model = PursuerAttentionNetwork(n_attributes=n_attributes, d_model=d_model)
 # output = model(test_input)
 # print("output", output.shape)
-
 
 # hevader = HEvadrFormer(config={})

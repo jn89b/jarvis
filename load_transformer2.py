@@ -18,6 +18,13 @@ from jarvis.datasets.base_dataset import PlanTDataset, UAVTDataset
 plt.close('all')
 
 
+# Function to compute correlation
+def compute_correlation(attribute, attention_scores):
+    if len(attribute) > 1 and len(attention_scores) > 1:  # Ensure valid data
+        return np.corrcoef(attribute, attention_scores)[0, 1]  # Pearson correlation
+    else:
+        return None  # Not enough data to compute correlation
+
 class AgentHistory():
     def __init__(self) -> None:
         self.x: List[float] = []
@@ -241,6 +248,9 @@ for i, s in enumerate(samples):
     if fill_dummy:
         batch['input'][0][0, 2] = 500
         batch['input'][0][0, 3] = 500
+        
+    if i == 5:
+        break
 
     # # pickle the batch
     # import pickle
@@ -256,6 +266,7 @@ for i, s in enumerate(samples):
     # print(f"Time taken for inference: {time.time() - start_time:.2f} seconds")
     norm_attention_scores = compute_attention_scores(attn_map)
     pursuer_relevance_scores = norm_attention_scores[pursuer_indices]
+
 
     # because the waypoints are in relative coordinates, we need to map them back to global coordinates
     predicted_waypoints = predicted_waypoints.detach().numpy().squeeze()
@@ -292,6 +303,9 @@ for i, s in enumerate(samples):
         dr = np.sqrt((p[x_idx] - ego.x[-1])**2 +
                      (p[y_idx] - ego.y[-1])**2 +
                      (p[z_idx] - ego.z[-1])**2)
+        
+        # let's see if we can visualize some kind of correlation value from this??
+        
         if i == 0:
             pursuer_1.x.append(p[x_idx])
             pursuer_1.y.append(p[y_idx])
@@ -320,6 +334,15 @@ for i, s in enumerate(samples):
             pursuer_3.psi.append(psi)
             # pursuer_3.dv.append(dv)
             pursuer_3.attention_scores.append(pursuer_relevance_scores[2])
+
+pursuer_1_dr_corr = compute_correlation(pursuer_1.dr, pursuer_1.attention_scores)
+pursuer_1_psi_corr = compute_correlation(pursuer_1.psi, pursuer_1.attention_scores)
+
+pursuer_2_dr_corr = compute_correlation(
+    attribute=pursuer_2.dr, attention_scores=pursuer_2.attention_scores)
+pursuer_2_psi_corr = compute_correlation(
+    attribute=pursuer_2.psi, attention_scores=pursuer_2.attention_scores)
+
 
 pursuer_list = [pursuer_1, pursuer_2, pursuer_3]
 pursuer_colors = ['red', 'orange', 'green']
