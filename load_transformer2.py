@@ -75,29 +75,43 @@ def compute_attention_scores(attention_map: Tuple[torch.tensor]) -> np.ndarray:
     Compute the normalized attention scores from the cls token
     """
     # Shape: [batch_size, sequence_length]
-    relevance_scores = torch.zeros(batch_size, num_tokens)
-
+    relevance_scores = torch.zeros(batch_size, num_tokens-1)
+    min_relevance_scores = None  # Initialize for tracking minimum scores
+    min_cls_value = 1000  # Initialize with a small value
+    desired_layer:int = 0
     # Sum attention weights across all layers and heads
-    for layer_attention in attention_map:
+    for i, layer_attention in enumerate(attention_map):
         # Sum over heads to get the attention distribution of the [CLS] token across the sequence
-        cls_attention = layer_attention[:, :, 0, :].sum(
+        cls_attention = layer_attention[:, :, 0, 1:].sum(
             dim=1)  # Shape: [batch_size, sequence_length]
         relevance_scores += cls_attention  # Accumulate across layers
-
+        # Compute the minimum scores
+        cls_value = cls_attention[0][0]
+        if cls_value < min_cls_value:
+            min_cls_value = cls_value
+            desired_layer = i
+            min_relevance_scores = cls_attention
+        
+    # min_relevance_scores = min_relevance_scores.detach().numpy()
     # Average across the batch if you have multiple samples and want a single relevance score per token
     avg_relevance_scores = relevance_scores.mean(
         dim=0).detach().numpy()  # Shape: [sequence_length]
-
     # normalize the scores
     normalized_scores = avg_relevance_scores / avg_relevance_scores.sum()
-
-    normalized_scores[0] = 0
+    # normalized_scores[0] = 0
     sum_normalized_scores = normalized_scores.sum()
     new_normalized_scores = normalized_scores / sum_normalized_scores
 
     # disregard the first index
+    min_relevance_scores = min_relevance_scores.detach().numpy().flatten()
+    #  set the shape 
+    # print("min relevance scores: ", min_relevance_scores)
+    # min_relevance_scores[0] = 0
+    sum_min_relevance_scores = min_relevance_scores.sum()
+    # print("sum_min_relevance_scores: ", sum_min_relevance_scores)
+    min_relevance_scores = min_relevance_scores / sum_min_relevance_scores
 
-    return new_normalized_scores
+    return min_relevance_scores
 
 
 # matplotlib.use('TkAgg')
@@ -192,7 +206,7 @@ with torch.no_grad():  # Disable gradient calculation for inference
         # normalize the scores
         normalized_scores = avg_relevance_scores / avg_relevance_scores.sum()
 
-        pursuer_indices = [1, 2, 3]
+        pursuer_indices = [0, 1, 2]
         # Extract relevance scores for pursuers
         # Shape: (number of pursuers,)
         pursuer_relevance_scores = normalized_scores[pursuer_indices]
@@ -223,10 +237,13 @@ back to the global coordinates.
 data_info = dataset.data_info
 # get all the values of the first key
 # get the first key
+import random 
 keys = list(data_info.keys())
+#random number
+random_key = random.randint(0, len(keys))
 # get all the values of the first key
 # 30 is FUCKING WILD
-samples = data_info[keys[10]]  # this is 30
+samples = data_info[keys[random_key]]  # this is 30
 ego = AgentHistory()
 pursuer_1 = AgentHistory()
 pursuer_2 = AgentHistory()
@@ -234,7 +251,7 @@ pursuer_3 = AgentHistory()
 inference_time: List[float] = []
 
 # To see what is going on we need to map it back to global position
-first_sample = samples[10]
+first_sample = samples[5]
 sample_json: str = first_sample['filename']
 json_data = JSONData(sample_json)
 
@@ -244,13 +261,9 @@ for i, s in enumerate(samples):
     batch: Dict[str, Any] = dataloader.dataset.collate_fn([s])
     """
     """
-    # an idiot check to make sure attention value is doing something
-    if fill_dummy:
-        batch['input'][0][0, 2] = 500
-        batch['input'][0][0, 3] = 500
-        
-    if i == 5:
-        break
+
+    # if i == 5:
+    #     break
 
     # # pickle the batch
     # import pickle
@@ -286,6 +299,21 @@ for i, s in enumerate(samples):
     ego.waypoints_y.extend(waypoints[:, 1])
     ego.pred_waypoints_x.extend(global_predicted_waypoints[:, 0])
     ego.pred_waypoints_y.extend(global_predicted_waypoints[:, 1])
+
+    # an idiot check to make sure attention value is doing something
+    if fill_dummy:
+        # convert to torch tensor
+        batch['input'][0][2, 2] = torch.tensor(predicted_waypoints[0, 0]-15)
+        batch['input'][0][2, 3] = torch.tensor(predicted_waypoints[0, 1]+15)
+        batch['input'][0][2, 4] = torch.tensor(predicted_waypoints[0, 2])
+        
+        # batch['input'][0][1, 2] = torch.tensor(predicted_waypoints[0, 0]+30)
+        # batch['input'][0][1, 3] = torch.tensor(predicted_waypoints[0, 1]-50)
+        # batch['input'][0][1, 4] = torch.tensor(predicted_waypoints[0, 2])
+        
+        # batch['input'][0][1, 2] = torch.tensor(bias_position[0])
+        # batch['input'][0][1, 3] = torch.tensor(bias_position[1])
+        
 
     # store the pursuer's information which is stored in the input
     # each row consists of a pursuer's information

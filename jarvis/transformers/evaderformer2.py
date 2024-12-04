@@ -102,7 +102,8 @@ class EvaderFormer(pl.LightningModule):
         input_batch = padded[:B]
         return input_batch
 
-    def forward(self, batch, target=None):
+    def forward(self, batch, target=None, 
+                return_interpretability:bool=False) -> Tuple[torch.Tensor, torch.Tensor]:
         idx = batch['input']
         waypoints = batch['waypoints']
         x_batched = torch.cat(idx, dim=0)
@@ -165,6 +166,28 @@ class EvaderFormer(pl.LightningModule):
         pred_wp = torch.stack(output_wp, dim=1)
         logits = None
         return logits, pred_wp, attn_map
+
+    def grad_rollout(self, attentions, gradients, discard_ratio:float=0.9):
+        result = torch.eye(attentions[0].size(-1)).to(attentions.device)
+        with torch.no_grad():
+            for attention, grad in zip(attentions, gradients):                
+                weights = grad
+                attention_heads_fused = (attention*weights).mean(axis=1)
+                attention_heads_fused[attention_heads_fused < 0] = 0
+
+                # Drop the lowest attentions, but
+                # don't drop the class token
+                flat = attention_heads_fused.view(attention_heads_fused.size(0), -1)
+                _, indices = flat.topk(int(flat.size(-1)*discard_ratio), -1, False)
+                #indices = indices[indices != 0]
+                flat[0, indices] = 0
+
+                I = torch.eye(attention_heads_fused.size(-1))
+                a = (attention_heads_fused + 1.0*I)/2
+                a = a / a.sum(dim=-1)
+                result = torch.matmul(a, result)
+                
+        return result
 
     def training_step(self, batch, batch_idx=None) -> torch.Tensor:
         waypoints = batch['waypoints']
@@ -367,7 +390,7 @@ class HEvadrFormer(EvaderFormer):
 
         input_batch_type = input_batch[:, :, 0]
         input_batch_data = input_batch[:, :, 1:]
-
+        
         # Create masks by object type
         car_mask = (input_batch_type == 2).unsqueeze(-1)
         masks = [car_mask]

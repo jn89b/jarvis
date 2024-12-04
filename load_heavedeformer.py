@@ -85,13 +85,13 @@ def compute_attention_scores(attention_map: Tuple[torch.tensor]) -> np.ndarray:
     # normalize the scores
     normalized_scores = avg_relevance_scores / avg_relevance_scores.sum()
 
-    normalized_scores[0] = 0
+    # normalized_scores[0] = 0
     sum_normalized_scores = normalized_scores.sum()
-    new_normalized_scores = normalized_scores / sum_normalized_scores
+    # new_normalized_scores = normalized_scores / sum_normalized_scores
 
     # disregard the first index
 
-    return new_normalized_scores
+    return normalized_scores
 
 
 # matplotlib.use('TkAgg')
@@ -103,7 +103,7 @@ with open(data_config_path, 'r') as f:
 # Set up the dataset and dataloader
 dataset = HATDataset(config=data_config, is_validation=False)
 dataloader = DataLoader(dataset, batch_size=1,
-                        shuffle=True, collate_fn=dataset.collate_fn)
+                        shuffle=False, collate_fn=dataset.collate_fn)
 
 # Load the latest checkpoint
 # checkpoint_dir = "evader_former_checkpoint/"
@@ -187,7 +187,7 @@ with torch.no_grad():  # Disable gradient calculation for inference
         # normalize the scores
         normalized_scores = avg_relevance_scores / avg_relevance_scores.sum()
 
-        pursuer_indices = [1, 2, 3]
+        pursuer_indices = [0, 1, 2]
         # Extract relevance scores for pursuers
         # Shape: (number of pursuers,)
         pursuer_relevance_scores = normalized_scores[pursuer_indices]
@@ -221,7 +221,7 @@ data_info = dataset.data_info
 keys = list(data_info.keys())
 # get all the values of the first key
 # 30 is FUCKING WILD
-samples = data_info[keys[1]]  # this is 30
+samples = data_info[keys[5]]  # this is 30
 ego = AgentHistory()
 pursuer_1 = AgentHistory()
 pursuer_2 = AgentHistory()
@@ -257,7 +257,6 @@ for i, s in enumerate(samples):
     inference_time.append(final_time - start_time)
     # print(f"Time taken for inference: {time.time() - start_time:.2f} seconds")
     norm_attention_scores = compute_attention_scores(attn_map)
-    print(norm_attention_scores)
     pursuer_relevance_scores = norm_attention_scores[pursuer_indices]
 
     # because the waypoints are in relative coordinates, we need to map them back to global coordinates
