@@ -17,11 +17,12 @@ from jarvis.datasets.base_dataset import HATDataset
 data_config = "config/data_config.yaml"
 with open(data_config, 'r') as f:
     data_config = yaml.safe_load(f)
+batch_size: int = 5
 dataset = HATDataset(config=data_config, is_validation=False)
-dataloader = DataLoader(dataset, batch_size=5,
+dataloader = DataLoader(dataset, batch_size=batch_size,
                         shuffle=True, collate_fn=dataset.collate_fn)
 valdataset = HATDataset(config=data_config, is_validation=True)
-valdataloader = DataLoader(valdataset, batch_size=5,
+valdataloader = DataLoader(valdataset, batch_size=batch_size,
                            shuffle=True, collate_fn=dataset.collate_fn)
 
 model_config: Dict[str, Any] = {}

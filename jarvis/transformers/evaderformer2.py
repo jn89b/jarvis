@@ -14,11 +14,13 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 import math
 from torch.nn.utils.rnn import pad_sequence
-
+from torch.func import vmap
+import torch.multiprocessing as mp
+import time
 from einops import rearrange
 from typing import Optional, Dict, Any, Tuple, Callable
 from torch import optim
-
+from functools import partial
 
 from transformers import (
     AutoConfig,
@@ -47,6 +49,7 @@ class EvaderFormer(pl.LightningModule):
         )  # unnecessary TODO: remove
 
         self.tok_emb = nn.Linear(self.num_attributes, n_embd)
+        # this is used for unique objects
         self.obj_token = nn.ParameterList([
             nn.Parameter(torch.randn(1, self.num_attributes)) for _ in range(self.object_types)
         ])
@@ -102,8 +105,8 @@ class EvaderFormer(pl.LightningModule):
         input_batch = padded[:B]
         return input_batch
 
-    def forward(self, batch, target=None, 
-                return_interpretability:bool=False) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, batch, target=None,
+                return_interpretability: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
         idx = batch['input']
         waypoints = batch['waypoints']
         x_batched = torch.cat(idx, dim=0)
@@ -135,7 +138,7 @@ class EvaderFormer(pl.LightningModule):
         # add object type embedding to embedding (mask needed to only add to the correct tokens)
         embedding = [
             (embedding + obj_embeddings[i]) * masks[i] for i in range(self.object_types)
-        ]
+        ]  # list of tensors of size B x O x features
         # stack becomes [1,1,n_pursuers+cls, d_head]
         embedding = torch.sum(torch.stack(embedding, dim=1), dim=1)
         # embedding dropout
@@ -145,7 +148,7 @@ class EvaderFormer(pl.LightningModule):
             **{"inputs_embeds": embedding}, output_attentions=True)
         x, attn_map = output.last_hidden_state, output.attentions
        # get waypoint predictions
-        z = self.wp_head(x[:, 0, :])
+        z = self.wp_head(x[:, 0, :])  # [1, 65]
         # add traffic ligth flag
         output_wp = list()
 
@@ -156,7 +159,7 @@ class EvaderFormer(pl.LightningModule):
         # autoregressive generation of output waypoints
         last_waypoint = waypoints[:, -1, :]
         for _ in range(self.num_wps_predict):
-            x_in = torch.cat([x, last_waypoint], dim=1)
+            x_in = torch.cat([x, last_waypoint], dim=1)  # [1,6]
 
             z = self.wp_decoder(x_in[:, self.wp_size-1:], z)
             dx = self.wp_output(z)
@@ -167,26 +170,28 @@ class EvaderFormer(pl.LightningModule):
         logits = None
         return logits, pred_wp, attn_map
 
-    def grad_rollout(self, attentions, gradients, discard_ratio:float=0.9):
+    def grad_rollout(self, attentions, gradients, discard_ratio: float = 0.9):
         result = torch.eye(attentions[0].size(-1)).to(attentions.device)
         with torch.no_grad():
-            for attention, grad in zip(attentions, gradients):                
+            for attention, grad in zip(attentions, gradients):
                 weights = grad
                 attention_heads_fused = (attention*weights).mean(axis=1)
                 attention_heads_fused[attention_heads_fused < 0] = 0
 
                 # Drop the lowest attentions, but
                 # don't drop the class token
-                flat = attention_heads_fused.view(attention_heads_fused.size(0), -1)
-                _, indices = flat.topk(int(flat.size(-1)*discard_ratio), -1, False)
-                #indices = indices[indices != 0]
+                flat = attention_heads_fused.view(
+                    attention_heads_fused.size(0), -1)
+                _, indices = flat.topk(
+                    int(flat.size(-1)*discard_ratio), -1, False)
+                # indices = indices[indices != 0]
                 flat[0, indices] = 0
 
                 I = torch.eye(attention_heads_fused.size(-1))
                 a = (attention_heads_fused + 1.0*I)/2
                 a = a / a.sum(dim=-1)
                 result = torch.matmul(a, result)
-                
+
         return result
 
     def training_step(self, batch, batch_idx=None) -> torch.Tensor:
@@ -333,6 +338,20 @@ class PursuerAttentionNetwork(nn.Module):
 
 
 class HEvadrFormer(EvaderFormer):
+    """
+    Let's try to train an Ensemble Method
+    https://openaccess.thecvf.com/content/CVPR2021/papers/Liu_Multimodal_Motion_Prediction_With_Stacked_Transformers_CVPR_2021_paper.pdf 
+    - Using an ensemble of transformers to get an attention value for each pursuer
+    - Each of these transformers will give me an attention value for 
+        each pursuer based on the CLS token rows
+    - I will then use this as the features for the final transformer  
+
+    - Tokenize each of the attributes 
+    - From that we will need to embed the tokens to a higher dimension
+    - We will then use the transformers to get the attention values
+
+    """
+
     def __init__(self, config: Dict[str, Any]) -> None:
         super().__init__(config=config)
         self.num_attributes: int = 5  # x, y, z, roll, pitch, yaw, v
@@ -340,42 +359,71 @@ class HEvadrFormer(EvaderFormer):
 
         self.num_pursuers: int = config.get('num_pursuers', 3)
 
-        hf_checkpoint: str = 'prajjwal1/bert-medium'
-        self.model: nn.Module = AutoModel.from_pretrained(hf_checkpoint)
+        hf_checkpoint: str = 'prajjwal1/bert-small'
+
+        # Initialize the ensemble of transformers
+        self.models = nn.ModuleList([AutoModel.from_pretrained(
+            hf_checkpoint) for _ in range(self.num_pursuers)])
+        # self.model: nn.Module = AutoModel.from_pretrained(hf_checkpoint)
         n_embd: int = self.model.config.hidden_size
+        self.token_embds = nn.ModuleList(
+            [nn.Linear(1, n_embd) for _ in range(self.num_pursuers)])
+        self.cls_embs = nn.ParameterList(
+            [nn.Parameter(torch.randn(1, self.num_attributes + 1)) for _ in range(self.num_pursuers)])
+        self.global_cls_emb = nn.ParameterList(
+            [nn.Parameter(torch.randn(1, n_embd))
+             for _ in range(self.num_pursuers)]
+        )
+        self.drops = nn.ModuleList([nn.Dropout(0.1)
+                                   for _ in range(self.num_pursuers)])
 
-        # Embedding for each attribute (per token)
-        self.tok_emb = nn.Linear(1, n_embd)
-        self.drop = nn.Dropout(0.1)
+    def forward_single_pursuer(self, pursuer_idx, input_batch_data, token_embd, model):
+        """
+        Forward pass for a single pursuer.
+        """
+        B, O, A = input_batch_data.shape
 
-        # Object type embeddings
-        self.obj_token = nn.ParameterList([
-            nn.Parameter(torch.randn(1, self.num_attributes)) for _ in range(self.num_pursuers)
-        ])
-        self.obj_emb = nn.ModuleList([
-            nn.Linear(self.num_attributes, n_embd) for _ in range(self.num_pursuers)
-        ])
+        # Tokenize attributes
+        input_batch_data = rearrange(
+            input_batch_data, "b objects attributes -> (b objects attributes) 1"
+        )
+        embedding = token_embd(input_batch_data)
+        embedding = rearrange(
+            embedding, "(b o a) d -> b (o a) d", b=B, o=O, a=A
+        )
 
-        # Waypoint decoder
-        self.wp_head = nn.Linear(n_embd, 65)
-        self.wp_decoder = nn.GRUCell(
-            input_size=self.num_wps_predict, hidden_size=65)
-        self.wp_output = nn.Linear(65, self.wp_size)
-        self.criterion = nn.L1Loss()
+        # Forward pass
+        output = model(**{"inputs_embeds": embedding}, output_attentions=True)
+        x, attn_map = output.last_hidden_state, output.attentions
+        return x, attn_map
 
-    def pad_sequence_batch(self, x_batched):
+    def parallel_forward(self, pursuer_inputs):
+        """
+        Parallelize the forward pass for all pursuers.
+        """
+        with mp.Pool(processes=len(self.models)) as pool:
+            results = pool.starmap(
+                self.forward_single_pursuer,
+                pursuer_inputs
+            )
+        return results
+
+    def pad_individual_seq(self, x_batched, idx_layer: int):
         """
         Pads a batch of sequences to the longest sequence in the batch.
         """
+        # check if x_batched is 2D
         x_batch_ids = x_batched[:, 0]
         x_tokens = x_batched[:, 1:]
+
         B = int(x_batch_ids[-1].item()) + 1
         input_batch = []
 
         for batch_id in range(B):
             x_batch_id_mask = x_batch_ids == batch_id
             x_tokens_batch = x_tokens[x_batch_id_mask]
-            x_seq = torch.cat([self.cls_emb, x_tokens_batch], dim=0)
+            x_seq = torch.cat(
+                [self.cls_embs[idx_layer], x_tokens_batch], dim=0)
             input_batch.append(x_seq)
 
         padded = torch.swapaxes(pad_sequence(input_batch), 0, 1)
@@ -383,56 +431,64 @@ class HEvadrFormer(EvaderFormer):
         return input_batch
 
     def forward(self, batch, target=None):
-        idx = batch['input']  # Shape: (B, P, A)
+        """
+        batch['input']: List[tensor] tensor is of shape [num_pursuers, num_attributes]
+        batch['waypoints']: tensor of shape [batch_size, num_waypoints, (x,y,z)]
+        """
+        idx = batch['input']
         waypoints = batch['waypoints']
         x_batched = torch.cat(idx, dim=0)
-        input_batch = self.pad_sequence_batch(x_batched)
 
-        input_batch_type = input_batch[:, :, 0]
-        input_batch_data = input_batch[:, :, 1:]
-        
-        # Create masks by object type
-        car_mask = (input_batch_type == 2).unsqueeze(-1)
-        masks = [car_mask]
+        num_pursuers, num_attributes = x_batched.shape
+        num_batches = num_pursuers // self.num_pursuers
+        pursuer_attributes = []
+        attn_maps = []
+        # start_time = time.time()
+        for i in range(num_pursuers):
+            # x_batched[i] = x_batched[i].unsqueeze(0)  # [1, num_attributes]
+            pursuer_idx = i % self.num_pursuers  # Ensure valid index for self.cls_embs
+            squeezed_batch = x_batched[pursuer_idx].unsqueeze(0)
+            input_batch = self.pad_individual_seq(
+                squeezed_batch, pursuer_idx)  # becomes a [1, cls + current_pursuer, cls+num_attributes]
+            pursuer_attributes.append(
+                input_batch)
 
-        # Size of input
-        (B, O, A) = input_batch_data.shape
+            input_batch_type = input_batch[:, 1:, 0]
+            input_batch_data = input_batch[:, 1:, 1:]
 
-        # Tokenize attributes individually
-        input_batch_data = rearrange(
-            input_batch_data, "b objects attributes -> (b objects attributes) 1"
-        )  # Flatten to treat each attribute as a token
-        # Shape: (B * O * A, n_embd)
-        embedding = self.tok_emb(input_batch_data)
-        embedding = rearrange(
-            embedding, "(b o a) d -> b (o a) d", b=B, o=O, a=A
-        )  # Reshape back to batch-first format
+            # Create masks by object type
+            car_mask = (input_batch_type == 2).unsqueeze(-1)
+            masks = [car_mask]
 
-        # Create object type embedding
-        obj_embeddings = [
-            self.obj_emb[i](self.obj_token[i]) for i in range(self.num_pursuers)
-        ]
+            # Size of input
+            # [1, cls+pursuer, num_attributes]
+            (B, O, A) = input_batch_data.shape
+            # Tokenize attributes individually
+            input_batch_data = rearrange(
+                input_batch_data, "b objects attributes -> (b objects attributes) 1"
+            )  # Flatten to treat each attribute as a token
+            # Shape: (B * O * A, n_embd)
+            embedding = self.token_embds[pursuer_idx](input_batch_data)
+            # embedding = rearrange(
+            #     embedding, "(b o a) d -> b (a) d", b=B, o=O, a=A
+            # )  # Reshape back to batch-first format
+            cls_token = self.global_cls_emb[pursuer_idx]
+            embedding = torch.cat([cls_token, embedding], dim=0)
+            x = self.drops[pursuer_idx](embedding)
+            embedding = rearrange(embedding, 'rows dim -> 1 rows dim')
 
-        # embedding = [
-        #     (embedding + obj_embeddings[i]) * masks[i] for i in range(self.num_pursuers)
-        # ]
-        # Object type embedding and mask application
-        embedding = [
-            (embedding + obj_embeddings[i].expand(B,
-                                                  embedding.size(1), -1)) * masks[i].expand_as(embedding)
-            for i in range(self.num_pursuers)
-        ]
-        embedding = torch.sum(torch.stack(embedding, dim=1), dim=1)
-
-        # Embedding dropout
-        x = self.drop(embedding)
-
-        # Transformer Encoder; Use embedding for Hugging Face model and get output states and attention map
-        output = self.model(
-            **{"inputs_embeds": embedding}, output_attentions=True)
-        x, attn_map = output.last_hidden_state, output.attentions
+            # I want this to be [1,1,num_attributes+cls, d_head] right now its [1, num_attributes*num_cls, d_head]
+            output = self.models[pursuer_idx](
+                **{"inputs_embeds": embedding}, output_attentions=True)
+            x, attn_map = output.last_hidden_state, output.attentions
+            print(attn_map[0].shape)
+        # end_time = time.time()
+        # print(
+        #     f"Time taken for the ensemble of transformers: {end_time - start_time}")
+        attn_maps.append(attn_map)
 
         # Waypoint prediction (same as before)
+        x = x.repeat(num_batches, 1, 1)
         z = self.wp_head(x[:, 0, :])
         output_wp = list()
         x = torch.zeros(
@@ -448,7 +504,7 @@ class HEvadrFormer(EvaderFormer):
 
         pred_wp = torch.stack(output_wp, dim=1)
         logits = None
-        return logits, pred_wp, attn_map
+        return logits, pred_wp, attn_maps
 
     def training_step(self, batch, batch_idx=None) -> torch.Tensor:
         waypoints = batch['waypoints']

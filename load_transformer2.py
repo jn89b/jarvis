@@ -1,3 +1,4 @@
+import random
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 import matplotlib.animation as animation
@@ -21,9 +22,11 @@ plt.close('all')
 # Function to compute correlation
 def compute_correlation(attribute, attention_scores):
     if len(attribute) > 1 and len(attention_scores) > 1:  # Ensure valid data
-        return np.corrcoef(attribute, attention_scores)[0, 1]  # Pearson correlation
+        # Pearson correlation
+        return np.corrcoef(attribute, attention_scores)[0, 1]
     else:
         return None  # Not enough data to compute correlation
+
 
 class AgentHistory():
     def __init__(self) -> None:
@@ -78,7 +81,7 @@ def compute_attention_scores(attention_map: Tuple[torch.tensor]) -> np.ndarray:
     relevance_scores = torch.zeros(batch_size, num_tokens-1)
     min_relevance_scores = None  # Initialize for tracking minimum scores
     min_cls_value = 1000  # Initialize with a small value
-    desired_layer:int = 0
+    desired_layer: int = 0
     # Sum attention weights across all layers and heads
     for i, layer_attention in enumerate(attention_map):
         # Sum over heads to get the attention distribution of the [CLS] token across the sequence
@@ -91,7 +94,7 @@ def compute_attention_scores(attention_map: Tuple[torch.tensor]) -> np.ndarray:
             min_cls_value = cls_value
             desired_layer = i
             min_relevance_scores = cls_attention
-        
+
     # min_relevance_scores = min_relevance_scores.detach().numpy()
     # Average across the batch if you have multiple samples and want a single relevance score per token
     avg_relevance_scores = relevance_scores.mean(
@@ -104,7 +107,7 @@ def compute_attention_scores(attention_map: Tuple[torch.tensor]) -> np.ndarray:
 
     # disregard the first index
     min_relevance_scores = min_relevance_scores.detach().numpy().flatten()
-    #  set the shape 
+    #  set the shape
     # print("min relevance scores: ", min_relevance_scores)
     # min_relevance_scores[0] = 0
     sum_min_relevance_scores = min_relevance_scores.sum()
@@ -237,9 +240,8 @@ back to the global coordinates.
 data_info = dataset.data_info
 # get all the values of the first key
 # get the first key
-import random 
 keys = list(data_info.keys())
-#random number
+# random number
 random_key = random.randint(0, len(keys))
 # get all the values of the first key
 # 30 is FUCKING WILD
@@ -280,7 +282,6 @@ for i, s in enumerate(samples):
     norm_attention_scores = compute_attention_scores(attn_map)
     pursuer_relevance_scores = norm_attention_scores[pursuer_indices]
 
-
     # because the waypoints are in relative coordinates, we need to map them back to global coordinates
     predicted_waypoints = predicted_waypoints.detach().numpy().squeeze()
     bias_position = batch['bias_position'].detach().numpy().squeeze()
@@ -306,14 +307,13 @@ for i, s in enumerate(samples):
         batch['input'][0][2, 2] = torch.tensor(predicted_waypoints[0, 0]-15)
         batch['input'][0][2, 3] = torch.tensor(predicted_waypoints[0, 1]+15)
         batch['input'][0][2, 4] = torch.tensor(predicted_waypoints[0, 2])
-        
+
         # batch['input'][0][1, 2] = torch.tensor(predicted_waypoints[0, 0]+30)
         # batch['input'][0][1, 3] = torch.tensor(predicted_waypoints[0, 1]-50)
         # batch['input'][0][1, 4] = torch.tensor(predicted_waypoints[0, 2])
-        
+
         # batch['input'][0][1, 2] = torch.tensor(bias_position[0])
         # batch['input'][0][1, 3] = torch.tensor(bias_position[1])
-        
 
     # store the pursuer's information which is stored in the input
     # each row consists of a pursuer's information
@@ -331,9 +331,9 @@ for i, s in enumerate(samples):
         dr = np.sqrt((p[x_idx] - ego.x[-1])**2 +
                      (p[y_idx] - ego.y[-1])**2 +
                      (p[z_idx] - ego.z[-1])**2)
-        
+
         # let's see if we can visualize some kind of correlation value from this??
-        
+
         if i == 0:
             pursuer_1.x.append(p[x_idx])
             pursuer_1.y.append(p[y_idx])
@@ -363,8 +363,10 @@ for i, s in enumerate(samples):
             # pursuer_3.dv.append(dv)
             pursuer_3.attention_scores.append(pursuer_relevance_scores[2])
 
-pursuer_1_dr_corr = compute_correlation(pursuer_1.dr, pursuer_1.attention_scores)
-pursuer_1_psi_corr = compute_correlation(pursuer_1.psi, pursuer_1.attention_scores)
+pursuer_1_dr_corr = compute_correlation(
+    pursuer_1.dr, pursuer_1.attention_scores)
+pursuer_1_psi_corr = compute_correlation(
+    pursuer_1.psi, pursuer_1.attention_scores)
 
 pursuer_2_dr_corr = compute_correlation(
     attribute=pursuer_2.dr, attention_scores=pursuer_2.attention_scores)
