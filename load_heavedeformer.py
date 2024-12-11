@@ -26,6 +26,9 @@ class AgentHistory():
         self.z: List[float] = []
         self.psi: List[float] = []
         self.v: List[float] = []
+        self.vx: List[float] = []
+        self.vy: List[float] = []
+        self.vz: List[float] = []
         self.waypoints_x: List[float] = []
         self.waypoints_y: List[float] = []
         self.pred_waypoints_x: List[float] = []
@@ -33,6 +36,11 @@ class AgentHistory():
         self.attention_scores: List[float] = []
         self.dr: List[float] = []  # distance to reference
         self.dv: List[float] = []  # velocity difference
+        self.attention_lat_dist: List[float] = []
+        self.attention_dz: List[float] = []
+        self.attention_pitch: List[float] = []
+        self.attention_yaw: List[float] = []
+        self.attention_speed: List[float] = []
 
 
 class JSONData():
@@ -64,34 +72,33 @@ class JSONData():
         return data
 
 
-def compute_attention_scores(attention_map: Tuple[torch.tensor]) -> np.ndarray:
+def compute_attention_scores(attention_map: Tuple[torch.tensor]) -> List[np.ndarray]:
     """
     Compute the normalized attention scores from the cls token
     """
     # Shape: [batch_size, sequence_length]
-    relevance_scores = torch.zeros(batch_size, num_tokens)
+    pursuer_scores = []
+    for pursuer_attn in attn_map:
+        # Sum attention weights across all layers and heads
+        batch_size, num_tokens = pursuer_attn[0].shape[0], pursuer_attn[0].shape[-1]
+        # Shape: [batch_size, sequence_length]
+        relevance_scores = torch.zeros(batch_size, num_tokens)
 
-    # Sum attention weights across all layers and heads
-    for layer_attention in attention_map:
-        # Sum over heads to get the attention distribution of the [CLS] token across the sequence
-        cls_attention = layer_attention[:, :, 0, :].sum(
-            dim=1)  # Shape: [batch_size, sequence_length]
-        relevance_scores += cls_attention  # Accumulate across layers
+        for layer_attention in pursuer_attn:
+            # Sum over heads to get the attention distribution of the [CLS] token across the sequence
+            cls_attention = layer_attention[:, :, 0, :].sum(
+                dim=1)  # Shape: [batch_size, sequence_length]
+            relevance_scores += cls_attention  # Accumulate across layers
 
-    # Average across the batch if you have multiple samples and want a single relevance score per token
-    avg_relevance_scores = relevance_scores.mean(
-        dim=0).detach().numpy()  # Shape: [sequence_length]
+        # Average across the batch if you have multiple samples and want a single relevance score per token
+        avg_relevance_scores = relevance_scores.mean(
+            dim=0).detach().numpy()  # Shape: [sequence_length]
 
-    # normalize the scores
-    normalized_scores = avg_relevance_scores / avg_relevance_scores.sum()
+        normalized_scores = avg_relevance_scores / avg_relevance_scores.sum()
 
-    # normalized_scores[0] = 0
-    sum_normalized_scores = normalized_scores.sum()
-    # new_normalized_scores = normalized_scores / sum_normalized_scores
+        pursuer_scores.append(normalized_scores)
 
-    # disregard the first index
-
-    return normalized_scores
+    return pursuer_scores
 
 
 # matplotlib.use('TkAgg')
@@ -103,7 +110,7 @@ with open(data_config_path, 'r') as f:
 # Set up the dataset and dataloader
 dataset = HATDataset(config=data_config, is_validation=False)
 dataloader = DataLoader(dataset, batch_size=1,
-                        shuffle=False, collate_fn=dataset.collate_fn)
+                        shuffle=True, collate_fn=dataset.collate_fn)
 
 # Load the latest checkpoint
 # checkpoint_dir = "evader_former_checkpoint/"
@@ -169,29 +176,34 @@ with torch.no_grad():  # Disable gradient calculation for inference
 
         # Sum over all layers and heads for the [CLS] token's attention
         # Initialize an array to accumulate attention scores
-        batch_size, num_tokens = attn_map[0].shape[0], attn_map[0].shape[-1]
-        # Shape: [batch_size, sequence_length]
-        relevance_scores = torch.zeros(batch_size, num_tokens)
 
-        # Sum attention weights across all layers and heads
-        for layer_attention in attn_map:
-            # Sum over heads to get the attention distribution of the [CLS] token across the sequence
-            cls_attention = layer_attention[:, :, 0, :].sum(
-                dim=1)  # Shape: [batch_size, sequence_length]
-            relevance_scores += cls_attention  # Accumulate across layers
+        pursuer_scores = []
+        for pursuer_attn in attn_map:
+            # Sum attention weights across all layers and heads
+            batch_size, num_tokens = pursuer_attn[0].shape[0], pursuer_attn[0].shape[-1]
+            # Shape: [batch_size, sequence_length]
+            relevance_scores = torch.zeros(batch_size, num_tokens)
 
-        # Average across the batch if you have multiple samples and want a single relevance score per token
-        avg_relevance_scores = relevance_scores.mean(
-            dim=0).cpu().numpy()  # Shape: [sequence_length]
+            for layer_attention in pursuer_attn:
+                # Sum over heads to get the attention distribution of the [CLS] token across the sequence
+                cls_attention = layer_attention[:, :, 0, :].sum(
+                    dim=1)  # Shape: [batch_size, sequence_length]
+                relevance_scores += cls_attention  # Accumulate across layers
 
-        # normalize the scores
+            # Average across the batch if you have multiple samples and want a single relevance score per token
+            avg_relevance_scores = relevance_scores.mean(
+                dim=0).cpu().numpy()  # Shape: [sequence_length]
+
+            pursuer_scores.append(avg_relevance_scores)
+
+            # normalize the scores
         normalized_scores = avg_relevance_scores / avg_relevance_scores.sum()
 
         pursuer_indices = [0, 1, 2]
         # Extract relevance scores for pursuers
         # Shape: (number of pursuers,)
         pursuer_relevance_scores = normalized_scores[pursuer_indices]
-        # print(pursuer_relevance_scores)
+        # print(pursuer_relevance_scores)at
         # # Plot the relevance scores for pursuers
         # # plt.figure(figsize=(10, 6))
         # fig, ax = plt.subplots(figsize=(10, 6))
@@ -221,7 +233,7 @@ data_info = dataset.data_info
 keys = list(data_info.keys())
 # get all the values of the first key
 # 30 is FUCKING WILD
-samples = data_info[keys[5]]  # this is 30
+samples = data_info[keys[2]]  # this is 30
 ego = AgentHistory()
 pursuer_1 = AgentHistory()
 pursuer_2 = AgentHistory()
@@ -257,7 +269,6 @@ for i, s in enumerate(samples):
     inference_time.append(final_time - start_time)
     # print(f"Time taken for inference: {time.time() - start_time:.2f} seconds")
     norm_attention_scores = compute_attention_scores(attn_map)
-    pursuer_relevance_scores = norm_attention_scores[pursuer_indices]
 
     # because the waypoints are in relative coordinates, we need to map them back to global coordinates
     predicted_waypoints = predicted_waypoints.detach().numpy().squeeze()
@@ -294,6 +305,12 @@ for i, s in enumerate(samples):
         dr = np.sqrt((p[x_idx] - ego.x[-1])**2 +
                      (p[y_idx] - ego.y[-1])**2 +
                      (p[z_idx] - ego.z[-1])**2)
+        pursuer_attn = norm_attention_scores[i]
+        attn_dist = pursuer_attn[0]
+        attn_dz = pursuer_attn[1]
+        attn_pitch = pursuer_attn[2]
+        attn_yaw = pursuer_attn[3]
+        attn_speed = pursuer_attn[4]
         if i == 0:
             pursuer_1.x.append(p[x_idx])
             pursuer_1.y.append(p[y_idx])
@@ -302,7 +319,11 @@ for i, s in enumerate(samples):
             pursuer_1.dr.append(dr)
             pursuer_1.psi.append(psi)
             # pursuer_1.dv.append(dv)
-            pursuer_1.attention_scores.append(pursuer_relevance_scores[0])
+            pursuer_1.attention_lat_dist.append(attn_dist)
+            pursuer_1.attention_dz.append(attn_dz)
+            pursuer_1.attention_pitch.append(attn_pitch)
+            pursuer_1.attention_yaw.append(attn_yaw)
+            pursuer_1.attention_speed.append(attn_speed)
         elif i == 1:
             pursuer_2.x.append(p[x_idx])
             pursuer_2.y.append(p[y_idx])
@@ -310,9 +331,12 @@ for i, s in enumerate(samples):
             # dv = np.abs(p[5] - ego.v[-1])
             pursuer_2.dr.append(dr)
             pursuer_2.psi.append(psi)
+            pursuer_2.attention_lat_dist.append(attn_dist)
+            pursuer_2.attention_dz.append(attn_dz)
+            pursuer_2.attention_pitch.append(attn_pitch)
+            pursuer_2.attention_yaw.append(attn_yaw)
+            pursuer_2.attention_speed.append(attn_speed)
             # pursuer_2.dv.append(dv)
-            pursuer_2.attention_scores.append(pursuer_relevance_scores[1])
-
         else:
             pursuer_3.x.append(p[x_idx])
             pursuer_3.y.append(p[y_idx])
@@ -320,8 +344,13 @@ for i, s in enumerate(samples):
             # dv = np.abs(p[5] - ego.v[-1])
             pursuer_3.dr.append(dr)
             pursuer_3.psi.append(psi)
+            pursuer_3.attention_lat_dist.append(attn_dist)
+            pursuer_3.attention_dz.append(attn_dz)
+            pursuer_3.attention_pitch.append(attn_pitch)
+            pursuer_3.attention_yaw.append(attn_yaw)
+            pursuer_3.attention_speed.append(attn_speed)
             # pursuer_3.dv.append(dv)
-            pursuer_3.attention_scores.append(pursuer_relevance_scores[2])
+
 
 pursuer_list = [pursuer_1, pursuer_2, pursuer_3]
 pursuer_colors = ['red', 'orange', 'green']
@@ -338,23 +367,26 @@ for i, pursuer in enumerate(pursuer_list):
 ax.legend()
 ax.set_title("Ego and Pursuers Trajectory")
 
-# fig, ax = plt.subplots()
-fig, ax = plt.subplots(3, 1, figsize=(10, 12))
-for i, p in enumerate(pursuer_list):
-    ax[0].plot(p.attention_scores, label=f"Pursuer {i+1}",
+fig, ax = plt.subplots(5, 1, figsize=(10, 12))
+for i, pursuer in enumerate(pursuer_list):
+    ax[0].plot(pursuer.attention_lat_dist, label=f'Lat Attn Pursuer {i+1}',
                color=pursuer_colors[i])
-    ax[0].set_title("Attention Scores for Pursuers")
-    ax[1].plot(p.dr, label=f"Pursuer {i+1}",
+    # ax[0].set_title("Attention Lat Dist")
+    ax[1].plot(pursuer.attention_dz, label=f'Dz Attn Pursuer {i+1}')
+    # ax[1].set_title("Attention DZ",
+    #                 color=pursuer_colors[i])
+    ax[2].plot(pursuer.attention_pitch, label=f'Pitch Attn ursuer {i+1}',
                color=pursuer_colors[i])
-    ax[1].set_title("Distance to Ego for Pursuers")
-    ax[2].plot(p.psi, label=f"Pursuer {i+1}",
+    # ax[2].set_title("Attention Pitch")
+    ax[3].plot(pursuer.attention_yaw, label=f'Yaw Attn Pursuer {i+1}',
                color=pursuer_colors[i])
+    # ax[3].set_title("Attention Yaw")
+    ax[4].plot(pursuer.attention_speed, label=f'Speed Attn Pursuer {i+1}',
+               color=pursuer_colors[i])
+    # ax[4].set_title("Attention Speed")
+
 for a in ax:
     a.legend()
-# set supertitle
-fig.suptitle("Attention Scores and Distance to Ego for Pursuers")
-# ax.set_title("Attention Scores WRT to Distance from Ego for Pursuers")
-
 
 # Let's look at the error between the predicted waypoints and the actual waypoints
 fig, ax = plt.subplots(3, 1, figsize=(10, 12))

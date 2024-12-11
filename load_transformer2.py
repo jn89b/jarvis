@@ -35,6 +35,9 @@ class AgentHistory():
         self.z: List[float] = []
         self.psi: List[float] = []
         self.v: List[float] = []
+        self.vx: List[float] = []
+        self.vy: List[float] = []
+        self.vz: List[float] = []
         self.waypoints_x: List[float] = []
         self.waypoints_y: List[float] = []
         self.pred_waypoints_x: List[float] = []
@@ -42,6 +45,8 @@ class AgentHistory():
         self.attention_scores: List[float] = []
         self.dr: List[float] = []  # distance to reference
         self.dv: List[float] = []  # velocity difference
+        self.ttcs: List[float] = []  # time to collision
+        self.delta_ttcs: List[float] = []  # change in time to collision
 
 
 class JSONData():
@@ -245,6 +250,7 @@ keys = list(data_info.keys())
 random_key = random.randint(0, len(keys))
 # get all the values of the first key
 # 30 is FUCKING WILD
+print("random key: ", random_key)
 samples = data_info[keys[random_key]]  # this is 30
 ego = AgentHistory()
 pursuer_1 = AgentHistory()
@@ -323,7 +329,10 @@ for i, s in enumerate(samples):
         x_idx: int = 2
         y_idx: int = 3
         z_idx: int = 4
-        psi_idx: int = 5
+        phi_idx: int = 5
+        theta_idx: int = 6
+        psi_idx: int = 7
+        dv_idx: int = 8
         p[x_idx] += bias_position[0]
         p[y_idx] += bias_position[1]
         p[z_idx] += bias_position[2]
@@ -338,6 +347,7 @@ for i, s in enumerate(samples):
             pursuer_1.x.append(p[x_idx])
             pursuer_1.y.append(p[y_idx])
             pursuer_1.z.append(p[z_idx])
+            pursuer_1.v.append(p[dv_idx])
             # dv = np.abs(p[5] - ego.v[-1])
             pursuer_1.dr.append(dr)
             pursuer_1.psi.append(psi)
@@ -347,6 +357,7 @@ for i, s in enumerate(samples):
             pursuer_2.x.append(p[x_idx])
             pursuer_2.y.append(p[y_idx])
             pursuer_2.z.append(p[z_idx])
+            pursuer_2.v.append(p[dv_idx])
             # dv = np.abs(p[5] - ego.v[-1])
             pursuer_2.dr.append(dr)
             pursuer_2.psi.append(psi)
@@ -358,6 +369,7 @@ for i, s in enumerate(samples):
             pursuer_3.y.append(p[y_idx])
             pursuer_3.z.append(p[z_idx])
             # dv = np.abs(p[5] - ego.v[-1])
+            pursuer_3.v.append(p[dv_idx])
             pursuer_3.dr.append(dr)
             pursuer_3.psi.append(psi)
             # pursuer_3.dv.append(dv)
@@ -373,8 +385,33 @@ pursuer_2_dr_corr = compute_correlation(
 pursuer_2_psi_corr = compute_correlation(
     attribute=pursuer_2.psi, attention_scores=pursuer_2.attention_scores)
 
-
 pursuer_list = [pursuer_1, pursuer_2, pursuer_3]
+
+# compute the diff of x,y,z to get velocity
+time_step: float = 0.1
+for p in pursuer_list:
+    p.vx = np.diff(p.x)/time_step
+    p.vy = np.diff(p.y)/time_step
+    p.vz = np.diff(p.z)/time_step
+ego.vx = np.diff(ego.x)/time_step
+ego.vy = np.diff(ego.y)/time_step
+ego.vz = np.diff(ego.z)/time_step
+
+# compute the time to collision
+for p in pursuer_list:
+    # pursuer x and y are already relative where ego is centered
+    # we will add a negative to sign to flip the convention
+    dx = np.array(ego.x[1:]) - np.array(p.x[1:])
+    dy = np.array(ego.y[1:]) - np.array(p.y[1:])
+    dz = np.array(ego.z[1:]) - np.array(p.z[1:])
+    dvx = ego.vx - p.vx
+    dvy = ego.vy - p.vy
+    dvz = ego.vz - p.vz
+    # compute the time to collision
+    p.ttcs = -(dx*dvx + dy*dvy + dz*dvz) / \
+        (dvx**2 + dvy**2 + dvz**2)
+    p.delta_ttcs = np.diff(p.ttcs) / time_step
+
 pursuer_colors = ['red', 'orange', 'green']
 fig, ax = plt.subplots()
 ax.plot(ego.x, ego.y, label='Ego', color='black')
@@ -390,7 +427,7 @@ ax.legend()
 ax.set_title("Ego and Pursuers Trajectory")
 
 # fig, ax = plt.subplots()
-fig, ax = plt.subplots(3, 1, figsize=(10, 12))
+fig, ax = plt.subplots(5, 1, figsize=(10, 12))
 for i, p in enumerate(pursuer_list):
     ax[0].plot(p.attention_scores, label=f"Pursuer {i+1}",
                color=pursuer_colors[i])
@@ -400,11 +437,36 @@ for i, p in enumerate(pursuer_list):
     ax[1].set_title("Distance to Ego for Pursuers")
     ax[2].plot(p.psi, label=f"Pursuer {i+1}",
                color=pursuer_colors[i])
+    ax[2].set_title("Psi for Pursuers")
+    ax[3].plot(p.ttcs, label=f"Pursuer {i+1}",
+               color=pursuer_colors[i])
+    ax[3].set_title("Time to Collision for Pursuers")
+    ax[4].plot(p.delta_ttcs, label=f"Pursuer {i+1}",
+               color=pursuer_colors[i])
+    ax[4].set_title("Change in Time to Collision for Pursuers")
 for a in ax:
     a.legend()
+
 # set supertitle
 fig.suptitle("Attention Scores and Distance to Ego for Pursuers")
 # ax.set_title("Attention Scores WRT to Distance from Ego for Pursuers")
+
+fig, ax = plt.subplots(4, 1, figsize=(10, 12))
+for i, p in enumerate(pursuer_list):
+    ax[0].plot(p.v, label=f"Pursuer {i+1}",
+               color=pursuer_colors[i])
+    ax[0].set_title("Velocity for Pursuers")
+    ax[1].plot(p.vx, label=f"Pursuer {i+1}",
+               color=pursuer_colors[i])
+    ax[1].set_title("X Velocity for Pursuers")
+    ax[2].plot(p.vy, label=f"Pursuer {i+1}",
+               color=pursuer_colors[i])
+    ax[2].set_title("Y Velocity for Pursuers")
+    estimated_v = np.sqrt(p.vx**2 + p.vy**2 + p.vz**2)
+    ax[3].plot(estimated_v, label=f"Estimated Pursuer {i+1}",
+               color='blue')
+for a in ax:
+    a.legend()
 
 
 # Let's look at the error between the predicted waypoints and the actual waypoints

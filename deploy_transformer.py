@@ -123,29 +123,49 @@ class EvaderFormerUtils():
 
         return batch_data
 
-    def compute_attention_scores(self,
-                                 attention_map: Tuple[torch.tensor]) -> np.ndarray:
+    def compute_attention_scores(self, attention_map: Tuple[torch.tensor]) -> np.ndarray:
         """
         Compute the normalized attention scores from the cls token
         """
         # Shape: [batch_size, sequence_length]
         batch_size, num_tokens = attention_map[0].shape[0], attention_map[0].shape[-1]
-        relevance_scores = torch.zeros(batch_size, num_tokens)
-
+        relevance_scores = torch.zeros(batch_size, num_tokens-1)
+        min_relevance_scores = None  # Initialize for tracking minimum scores
+        min_cls_value = 1000  # Initialize with a small value
+        desired_layer: int = 0
         # Sum attention weights across all layers and heads
-        for layer_attention in attention_map:
+        for i, layer_attention in enumerate(attention_map):
             # Sum over heads to get the attention distribution of the [CLS] token across the sequence
-            cls_attention = layer_attention[:, :, 0, :].sum(
+            cls_attention = layer_attention[:, :, 0, 1:].sum(
                 dim=1)  # Shape: [batch_size, sequence_length]
             relevance_scores += cls_attention  # Accumulate across layers
+            # Compute the minimum scores
+            cls_value = cls_attention[0][0]
+            if cls_value < min_cls_value:
+                min_cls_value = cls_value
+                desired_layer = i
+                min_relevance_scores = cls_attention
 
+        # min_relevance_scores = min_relevance_scores.detach().numpy()
         # Average across the batch if you have multiple samples and want a single relevance score per token
         avg_relevance_scores = relevance_scores.mean(
             dim=0).detach().numpy()  # Shape: [sequence_length]
-
         # normalize the scores
         normalized_scores = avg_relevance_scores / avg_relevance_scores.sum()
-        return normalized_scores
+        # normalized_scores[0] = 0
+        sum_normalized_scores = normalized_scores.sum()
+        new_normalized_scores = normalized_scores / sum_normalized_scores
+
+        # disregard the first index
+        min_relevance_scores = min_relevance_scores.detach().numpy().flatten()
+        #  set the shape
+        # print("min relevance scores: ", min_relevance_scores)
+        # min_relevance_scores[0] = 0
+        sum_min_relevance_scores = min_relevance_scores.sum()
+        # print("sum_min_relevance_scores: ", sum_min_relevance_scores)
+        min_relevance_scores = min_relevance_scores / sum_min_relevance_scores
+
+        return min_relevance_scores
 
 
 def pure_pursuit(ego: Agent, target: Agent) -> float:
@@ -213,7 +233,7 @@ if __name__ == "__main__":
     pursuer_2 = Agent(0, -200, 50, 0)
     pursuers = [pursuer_1, pursuer_2]
     N_steps: int = 250
-    pursuer_indices = [1, 2]
+    pursuer_indices = [0, 1]
     waypoints_history = []
     import time
     for i in range(N_steps):

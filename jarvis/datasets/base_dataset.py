@@ -1128,7 +1128,7 @@ class HATDataset(UAVTDataset):
                     vehicle) - np.array(bias_position)
 
                 lat_distance: float = np.linalg.norm(vehicle_state_norm[0:2])
-                dz: float = vehicle_state_norm[2]
+                dz: float = vehicle[2]
 
                 vehicle_state_norm = vehicle_state_norm.tolist()
                 vehicle_state_norm[3:] = vehicle[3:]
@@ -1142,12 +1142,13 @@ class HATDataset(UAVTDataset):
                 # - dz
                 # - pitch
                 # - yaw
+                # - velocity
                 vehicle_attributes.append(
                     ObjectTypes.PURSUERS.value)  # Example object type
                 vehicle_attributes.append(lat_distance)
                 vehicle_attributes.append(dz)
-                vehicle_attributes.append(vehicle[pitch_idx])
-                vehicle_attributes.append(vehicle[yaw_idx])
+                vehicle_attributes.append(np.deg2rad(vehicle[pitch_idx]))
+                vehicle_attributes.append(np.deg2rad(vehicle[yaw_idx]))
                 vehicle_attributes.append(vehicle[speed_idx])
                 # vehicle_attributes.extend(vehicle_state_norm)
                 sample['input'].append(vehicle_attributes)
@@ -1175,10 +1176,10 @@ class HATDataset(UAVTDataset):
         deconstructed_batch = []
         for element_id, sample in enumerate(data_batch):
             input_item = torch.tensor(sample["input"], dtype=torch.float32)
-            
+
             deconstructed_item = torch.tensor(
                 sample["deconstructed"], dtype=torch.float32)
-            
+
             output_item = torch.tensor(sample["output"])
 
             input_indices = torch.tensor(
@@ -1188,12 +1189,12 @@ class HATDataset(UAVTDataset):
 
             deconstructed_indices = torch.tensor(
                 [element_id] * len(deconstructed_item)).unsqueeze(1)
-            
+
             input_batch.append(torch.cat([input_indices, input_item], dim=1))
-            
+
             output_batch.append(
                 torch.cat([output_indices, output_item], dim=1))
-            
+
             deconstructed_batch.append(
                 torch.cat([deconstructed_indices, deconstructed_item], dim=1))
 

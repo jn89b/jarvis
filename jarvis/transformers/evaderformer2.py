@@ -31,6 +31,10 @@ from transformers import (
 
 
 class EvaderFormer(pl.LightningModule):
+    """
+    Include a decoder network to om
+    """
+
     def __init__(self, config: Dict[str, Any]) -> None:
         super().__init__()
         self.config: Dict[str, Any] = config
@@ -40,7 +44,8 @@ class EvaderFormer(pl.LightningModule):
         self.wp_size: int = 3
         self.num_wps_predict: int = 4
         hf_checkpoint: str = 'prajjwal1/bert-medium'
-        self.model: nn.Module = AutoModel.from_pretrained(hf_checkpoint)
+        self.model: nn.Module = AutoModel.from_pretrained(hf_checkpoint,
+                                                          output_hidden_states=True)
         n_embd: int = self.model.config.hidden_size
 
         self.cls_emb = nn.Parameter(torch.randn(1, self.num_attributes + 1))
@@ -65,7 +70,19 @@ class EvaderFormer(pl.LightningModule):
             input_size=self.num_wps_predict, hidden_size=65)
         self.wp_relu = nn.ReLU()
         self.wp_output = nn.Linear(65, self.wp_size)
-        self.criterion = nn.L1Loss()  # L1 loss for waypoint prediction
+        self.criterion = nn.L1Loss()  # L1 loss for waypoint prediction#
+
+        # Let's see if we can add a gradcam to visualize the weights of our neight
+        # call a hook to the last layer of the model
+        # self.reduction_layer = nn.Linear(n_embd, self.num_attributes)
+        # self.hook_handle = self.model.encoder.layer[-1].register_forward_hook(
+        #     self.my_hook)
+
+    # def my_hook(self, module, input, output):
+    #     # print(""module)
+    #     print("input", input[0].shape, input[1].shape)
+    #     print("output", output[0].shape, output[1].shape, output[2].shape)
+    #     print("hook called")
 
     def pad_sequence_batch(self, x_batched):
         """
@@ -454,7 +471,7 @@ class HEvadrFormer(EvaderFormer):
                 input_batch)
 
             input_batch_type = input_batch[:, 1:, 0]
-            input_batch_data = input_batch[:, 1:, 1:]
+            input_batch_data = input_batch[:, 1:, 2:]
 
             # Create masks by object type
             car_mask = (input_batch_type == 2).unsqueeze(-1)
@@ -480,12 +497,9 @@ class HEvadrFormer(EvaderFormer):
             # I want this to be [1,1,num_attributes+cls, d_head] right now its [1, num_attributes*num_cls, d_head]
             output = self.models[pursuer_idx](
                 **{"inputs_embeds": embedding}, output_attentions=True)
-            x, attn_map = output.last_hidden_state, output.attentions
-            print(attn_map[0].shape)
-        # end_time = time.time()
-        # print(
-        #     f"Time taken for the ensemble of transformers: {end_time - start_time}")
-        attn_maps.append(attn_map)
+            x, attn_map = output.last_hidden_state, output.attentions   \
+
+            attn_maps.append(attn_map)
 
         # Waypoint prediction (same as before)
         x = x.repeat(num_batches, 1, 1)
