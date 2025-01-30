@@ -1,3 +1,6 @@
+"""
+Used to train attention models for avoidance of the UAV
+"""
 import yaml
 import os
 import matplotlib.pyplot as plt

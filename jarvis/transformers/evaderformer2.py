@@ -72,18 +72,6 @@ class EvaderFormer(pl.LightningModule):
         self.wp_output = nn.Linear(65, self.wp_size)
         self.criterion = nn.L1Loss()  # L1 loss for waypoint prediction#
 
-        # Let's see if we can add a gradcam to visualize the weights of our neight
-        # call a hook to the last layer of the model
-        # self.reduction_layer = nn.Linear(n_embd, self.num_attributes)
-        # self.hook_handle = self.model.encoder.layer[-1].register_forward_hook(
-        #     self.my_hook)
-
-    # def my_hook(self, module, input, output):
-    #     # print(""module)
-    #     print("input", input[0].shape, input[1].shape)
-    #     print("output", output[0].shape, output[1].shape, output[2].shape)
-    #     print("hook called")
-
     def pad_sequence_batch(self, x_batched):
         """
         Pads a batch of sequences to the longest sequence in the batch.
@@ -186,30 +174,6 @@ class EvaderFormer(pl.LightningModule):
         pred_wp = torch.stack(output_wp, dim=1)
         logits = None
         return logits, pred_wp, attn_map
-
-    def grad_rollout(self, attentions, gradients, discard_ratio: float = 0.9):
-        result = torch.eye(attentions[0].size(-1)).to(attentions.device)
-        with torch.no_grad():
-            for attention, grad in zip(attentions, gradients):
-                weights = grad
-                attention_heads_fused = (attention*weights).mean(axis=1)
-                attention_heads_fused[attention_heads_fused < 0] = 0
-
-                # Drop the lowest attentions, but
-                # don't drop the class token
-                flat = attention_heads_fused.view(
-                    attention_heads_fused.size(0), -1)
-                _, indices = flat.topk(
-                    int(flat.size(-1)*discard_ratio), -1, False)
-                # indices = indices[indices != 0]
-                flat[0, indices] = 0
-
-                I = torch.eye(attention_heads_fused.size(-1))
-                a = (attention_heads_fused + 1.0*I)/2
-                a = a / a.sum(dim=-1)
-                result = torch.matmul(a, result)
-
-        return result
 
     def training_step(self, batch, batch_idx=None) -> torch.Tensor:
         waypoints = batch['waypoints']

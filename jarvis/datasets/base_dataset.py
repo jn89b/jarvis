@@ -1017,6 +1017,8 @@ class UAVTDataset(Dataset):
 
         current_data: Dict[str, Any] = data[idx]
 
+        # We need to center the position of the vehicles to the ego vehicle
+        # the velocities and the yaw, pitch and roll are kept the same since they are relative to the ego vehicle
         if 'ego' in current_data:
             bias_position = current_data['ego']
             sample['bias_position'] = bias_position

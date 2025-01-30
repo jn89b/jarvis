@@ -59,7 +59,7 @@ class Agent():
 
 class EvaderFormerUtils():
     """
-    Class
+    Class 
     """
     # @classmethod
 
