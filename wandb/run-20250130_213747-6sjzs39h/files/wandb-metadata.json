@@ -1,0 +1,188 @@
+{
+    "os": "Linux-6.8.0-51-generic-x86_64-with-glibc2.35",
+    "python": "3.10.12",
+    "heartbeatAt": "2025-01-31T03:37:48.804179",
+    "startedAt": "2025-01-31T03:37:47.917297",
+    "docker": null,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "/home/justin/coding_projects/Jarvis/practice/agile_rl.py",
+    "codePathLocal": "practice/agile_rl.py",
+    "codePath": "practice/agile_rl.py",
+    "git": {
+        "remote": "https://github.com/jn89b/jarvis.git",
+        "commit": "a56ea17d58638454a355fd09afcd3ee8c9a98f68"
+    },
+    "email": "jnguyenblue2804@gmail.com",
+    "root": "/home/justin/coding_projects/Jarvis",
+    "host": "justin-Legion-5-16IRX9",
+    "username": "justin",
+    "executable": "/home/justin/coding_projects/Jarvis/venv/bin/python",
+    "cpu_count": 20,
+    "cpu_count_logical": 28,
+    "cpu_freq": {
+        "current": 1258.4345357142854,
+        "min": 800.0,
+        "max": 4728.571428571428
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 1599.983,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 1599.753,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 1569.562,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 800.0,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 800.0,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 1488.042,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 800.634,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 800.0,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 800.0,
+            "min": 800.0,
+            "max": 5500.0
+        },
+        {
+            "current": 800.0,
+            "min": 800.0,
+            "max": 5500.0
+        },
+        {
+            "current": 1497.851,
+            "min": 800.0,
+            "max": 5500.0
+        },
+        {
+            "current": 800.0,
+            "min": 800.0,
+            "max": 5500.0
+        },
+        {
+            "current": 1600.032,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 800.0,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 800.0,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 800.0,
+            "min": 800.0,
+            "max": 5300.0
+        },
+        {
+            "current": 1062.541,
+            "min": 800.0,
+            "max": 3900.0
+        },
+        {
+            "current": 1586.41,
+            "min": 800.0,
+            "max": 3900.0
+        },
+        {
+            "current": 1355.941,
+            "min": 800.0,
+            "max": 3900.0
+        },
+        {
+            "current": 1701.994,
+            "min": 800.0,
+            "max": 3900.0
+        },
+        {
+            "current": 1600.242,
+            "min": 800.0,
+            "max": 3900.0
+        },
+        {
+            "current": 1604.117,
+            "min": 800.0,
+            "max": 3900.0
+        },
+        {
+            "current": 1586.282,
+            "min": 800.0,
+            "max": 3900.0
+        },
+        {
+            "current": 1526.225,
+            "min": 800.0,
+            "max": 3900.0
+        },
+        {
+            "current": 800.0,
+            "min": 800.0,
+            "max": 3900.0
+        },
+        {
+            "current": 800.0,
+            "min": 800.0,
+            "max": 3900.0
+        },
+        {
+            "current": 800.0,
+            "min": 800.0,
+            "max": 3900.0
+        },
+        {
+            "current": 797.666,
+            "min": 800.0,
+            "max": 3900.0
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 823.9597091674805,
+            "used": 749.6489410400391
+        }
+    },
+    "gpu": "NVIDIA GeForce RTX 4070 Laptop GPU",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "NVIDIA GeForce RTX 4070 Laptop GPU",
+            "memory_total": 8585740288
+        }
+    ],
+    "memory": {
+        "total": 31.119495391845703
+    }
+}
