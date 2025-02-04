@@ -76,19 +76,20 @@ class raw_env(AECEnv, EzPickle):
         EzPickle.__init__(self)
         super().__init__()
 
-        self.escape_y = None
-        self.escape_x = None
-        self.guard_y = None
-        self.guard_x = None
-        self.prisoner_y = None
-        self.prisoner_x = None
-        self.timestep = None
+        self.prisoner_x = 0
+        self.prisoner_y = 0
+        self.guard_x = MAX_IDX_BOARD
+        self.guard_y = MAX_IDX_BOARD
+        self.escape_x = random.randint(2, 5)
+        self.escape_y = random.randint(2, 5)
+        self.timestep = 0
         self.agent_name_mapping: Dict[str, int] = {
             "prisoner": 0,
             "guard":  1}
         self.agents = list(self.agent_name_mapping.values())
         self.possible_agents = self.agents[:]
         self._agent_selector = agent_selector(self.agents)
+        self.agent_selection = self._agent_selector.reset()
 
         self.terminations: Dict[int, bool] = {a: False for a in self.agents}
         self.truncations: Dict[int, bool] = {a: False for a in self.agents}
@@ -218,16 +219,6 @@ class raw_env(AECEnv, EzPickle):
         else:
             self.rewards = {0: 0, 1: 0}
             self.terminations = {a: False for a in self.agents}
-        # Remove terminated/truncated agents from the agents list
-        # Use list() to avoid modifying the list while iterating
-        # for agent in list(self.agents):
-        #     if self.terminations[agent] or self.truncations[agent]:
-        #         self.agents.remove(agent)
-        #         self.rewards.pop(agent)
-
-        # Update observations and action masks
-        # self.observations = {agent: self.observe(
-        #     agent) for agent in self.agents}
 
         # Accumulate rewards
         self._accumulate_rewards()
@@ -235,8 +226,7 @@ class raw_env(AECEnv, EzPickle):
         # Update timestep and agent selection
         self.timestep += 1
         self.agent_selection = self._agent_selector.next()
-
-        # return self.observations, self.rewards, self.terminations, self.truncations, self.infos
+        print(self.observe(agent_id))
 
     def render(self):
         """Renders the environment."""

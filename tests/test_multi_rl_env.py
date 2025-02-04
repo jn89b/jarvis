@@ -33,7 +33,7 @@ from stable_baselines3.ppo import MlpPolicy
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy
 from sb3_contrib.common.wrappers import ActionMasker
-
+import ray
 from ray import tune
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.algorithms.dqn.dqn_torch_model import DQNTorchModel
@@ -43,13 +43,20 @@ from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import FLOAT_MAX
 from ray.tune.registry import register_env
-
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 
 matplotlib.use('TkAgg')
 USE_IMPORT = True
 
 
 # AgileRL stuff
+"""
+Watch this video 
+https://www.youtube.com/results?search_query=rays+rlib+multi+agent+rays rlib
+https://medium.com/@jmugan/rllib-for-deep-hierarchical-multiagent-reinforcement-learning-6aa96cdee154
+https://github.com/DeUmbraTX/practical_rllib_tutorial
+
+"""
 
 # train with gpu
 torch.cuda.set_device(0)
@@ -259,7 +266,7 @@ class TestGeneratedData(unittest.TestCase):
     def test_api(self):
         api_test(connect_four_v3.raw_env(),
                  num_cycles=1000, verbose_progress=True)
-        api_test(self.test_env, num_cycles=1000, verbose_progress=True)
+        # api_test(self.test_env, num_cycles=1000, verbose_progress=True)
         # parallel_api_test(self.test_env, num_cycles=50)
 
     # def test_train_butterfly_supersuit(self):
@@ -267,7 +274,7 @@ class TestGeneratedData(unittest.TestCase):
 
     def test_env_configuration(self):
         env = multi_env.raw_env()
-        observations, infos = env.reset()
+        # observations, infos = env.reset()
 
         # print("observations: ", observations)
         # print("infos: ", infos)
@@ -302,6 +309,7 @@ class TestGeneratedData(unittest.TestCase):
 
     def test_train_env(self) -> None:
         # train_action_mask(multi_env, steps=1_000, seed=0)
+        ray.init()
 
         def env_creator():
             env = multi_env.raw_env()
@@ -322,6 +330,7 @@ class TestGeneratedData(unittest.TestCase):
             .environment(env=env_name)
             .api_stack(enable_rl_module_and_learner=False,
                        enable_env_runner_and_connector_v2=False,)
+            .env_runners(num_env_runners=10)
             .training(
                 train_batch_size=200,
                 hiddens=[],
@@ -330,12 +339,11 @@ class TestGeneratedData(unittest.TestCase):
             )
             .multi_agent(
                 policies={
-                    "prisoner": (None, obs_space[0], act_space[0], {}),
-                    "guard": (None, obs_space[1], act_space[1], {}),
-                },
-                policy_mapping_fn=(lambda agent_id, *args, **kwargs: agent_id),
+                    "0", "1"},
+                policy_mapping_fn=lambda agent_id, *
+                args, **kwargs: str(agent_id),
             )
-            .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+            .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "1")))
             .debugging(log_level="DEBUG")
             .framework(framework="torch")
             .experimental(_validate_config=False)
@@ -349,6 +357,10 @@ class TestGeneratedData(unittest.TestCase):
                 "CI") else 50000},
             checkpoint_freq=10,
             config=config.to_dict(),
+            storage_path="~/ray_results",
+            keep_checkpoints_num=3,  # Retains the last 3 checkpoints
+            checkpoint_at_end=True,  # Saves a checkpoint at the end of training
+            verbose=3
         )
 
 

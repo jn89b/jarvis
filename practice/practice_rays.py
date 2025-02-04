@@ -1,115 +1,93 @@
-import os
-import ray
-from gymnasium.spaces import Box, Discrete
-from ray import tune
-from ray.rllib.algorithms.dqn import DQNConfig
-from ray.rllib.algorithms.dqn.dqn_torch_model import DQNTorchModel
-from ray.rllib.env import PettingZooEnv
-from ray.rllib.models import ModelCatalog
-from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
-from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import FLOAT_MAX
-from ray.tune.registry import register_env
+"""A simple multi-agent env with two agents play rock paper scissors.
 
-from pettingzoo.utils import wrappers
-from your_env_file import raw_env  # Import your environment file
+This demonstrates running two learning policies in competition, both using the same
+RLlib algorithm (PPO by default).
 
-torch, nn = try_import_torch()
+The combined reward as well as individual rewards should roughly remain at 0.0 as no
+policy should - in the long run - be able to learn a better strategy than chosing
+actions at random. However, it could be possible that - for some time - one or the other
+policy can exploit a "stochastic weakness" of the opponent policy. For example a policy
+`A` learns that its opponent `B` has learnt to choose "paper" more often, which in
+return makes `A` choose "scissors" more often as a countermeasure.
+"""
+
+import re
+
+from pettingzoo.classic import rps_v2
+
+from ray.rllib.connectors.env_to_module import FlattenObservations
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
+from ray.rllib.utils.test_utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
+from ray.tune.registry import get_trainable_cls, register_env
 
 
-### CUSTOM RLlib TORCH MODEL (Handles Action Masking) ###
-class TorchMaskedActions(DQNTorchModel):
-    """PyTorch model that supports action masking."""
+parser = add_rllib_example_script_args(
+    default_iters=50,
+    default_timesteps=200000,
+    default_reward=6.0,
+)
+parser.set_defaults(
+    enable_new_api_stack=True,
+    num_agents=2,
+)
+parser.add_argument(
+    "--use-lstm",
+    action="store_true",
+    help="Whether to use an LSTM wrapped module instead of a simple MLP one. With LSTM "
+    "the reward diff can reach 7.0, without only 5.0.",
+)
 
-    def __init__(self, obs_space: Box, action_space: Discrete, num_outputs, model_config, name, **kw):
-        DQNTorchModel.__init__(self, obs_space, action_space,
-                               num_outputs, model_config, name, **kw)
 
-        obs_len = obs_space.shape[0] - action_space.n
-
-        orig_obs_space = Box(
-            shape=(
-                obs_len,), low=obs_space.low[:obs_len], high=obs_space.high[:obs_len]
-        )
-        self.action_embed_model = TorchFC(
-            orig_obs_space,
-            action_space,
-            action_space.n,
-            model_config,
-            name + "_action_embed",
-        )
-
-    def forward(self, input_dict, state, seq_lens):
-        """Handles action masking."""
-        action_mask = input_dict["obs"]["action_mask"]
-
-        # Compute predicted action logits
-        action_logits, _ = self.action_embed_model(
-            {"obs": input_dict["obs"]["observation"]})
-
-        # Apply action mask
-        inf_mask = torch.clamp(torch.log(action_mask), -1e10, FLOAT_MAX)
-        return action_logits + inf_mask, state
-
-    def value_function(self):
-        return self.action_embed_model.value_function()
+register_env(
+    "pettingzoo_rps",
+    lambda _: ParallelPettingZooEnv(rps_v2.parallel_env()),
+)
 
 
 if __name__ == "__main__":
-    ray.init()
+    args = parser.parse_args()
 
-    ### REGISTER ENVIRONMENT ###
-    def env_creator():
-        env = raw_env()  # Your custom PettingZoo environment
-        return wrappers.ParallelEnv(env)  # Wrap as parallel env for RLlib
+    assert args.num_agents == 2, "Must set --num-agents=2 when running this script!"
 
-    env_name = "robber_police_game"
-    register_env(env_name, lambda config: PettingZooEnv(env_creator()))
-
-    test_env = PettingZooEnv(env_creator())
-    obs_space = test_env.observation_space
-    act_space = test_env.action_space
-
-    ### REGISTER CUSTOM MODEL ###
-    ModelCatalog.register_custom_model("masked_dqn_model", TorchMaskedActions)
-
-    ### CONFIGURE RLlib TRAINING ###
-    config = (
-        DQNConfig()
-        .environment(env=env_name)
-        .rollouts(num_rollout_workers=1, rollout_fragment_length=30)
-        .training(
-            train_batch_size=200,
-            hiddens=[],
-            dueling=False,
-            model={"custom_model": "masked_dqn_model"},
+    base_config = (
+        get_trainable_cls(args.algo)
+        .get_default_config()
+        .environment("pettingzoo_rps")
+        .env_runners(
+            env_to_module_connector=lambda env: FlattenObservations(
+                multi_agent=True),
         )
         .multi_agent(
-            policies={
-                "prisoner": (None, obs_space, act_space, {}),
-                "guard": (None, obs_space, act_space, {}),
-            },
-            policy_mapping_fn=(lambda agent_id, *args, **kwargs: agent_id),
+            policies={"p0", "p1"},
+            # `player_0` uses `p0`, `player_1` uses `p1`.
+            policy_mapping_fn=lambda aid, episode: re.sub(
+                "^player_", "p", aid),
         )
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
-        .debugging(log_level="DEBUG")
-        .framework(framework="torch")
-        .exploration(
-            exploration_config={
-                "type": "EpsilonGreedy",
-                "initial_epsilon": 0.1,
-                "final_epsilon": 0.0,
-                "epsilon_timesteps": 100000,
-            }
+        .training(
+            vf_loss_coeff=0.005,
+        )
+        .rl_module(
+            model_config=DefaultModelConfig(
+                use_lstm=args.use_lstm,
+                # Use a simpler FCNet when we also have an LSTM.
+                fcnet_hiddens=[32] if args.use_lstm else [256, 256],
+                lstm_cell_size=256,
+                max_seq_len=15,
+                vf_share_layers=True,
+            ),
+            rl_module_spec=MultiRLModuleSpec(
+                rl_module_specs={
+                    "p0": RLModuleSpec(),
+                    "p1": RLModuleSpec(),
+                }
+            ),
         )
     )
 
-    ### TRAINING LOOP ###
-    tune.run(
-        "DQN",
-        name="DQN_Training_RobberPolice",
-        stop={"timesteps_total": 10000000 if not os.environ.get(
-            "CI") else 50000},
-        checkpoint_freq=10,
-        config=config.to_dict(),
-    )
+    run_rllib_example_script_experiment(base_config, args)
