@@ -11,7 +11,7 @@ env_config:
   spawn_own_space: false
   spawn_own_agents: false
   use_discrete_actions: true
-  config_file_dir: "config.yaml"
+  config_file_dir: "env_config.yaml"
   aircraft_config_dir: "aircraft_config.yaml"
   pursuer_config_dir: "pursuer_config.yaml"
 

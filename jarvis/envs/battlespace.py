@@ -45,17 +45,19 @@ class BattleSpace():
                         raise ValueError(
                             "Action key not found for agent but is supposed to be controlled {}".format(agent.id))
         else:
-            controlled_agent: Evader = None
+            controlled_agent: Agent = None
             for agent in self.all_agents:
                 if agent.is_controlled:
-                    controlled_agent: Evader = agent
                     agent.act(action)
-
-            for agent in self.all_agents:
-                agent: Agent
-                if agent.is_pursuer:
+                else:
                     agent: Pursuer
+
                     agent.chase(controlled_agent)
+                    # for agent in self.all_agents:
+                    #     agent: Agent
+                    #     if agent.is_pursuer and not agent.is_controlled:
+                    #         agent: Pursuer
+                    #         agent.chase(controlled_agent)
 
     def check_captured(self) -> bool:
         """

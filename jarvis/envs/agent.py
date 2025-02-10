@@ -14,6 +14,8 @@ from aircraftsim import HighControlInputs
 
 
 class Agent():
+    """
+    """
     is_pursuer: bool = None
     is_controlled: bool = None
 
@@ -53,7 +55,7 @@ class Agent():
         vel_idx: int = ControlIndex.VELOCITY.value
         heading_idx: int = ControlIndex.HEADING.value
 
-        if self.is_pursuer:
+        if not self.is_controlled:
             self.high_control_inputs = HighControlInputs(
                 ctrl_idx=1,
                 heading_ref_deg=np.rad2deg(action[heading_idx]),
@@ -153,18 +155,19 @@ class Evader(Agent):
 
 class Pursuer(Agent):
     is_pursuer: bool = True
-    is_controlled: bool = False
 
     def __init__(self, battle_space: BattleSpace,
                  state_vector: StateVector,
                  sim_interface: SimInterface,
                  id: int = None,
+                 is_controlled: bool = False,
                  radius_bubble: float = 0.0,
                  pursuer_state_limits: Dict = None,
                  pursuer_control_limits: Dict = None,
                  capture_distance: float = 5.0) -> None:
         super().__init__(battle_space, state_vector,
                          sim_interface, id, radius_bubble)
+        self.is_controlled: bool = is_controlled
         self.pursuer_state_limits: Dict = pursuer_state_limits
         self.pursuer_control_limits: Dict = pursuer_control_limits
         self.capture_distance: float = capture_distance

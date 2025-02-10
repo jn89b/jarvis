@@ -1,3 +1,4 @@
+# Configurations to be used to make a gym.Environment
 x_bounds: [-3000, 3000]
 y_bounds: [-3000, 3000]
 z_bounds: [-100, 100]
@@ -12,14 +13,14 @@ min_spawn_distance: 100
 max_spawn_distance: 300
 sim_frequency: 100 #hz
 
-low_rel_x: -500.0
-high_rel_x: 500.0
+low_rel_x: -750.0
+high_rel_x: 750.0
 
-low_rel_y: -500.0
-high_rel_y: 500.0
+low_rel_y: -750.0
+high_rel_y: 750.0
 
-low_rel_z: 0
-high_rel_z: 100.0
+low_rel_z: -50.0
+high_rel_z: 50.0
 
 high_rel_pos: 500.0
 
@@ -29,4 +30,11 @@ high_rel_vel: 75.0
 low_rel_att: 0.0
 high_rel_att: 3.14159 
 
-sim_end_time : 35.0
+sim_end_time : 50.0
+
+randomize_target: true
+target_x: 50
+target_y: 80
+target_z: 40
+target_spawn_radius_min: 300
+target_spawn_radius_max: 500

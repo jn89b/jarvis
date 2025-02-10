@@ -68,7 +68,7 @@ class EnvConfig:
     #     return int(sim_end_time*sim_frequency)
 
 
-@ dataclass
+@dataclass
 class AircraftConfig:
     control_limits: Dict[str, Dict[str, float]] = field(default_factory=dict)
     state_limits: Dict[str, Dict[str, float]] = field(default_factory=dict)
@@ -131,7 +131,6 @@ class AbstractBattleEnv(gymnasium.Env):
     def default_config(self) -> EnvConfig:
         # Path to the YAML configuration file
         # get the current directory
-        cwd = os.getcwd()
         config_file = 'config/' + self.config_file_dir
         try:
             # Read the YAML configuration file
@@ -141,7 +140,6 @@ class AbstractBattleEnv(gymnasium.Env):
             raise FileNotFoundError(
                 f"Configuration file '{config_file}' not found.")
         except yaml.YAMLError:
-            agent
             raise ValueError(
                 f"Configuration file '{config_file}' is not a valid YAML file.")
 
@@ -284,23 +282,23 @@ class AbstractBattleEnv(gymnasium.Env):
 
         return np.array([roll_cmd, alt_cmd, vel_cmd])
 
-    @ abstractmethod
+    @abstractmethod
     def __init_observation_spaces(self) -> spaces.Dict:
         """
         This method needs to be implemented by the child class
         """
 
-    @ abstractmethod
+    @abstractmethod
     def get_current_observation(self, agent_id: int) -> np.ndarray:
         """
         Get the current observation.
         """
 
-    @ abstractmethod
+    @abstractmethod
     def __init__agents(self) -> None:
         """ This method needs to be implemented by the child class """
 
-    @ abstractmethod
+    @abstractmethod
     def __init_battlespace(self) -> None:
         """
         This method needs to be implemented by the child class
