@@ -104,7 +104,6 @@ class TargetEngageEnv(gym.Env):
         aircraft_config_dir: str = 'config/aircraft_config.yaml',
     ):
         self.config = EnvConfig.from_yaml(config_file_dir)
-        print("config", self.config)
         self.aircraft_config_dir: str = aircraft_config_dir
         self.control_limits, self.state_limits = self.load_limit_config(
             aircraft_config_dir)
@@ -124,7 +123,6 @@ class TargetEngageEnv(gym.Env):
             raise ValueError("Controlled agents not initialized!")
 
         self.__init_target()
-
         self.upload_norm_obs = upload_norm_obs
         self.use_discrete_actions = use_discrete_actions
         self.current_step: int = 0
@@ -212,7 +210,6 @@ class TargetEngageEnv(gym.Env):
 
         obs_bounds = gym.spaces.Box(low=np.array(
             low_obs), high=np.array(high_obs), dtype=np.float32)
-
         # Define an action mask space that matches the shape of your discrete action space.
         # For MultiDiscrete, you might use MultiBinary with the same nvec.
         total_actions = int(self.action_space.nvec.sum())
@@ -526,28 +523,28 @@ class TargetEngageEnv(gym.Env):
         # Start with an all-ones mask (i.e. all actions allowed).
         mask = np.ones_like(self.roll_commands, dtype=np.int8)
         # If near a boundary, compute a desired heading that steers the aircraft back to the center.
-        if near_boundary:
-            center_x = (x_min + x_max) / 2.0
-            center_y = (y_min + y_max) / 2.0
-            desired_heading = np.arctan2(
-                center_y - current_y, center_x - current_x)
+        # if near_boundary:
+        #     center_x = (x_min + x_max) / 2.0
+        #     center_y = (y_min + y_max) / 2.0
+        #     desired_heading = np.arctan2(
+        #         center_y - current_y, center_x - current_x)
 
-            # Compute the heading error and normalize to [-pi, pi].
-            heading_error = desired_heading - current_heading
-            heading_error = (heading_error + np.pi) % (2 * np.pi) - np.pi
+        #     # Compute the heading error and normalize to [-pi, pi].
+        #     heading_error = desired_heading - current_heading
+        #     heading_error = (heading_error + np.pi) % (2 * np.pi) - np.pi
 
-            # For each roll command, disable those that do not steer the heading toward the center.
-            for i, roll_delta in enumerate(self.roll_commands):
-                # Assume that a positive roll_delta tends to turn the aircraft right (increasing heading)
-                # and a negative roll_delta tends to turn left (decreasing heading).
-                if heading_error > 0 and roll_delta <= 0:
-                    mask[i] = 0
-                elif heading_error < 0 and roll_delta >= 0:
-                    mask[i] = 0
-                elif np.abs(heading_error) < np.deg2rad(5):
-                    # When nearly aligned, allow only very small roll adjustments.
-                    if np.abs(roll_delta) > np.deg2rad(5):
-                        mask[i] = 0
+        #     # For each roll command, disable those that do not steer the heading toward the center.
+        #     for i, roll_delta in enumerate(self.roll_commands):
+        #         # Assume that a positive roll_delta tends to turn the aircraft right (increasing heading)
+        #         # and a negative roll_delta tends to turn left (decreasing heading).
+        #         if heading_error > 0 and roll_delta <= 0:
+        #             mask[i] = 0
+        #         elif heading_error < 0 and roll_delta >= 0:
+        #             mask[i] = 0
+        #         elif np.abs(heading_error) < np.deg2rad(5):
+        #             # When nearly aligned, allow only very small roll adjustments.
+        #             if np.abs(roll_delta) > np.deg2rad(5):
+        #                 mask[i] = 0
 
         # Always enforce the aircraft's roll limits regardless of boundary proximity.
         roll_min = self.control_limits['u_phi']['min']
@@ -738,12 +735,36 @@ class TargetEngageEnv(gym.Env):
 
         # Compute the dot product between the agent's velocity vector and the vector to the target.
         dot_product = self.target.dot_product_2D(state_vector)
+        # get the heading of the agent
+        dx = self.target.x - state_vector.x
+        dy = self.target.y - state_vector.y
+
+        # get the heading of the agent
+        heading = np.arctan2(dy, dx)
+        # get the heading error
+        heading_error = heading - state_vector.yaw_rad
+
+        # get the heading error
+        heading_error = (heading_error + np.pi) % (2 * np.pi) - np.pi
 
         # Compute the reward based on the change in distance and dot product.
         # we want the agent to get closer to the target
         # so if the distance is decreasing we give a positive reward
         # ie old distance was 60, new distance is 50, reward = +10
-        reward = (self.old_distance_from_target - distance)
+        # reward = (self.old_distance_from_target - distance)
+        reward = 0.0
+
+        if distance <= 150:
+            dz = self.target.z - state_vector.z
+            # penalize for dz error
+            reward -= 0.1*np.abs(dz)
+
+        reward -= 0.1 * np.abs(heading_error)
+
+        # penalize for line of sight
+        # if the agent is heading away from the target
+        # we give a negative reward
+
         # we want the agent to be heading towards the target
         # so if the dot product is increasing we give a positive reward
         # ie old dot product was 0.5, new dot product is 0.7, reward = +0.2
