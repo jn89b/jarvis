@@ -8,7 +8,7 @@ Create a base environment for multi-agent reinforcement learning.
 import yaml
 import gymnasium as gym
 import numpy as np
-
+import os
 from typing import List, Tuple, Dict
 from dataclasses import dataclass, field
 
@@ -72,8 +72,16 @@ class EnvConfig:
 
     @classmethod
     def from_yaml(cls, file_path: str) -> 'EnvConfig':
-        with open(file_path, 'r') as f:
-            config_data = yaml.safe_load(f)
+        cwd = os.getcwd()
+        # log the current working directory
+        full_file_path = os.path.join(cwd, file_path)
+        print("Current working directory:", cwd)
+        if not os.path.exists(full_file_path):
+            return cls()
+        else:
+            with open(full_file_path, 'r') as f:
+                config_data = yaml.safe_load(f)
+
         return cls(**config_data)
 
 
@@ -81,6 +89,63 @@ class EnvConfig:
 class AircraftConfig:
     control_limits: Dict[str, Dict[str, float]] = field(default_factory=dict)
     state_limits: Dict[str, Dict[str, float]] = field(default_factory=dict)
+
+
+def load_limit_config(file_path: str) -> Tuple[Dict[str, Dict[str, float]],
+                                               Dict[str, Dict[str, float]]]:
+    """
+    Reads the configuration file and returns the control and state limits
+    for the agents in the environment.
+
+    Args:
+        file_path: The path to the configuration file.
+
+    Returns:
+        A tuple containing the control and state limits for the agents.
+        control_limits_dict: A dictionary containing the control limits for each agent.
+        state_limits_dict: A dictionary containing the state limits for each agent.
+
+        Each dictionary has the following structure:
+        control_limits_dict = {
+            'u_phi': {'min': min_val, 'max': max_val},
+            'u_theta': {'min': min_val, 'max': max_val},
+            ... }
+        state_limits_dict = {
+            'x': {'min': min_val, 'max': max_val},
+            'y': {'min': min_val, 'max': max_val},
+            ... }
+    """
+
+    # file_path = 'config/' + file_path
+    try:
+        with open(file_path, 'r') as f:
+            config = yaml.safe_load(f)
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            f"Configuration file '{file_path}' not found.")
+    except yaml.YAMLError:
+        raise ValueError(
+            f"Configuration file '{file_path}' is not a valid YAML file.")
+
+    # Transform the YAML structure to the required dictionaries
+    control_limits_dict = {}
+    state_limits_dict = {}
+
+    # Extract control limits
+    for key, limits in config.get('control_limits', {}).items():
+        control_limits_dict[key] = {
+            'min': float(limits['min']),
+            'max': float(limits['max'])
+        }
+
+    # Extract state limits
+    for key, limits in config.get('state_limits', {}).items():
+        state_limits_dict[key] = {
+            'min': float('-inf') if limits['min'] == '-inf' else float(limits['min']),
+            'max': float('inf') if limits['max'] == 'inf' else float(limits['max'])
+        }
+
+    return control_limits_dict, state_limits_dict
 
 
 class TargetEngageEnv(gym.Env):
@@ -100,13 +165,20 @@ class TargetEngageEnv(gym.Env):
         agents: List[Agent] = None,
         upload_norm_obs: bool = False,
         use_discrete_actions: bool = True,
-        config_file_dir: str = 'config/env_config.yaml',
+        config_file_dir: EnvConfig = None,
         aircraft_config_dir: str = 'config/aircraft_config.yaml',
+        control_limits: Dict[str, Dict[str, float]] = None,
+        state_limits: Dict[str, Dict[str, float]] = None
     ):
-        self.config = EnvConfig.from_yaml(config_file_dir)
+        # self.config = EnvConfig.from_yaml(config_file_dir)
+        self.config = config_file_dir
         self.aircraft_config_dir: str = aircraft_config_dir
-        self.control_limits, self.state_limits = self.load_limit_config(
-            aircraft_config_dir)
+        if control_limits is None or state_limits is None:
+            self.control_limits, self.state_limits = load_limit_config(
+                aircraft_config_dir)
+        else:
+            self.control_limits = control_limits
+            self.state_limits = state_limits
 
         if battlespace is None or not isinstance(battlespace, BattleSpace):
             self.__init_battlespace()
@@ -327,8 +399,9 @@ class TargetEngageEnv(gym.Env):
 
         self.battlespace.all_agents.append(agent)
 
-    def load_limit_config(self, file_path: str) -> Tuple[Dict[str, Dict[str, float]],
-                                                         Dict[str, Dict[str, float]]]:
+    @classmethod
+    def load_limit_config(file_path: str) -> Tuple[Dict[str, Dict[str, float]],
+                                                   Dict[str, Dict[str, float]]]:
         """
         Reads the configuration file and returns the control and state limits
         for the agents in the environment.

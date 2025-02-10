@@ -59,6 +59,8 @@ class EnvConfig:
 
     @classmethod
     def from_yaml(cls, file_path: str) -> 'EnvConfig':
+        cwd = os.getcwd()
+        print("Current working directory", cwd)
         with open(file_path, 'r') as f:
             config_data = yaml.safe_load(f)
         return cls(**config_data)
@@ -131,6 +133,7 @@ class AbstractBattleEnv(gymnasium.Env):
     def default_config(self) -> EnvConfig:
         # Path to the YAML configuration file
         # get the current directory
+        cwd = os.getcwd()
         config_file = 'config/' + self.config_file_dir
         try:
             # Read the YAML configuration file

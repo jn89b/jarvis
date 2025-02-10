@@ -1,11 +1,12 @@
 
+import gc
 import ray
 from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 
 from typing import Dict, Any
 from jarvis.utils.trainer import Trainer, load_yaml_config
-from jarvis.envs.multi_env import TargetEngageEnv
+from jarvis.envs.multi_env import TargetEngageEnv, AircraftConfig, EnvConfig, load_limit_config
 from jarvis.utils.mask import MultiDimensionalMaskModule
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.models import ModelCatalog
@@ -26,10 +27,15 @@ from jarvis.utils.mask import MultiDimensionalMaskModule
 # Register your custom model with a name so you can reference it in your RLlib config.
 # ModelCatalog.register_custom_model(
 #     "unpacked_masked_torch_model", UnpackedMaskedActionsTorchModel)
+import gc
 
+gc.collect()
 
+# Used to clean up the Ray processes after training
+ray.shutdown()
 # For debugging purposes
-ray.init(local_mode=True)
+# ray.init(local_mode=True)
+ray.init()
 
 # tune.register_env("env", HierarchicalEnv)
 tune.register_env("env", TargetEngageEnv)
@@ -51,22 +57,27 @@ def main() -> None:
     trainer.train()
 
 
-def create_env(env_config: Dict[str, Any]) -> TargetEngageEnv:
+def create_env(env_config: Dict[str, Any],
+               aircraft_config_dir: str,
+               control_limits: Dict[str, Any] = None,
+               state_limits: Dict[str, Any] = None) -> TargetEngageEnv:
     """
     """
     # env = HierarchicalEnv(env_config)
     config_env: str = "config/env_config.yaml"
+    config = EnvConfig.from_yaml(config_env)
+    # log the values
     # self.aircraft_config_dir: str = env_config.get(
     # "aircraft_config_dir", "config/aircraft_config.yaml")
-    aircraft_config_dir: str = "config/aircraft_config.yaml"
-
     env = TargetEngageEnv(
         battlespace=None,
         agents=None,
         upload_norm_obs=False,
         use_discrete_actions=True,
-        config_file_dir=config_env,
+        config_file_dir=config,
         aircraft_config_dir=aircraft_config_dir,
+        control_limits=control_limits,
+        state_limits=state_limits,
     )
 
     return env
@@ -77,8 +88,19 @@ def train_rllib() -> None:
     """
 
     # tune.register_env("env", HierarchicalEnv)
-    tune.register_env("mask_env", create_env)
-    example_env = create_env(env_config=None)
+
+    aircraft_config_dir: str = "config/aircraft_config.yaml"
+    control_limits, state_limits = load_limit_config(aircraft_config_dir)
+    tune.register_env("mask_env", lambda config: create_env(
+        env_config=config,
+        aircraft_config_dir=aircraft_config_dir,
+        control_limits=control_limits,
+        state_limits=state_limits))
+
+    example_env = create_env(env_config=None,
+                             aircraft_config_dir=aircraft_config_dir,
+                             control_limits=control_limits,
+                             state_limits=state_limits)
 
     observation_space = example_env.observation_space
     action_space = example_env.action_space
@@ -97,8 +119,10 @@ def train_rllib() -> None:
     # Define the multi-agent RL training setup
     config = (
         PPOConfig()
-        .environment(env="env")
-        .env_runners(num_env_runners=5)
+        # .environment(env="env")
+        # use create_env to pass in the env_config
+        .environment(env="mask_env")
+        .env_runners(num_env_runners=2)
         .resources(num_gpus=1)
         .rl_module(
             rl_module_spec=RLModuleSpec(
@@ -109,21 +133,6 @@ def train_rllib() -> None:
             )
         )
     )
-    # .rl_module(
-    #     # We need to explicitly specify here RLModule to use and
-    #     # the catalog needed to build it.
-    #     rl_module_spec=RLModuleSpec(
-    #         module_class=MultiActionMaskingTorchRLModule,
-    #         observation_space=observation_space,
-    #         action_space=action_space,
-    #         model_config={}
-    #         # module_class=ActionMaskingTorchRLModule,
-    #         # observation_space=observation_space,
-    #         # action_space=action_space,
-    #         # model_config={}
-    #     ),
-    # )
-
     tuner = tune.Tuner("PPO", param_space=config, run_config=run_config)
     tuner.fit()
 
