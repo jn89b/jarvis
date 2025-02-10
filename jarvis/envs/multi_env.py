@@ -681,6 +681,12 @@ class TargetEngageEnv(gym.Env):
             obs[speed_idx], low[speed_idx], high[speed_idx])
 
         # we're goign to clip the relative position to the target
+        # altitude observation
+        buffer_alt = 2
+        if obs[2] < low[2] + buffer_alt or obs[2] > high[2] - buffer_alt:
+            # clip the altitude since its not too big of a deal
+            obs[2] = np.clip(obs[2], low[2], high[2])
+
         obs[4] = np.clip(obs[4], low[4], high[4])
         obs[7] = np.clip(obs[7], low[7], high[7])
         obs[8] = np.clip(obs[8], low[8], high[8])

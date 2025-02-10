@@ -122,7 +122,7 @@ def train_rllib() -> None:
         # .environment(env="env")
         # use create_env to pass in the env_config
         .environment(env="mask_env")
-        .env_runners(num_env_runners=2)
+        .env_runners(num_env_runners=6)
         .resources(num_gpus=1)
         .rl_module(
             rl_module_spec=RLModuleSpec(
@@ -132,6 +132,7 @@ def train_rllib() -> None:
                 model_config={},  # Additional model config options (if any)
             )
         )
+        .env_runners(observation_filter="MeanStdFilter")
     )
     tuner = tune.Tuner("PPO", param_space=config, run_config=run_config)
     tuner.fit()
