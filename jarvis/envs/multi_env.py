@@ -740,15 +740,14 @@ class TargetEngageEnv(gym.Env):
         dot_product = self.target.dot_product_2D(state_vector)
 
         # Compute the reward based on the change in distance and dot product.
-        reward = 0.0
         # we want the agent to get closer to the target
         # so if the distance is decreasing we give a positive reward
         # ie old distance was 60, new distance is 50, reward = +10
-        reward += 0.1 * (self.old_distance_from_target - distance)
+        reward = (self.old_distance_from_target - distance)
         # we want the agent to be heading towards the target
         # so if the dot product is increasing we give a positive reward
         # ie old dot product was 0.5, new dot product is 0.7, reward = +0.2
-        reward += 0.1 * (dot_product - self.old_dot_product)
+        # reward += 0.1 * (dot_product - self.old_dot_product)
 
         # Update the stored values for the next step.
         self.old_distance_from_target = distance
@@ -818,5 +817,4 @@ class TargetEngageEnv(gym.Env):
             reward = self.compute_intermediate_reward()
 
         self.current_step += 1
-
         return observation, reward, terminated, truncated, infos

@@ -84,7 +84,7 @@ def train_rllib() -> None:
     action_space = example_env.action_space
     # Define the run configuration for Ray Tune.
     run_config = tune.RunConfig(
-        stop={"training_iteration": 100},
+        stop={"training_iteration": 1000},
         checkpoint_config=tune.CheckpointConfig(
             checkpoint_frequency=20,
             checkpoint_at_end=True,
@@ -98,8 +98,8 @@ def train_rllib() -> None:
     config = (
         PPOConfig()
         .environment(env="env")
-        .env_runners(num_env_runners=1)
-        .resources(num_gpus=0)
+        .env_runners(num_env_runners=5)
+        .resources(num_gpus=1)
         .rl_module(
             rl_module_spec=RLModuleSpec(
                 module_class=MultiDimensionalMaskModule,
