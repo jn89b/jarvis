@@ -122,7 +122,7 @@ def train_rllib() -> None:
         # .environment(env="env")
         # use create_env to pass in the env_config
         .environment(env="mask_env")
-        .env_runners(num_env_runners=6)
+        .env_runners(num_env_runners=3)
         .resources(num_gpus=1)
         .rl_module(
             rl_module_spec=RLModuleSpec(

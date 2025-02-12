@@ -1,4 +1,3 @@
-
 import numpy as np
 from typing import List, Tuple, Dict
 from jarvis.envs.battlespace import BattleSpace
