@@ -16,7 +16,7 @@ class TestGenerateRLData(unittest.TestCase):
 
     def init_agent(self) -> None:
         """
-        Simple test to spawn an agent and see 
+        Simple test to spawn an agent and see
         that it spawns to correct location
         """
         x = 50
@@ -44,7 +44,7 @@ class TestGenerateRLData(unittest.TestCase):
 
     def test_spawn_agent(self) -> None:
         """
-        Simple test to spawn an agent and see 
+        Simple test to spawn an agent and see
         that it spawns to correct location
         """
         x = 50
@@ -80,6 +80,9 @@ class TestGenerateRLData(unittest.TestCase):
         assert agent.state_vector.yaw_rad == yaw_rad
 
     def test_move_agent(self) -> None:
+        """
+        Keep in mind frames are in NED
+        """
         self.init_agent()
         n_steps: int = 100
 
@@ -100,14 +103,34 @@ class TestGenerateRLData(unittest.TestCase):
             self.agent.step()
             print("agent position",
                   self.agent.state_vector.x,
-                  self.agent.state_vector.y)
+                  self.agent.state_vector.y,
+                  self.agent.state_vector.z)
 
         data: DataHandler = self.agent.return_data()
         fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
 
         ax.plot(data.x, data.y, data.z)
-        plt.show()
+        ax.scatter(data.x[0], data.y[0], data.z[0], c='r', label='start')
+        ax.legend()
 
+        fig, ax = plt.subplots(nrows=4, ncols=1)
+        ax[0].plot(np.rad2deg(data.phi), label='phi')
+        ax[0].  set_title('Phi')
+        ax[1].plot(np.rad2deg(data.theta), label='theta')
+        ax[1].plot(np.rad2deg(data.u_theta), c='r', label='theta_cmd')
+        ax[1].set_title('Theta')
+        ax[2].plot(np.rad2deg(data.psi))
+        ax[2].set_title('Psi')
+        ax[3].plot(data.v, label='velocity')
+        ax[3].plot(data.v_cmd, c='r', label='velocity_cmd')
+        ax[3].set_title('Velocity')
+
+        for a in ax:
+            a.legend()
+
+        # plt.show()
+
+    def test_max_pitch_commands(self)
     # def test_config(self) -> None:
     #     """
     #     Test to make

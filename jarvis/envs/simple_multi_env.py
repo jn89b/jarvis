@@ -14,6 +14,14 @@ from jarvis.envs.tokens import KinematicIndex
 from abc import ABC, abstractmethod
 
 
+"""
+Initialize variables
+Initialize optimizer
+Init criteria
+
+"""
+
+
 class AbstracKinematicEnv(gym.Env, ABC):
     """
 
@@ -363,43 +371,79 @@ class AbstracKinematicEnv(gym.Env, ABC):
                               high=np.array(high),
                               dtype=np.float32)
 
+    def compute_ascent_descent_rate(self, current_vel: float,
+                                    pitch_cmd: float) -> float:
+        return current_vel * np.sin(pitch_cmd)
+
+    def mask_pitch_commands(self, agent: SimpleAgent, action_mask: np.ndarray,
+                            z_bounds: List[float],
+                            projection_time: float = 0.5) -> np.ndarray:
+        """
+        Args: 
+            agent (SimpleAgent): The agent to mask the pitch commands for
+            action_mask (np.ndarray): The action mask to update
+            z_bounds (List[float]): The bounds of the agent
+            projection_time (float): The time to project the agent forward
+        Returns:
+            np.ndarray: The updated action mask
+
+        This method masks the pitch commands based on how close the agent is to the z bounds
+        We do this by projecting the agent forward in time and checking if the agent will
+        hit the z bounds based on current velocity and the range of pitch commands
+        """
+        z_position = agent.state_vector.z
+        v_current = agent.state_vector.speed
+        z_bounds = self.pursuer_state_limits['z']
+
+        for i, pitch_cmd in enumerate(self.pitch_commands):
+            ascent_descent_rate = self.compute_ascent_descent_rate(
+                current_vel=v_current, pitch_cmd=pitch_cmd)
+            projected_z = z_position + ascent_descent_rate * projection_time
+
+            if projected_z > z_bounds['max'] or projected_z < z_bounds['min']:
+                action_mask[i] = 0
+
+        return action_mask
+
     def get_action_mask(self, agent: SimpleAgent) -> np.ndarray:
         """
         Returns the action mask for the agent
         This will be used to mask out the actions that are not allowed
-        From this abstract class we provide methods to make sure 
+        From this abstract class we provide methods to make sure
         agent is not allowed to go out of bounds
         You can call override this method if you want
         """
-        action_mask = np.zeros(self.action_space.nvec.sum(), dtype=int)
 
         # Get agent information
         states: np.array = agent.get_state()
 
         # Mask pitch commands based on how close it is to z bounds
-        x_position:float = states[KinematicIndex.X.value]
-        y_position:float = states[KinematicIndex.Y.value]
-        z_position:float = states[KinematicIndex.Z.value]
-        
-        if agent.is_pursuer:
-            x_bounds:List[float] = self.pursuer_state_limits['x']
-            y_bounds:List[float] = self.pursuer_state_limits['y']
-            z_bounds:List[float] = self.pursuer_state_limits['z']
-        else:
-            x_bounds:List[float] = self.evader_state_limits['x']
-            y_bounds:List[float] = self.evader_state_limits['y']
-            z_bounds:List[float] = self.evader_state_limits['z']
-        
-        ## Keep in mind that the z_position in NED frame
-        # where positive z is down and negative z is up
-        if z_bounds[0] < z_position < z_bounds[1]:
-            action_mask[1] = 1
-            action_mask[2] = 1
-            action_mask[3] = 1
-        
-        # Mask roll/yaw commands based on how close it is to x/y bounds
+        x_position: float = states[KinematicIndex.X.value]
+        y_position: float = states[KinematicIndex.Y.value]
+        z_position: float = states[KinematicIndex.Z.value]
+        v_current: float = states[KinematicIndex.V.value]
 
-        return action_mask
+        if agent.is_pursuer:
+            x_bounds: List[float] = self.pursuer_state_limits['x']
+            y_bounds: List[float] = self.pursuer_state_limits['y']
+            z_bounds: List[float] = self.pursuer_state_limits['z']
+        else:
+            x_bounds: List[float] = self.evader_state_limits['x']
+            y_bounds: List[float] = self.evader_state_limits['y']
+            z_bounds: List[float] = self.evader_state_limits['z']
+
+        # Mask roll/yaw commands based on how close it is to x/y bounds
+        roll_mask: np.array = np.ones_like(self.roll_commands)
+        pitch_mask: np.array = np.ones_like(self.pitch_commands)
+        yaw_mask: np.array = np.ones_like(self.yaw_commands)
+        vel_mask: np.array = np.ones_like(self.airspeed_commands)
+
+        pitch_mask = self.mask_pitch_commands(agent=agent,
+                                              action_mask=pitch_mask,
+                                              z_bounds=z_bounds)
+
+        # We want to mask the pitch commands if the agent is close to the z bounds
+        # mask the pitch commands based on on theta
 
 
 class EngageEnv(AbstracKinematicEnv):
@@ -425,6 +469,7 @@ class EngageEnv(AbstracKinematicEnv):
         #         action=act)
 
         return obs, reward, done, info
+
 
 class AvoidEnv(AbstracKinematicEnv):
     def __init__agents(self):

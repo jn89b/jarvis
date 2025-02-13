@@ -8,12 +8,13 @@ plt.close()
 # Order: [x, y, z, phi, theta, psi, v, p, q, r]
 # Start all at zero.
 x0 = np.zeros(7)
+x0[2] = 50
 x0[-1] = 15
 # Define a constant (step) control input:
 # Order: [u_phi, u_theta, u_psi, v_cmd]
 # Here, we set the attitude commands to 0 and command a step in airspeed to 10 m/s.
 roll_cmd: float = np.deg2rad(0)
-pitch_cmd: float = np.deg2rad(0)
+pitch_cmd: float = np.deg2rad(-20)
 yaw_cmd: float = np.deg2rad(0)
 u = np.array([roll_cmd, pitch_cmd, yaw_cmd, 20.0])
 
@@ -21,7 +22,7 @@ u = np.array([roll_cmd, pitch_cmd, yaw_cmd, 20.0])
 wind = np.array([10.0, 0.0, 0.0])
 
 # Set simulation parameters
-num_steps = 500
+num_steps = 10
 dt = model.dt_val
 
 # Initialize storage for simulation data

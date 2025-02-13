@@ -7,7 +7,7 @@ import casadi as ca
 import numpy as np
 
 from jarvis.envs.battlespace import BattleSpace
-from jarvis.envs.tokens import ControlIndex
+from jarvis.envs.tokens import KinematicIndex, ControlIndex
 from jarvis.utils.vector import StateVector
 from jarvis.algos.pro_nav import ProNav
 
@@ -71,9 +71,6 @@ class DataHandler:
         self.theta.append(info_array[4])
         self.psi.append(info_array[5])
         self.v.append(info_array[6])
-        # self.p.append(info_array[7])
-        # self.q.append(info_array[8])
-        # self.r.append(info_array[9])
 
     def update_controls(self, control_array: np.ndarray) -> None:
         """
@@ -199,6 +196,13 @@ class PlaneKinematicModel:
         self.state_info = state_info
         self.data_handler.update_states(state_info)
 
+    def update_controls(self, control: np.ndarray) -> None:
+        """
+        Args:
+            control (np.ndarray): The control input to log.
+        """
+        self.data_handler.update_controls(control)
+
     def update_time_log(self, time: float) -> None:
         """
         Log the current time.
@@ -304,12 +308,21 @@ class PlaneKinematicModel:
             self.wind_z
         )
 
-    def set_state_space(self) -> None:
+    def set_state_space(self, make_z_positive_up: bool = True) -> None:
         """
         Define the state space of the system and construct the ODE function.
+        Args:
+            make_z_positive (bool): If True, enforce that the z-coordinate is positive.
+            This means the convention becomes NEU (North-East-Up).
 
         The ODE is defined using the kinematic equations for an aircraft in a NED frame,
         including wind effects and first-order lag dynamics for airspeed and angular rates.
+
+        Frame for these equations are in NED Inertial
+        Where x is North, y is East, z is Up or Down
+        Positive roll is right wing down
+        Positive pitch is nose up
+        Positive yaw is CW
         """
 
         # # Airspeed dynamics (airspeed does not include wind)
@@ -319,11 +332,13 @@ class PlaneKinematicModel:
 
         self.x_fdot = self.v_f * \
             ca.cos(self.theta_f) * ca.cos(self.psi_f) + self.wind_x
-
         self.y_fdot = self.v_f * \
             ca.cos(self.theta_f) * ca.sin(self.psi_f) + self.wind_y
 
-        self.z_fdot = -self.v_f * ca.sin(self.theta_f) + self.wind_z
+        if make_z_positive_up:
+            self.z_fdot = self.v_f * ca.sin(self.theta_f) + self.wind_z
+        else:
+            self.z_fdot = -self.v_f * ca.sin(self.theta_f) + self.wind_z
 
         # Okay this is weird but what we are going to do is
         # relate our roll to our yaw model, we're assuming that there is some
@@ -333,7 +348,10 @@ class PlaneKinematicModel:
         phi_cmd = k * yaw_error
         # self.phi_fdot: ca.SX = (self.u_phi - self.phi_f) / self.tau_phi
         self.phi_fdot: ca.SX = (phi_cmd - self.phi_f) / self.tau_phi
-        self.theta_fdot: ca.SX = (self.u_theta - self.theta_f) / self.tau_theta
+
+        # So a positive u_theta means we want the nose to be up
+        self.theta_fdot: ca.SX = (
+            self.u_theta - self.theta_f) / self.tau_theta
         self.psi_fdot = -self.g * (ca.tan(self.phi_f) / self.v_f)
 
         self.z_dot = ca.vertcat(
@@ -389,9 +407,12 @@ class PlaneKinematicModel:
         if use_numeric:
             next_step_np: np.ndarray = np.array(next_step).flatten()
             # Wrap the yaw angle to be within [-pi, pi]
-            next_step_np[2] = (next_step_np[2] + np.pi) % (2 * np.pi) - np.pi
+            yaw_idx: int = KinematicIndex.YAW.value
+            next_step_np[yaw_idx] = (
+                next_step_np[yaw_idx] + np.pi) % (2 * np.pi) - np.pi
             if save_next_step:
                 self.data_handler.update_states(next_step_np)
+                self.data_handler.update_controls(u)
             return next_step_np
         else:
             if save_next_step:
@@ -512,11 +533,12 @@ class SimpleAgent():
         wind = self.wind_vector
         next_step: np.array = self.simple_model.rk45(x=state, u=controls,
                                                      dt=self.simple_model.dt_val,
-                                                     wind=wind, use_numeric=True,
-                                                     save_next_step=True)
-        self.update_states(next_state=next_step)
+                                                     wind=wind, use_numeric=True)
+        self.update_states(next_state=next_step,
+                           current_controls=controls)
 
-    def update_states(self, next_state: np.array) -> None:
+    def update_states(self, next_state: np.array,
+                      current_controls: np.array) -> None:
         """
         Args:
             next_state (np.array): The next state of the agent
@@ -526,6 +548,7 @@ class SimpleAgent():
         assert len(next_state) == self.simple_model.n_states
 
         self.simple_model.update_state_info(next_state)
+        self.simple_model.update_controls(current_controls)
         self.state_vector = self.simple_model.get_info(
             get_as_statevector=True)
 
