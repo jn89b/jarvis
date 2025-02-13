@@ -529,7 +529,7 @@ class SimpleAgent():
         self.state_vector = self.simple_model.get_info(
             get_as_statevector=True)
 
-    def get_observation(self) -> np.ndarray:
+    def get_state(self) -> np.ndarray:
         """
         Get the observation of the agent
         Which is the state vector

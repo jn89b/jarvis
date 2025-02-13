@@ -12,14 +12,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Function to load JSON files
 
-
 def open_json_file(file_path: str) -> dict:
     with open(file_path) as f:
         data = json.load(f)
     return data
 
 # Dataset class for Car Trajectories
-
 
 class CarTrajectoryDataset(Dataset):
     def __init__(self, data_files: List[dict]) -> None:

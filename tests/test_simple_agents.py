@@ -85,8 +85,8 @@ class TestGenerateRLData(unittest.TestCase):
 
         # action commands are
         # roll, pitch, yaw, vel_cmd
-        roll_cmd: float = np.deg2rad(45)
-        pitch_cmd: float = np.deg2rad(0)
+        roll_cmd: float = np.deg2rad(0)
+        pitch_cmd: float = np.deg2rad(20)
         yaw_cmd: float = np.deg2rad(0)
         vel_cmd: float = 15
         action = np.array([roll_cmd,

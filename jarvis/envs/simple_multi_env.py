@@ -9,7 +9,7 @@ from jarvis.envs.simple_agent import (
     SimpleAgent, Pursuer, Evader, PlaneKinematicModel)
 from jarvis.envs.battlespace import BattleSpace
 from jarvis.utils.vector import StateVector
-
+from jarvis.envs.tokens import KinematicIndex
 # abstract methods
 from abc import ABC, abstractmethod
 
@@ -374,9 +374,29 @@ class AbstracKinematicEnv(gym.Env, ABC):
         action_mask = np.zeros(self.action_space.nvec.sum(), dtype=int)
 
         # Get agent information
+        states: np.array = agent.get_state()
 
         # Mask pitch commands based on how close it is to z bounds
-
+        x_position:float = states[KinematicIndex.X.value]
+        y_position:float = states[KinematicIndex.Y.value]
+        z_position:float = states[KinematicIndex.Z.value]
+        
+        if agent.is_pursuer:
+            x_bounds:List[float] = self.pursuer_state_limits['x']
+            y_bounds:List[float] = self.pursuer_state_limits['y']
+            z_bounds:List[float] = self.pursuer_state_limits['z']
+        else:
+            x_bounds:List[float] = self.evader_state_limits['x']
+            y_bounds:List[float] = self.evader_state_limits['y']
+            z_bounds:List[float] = self.evader_state_limits['z']
+        
+        ## Keep in mind that the z_position in NED frame
+        # where positive z is down and negative z is up
+        if z_bounds[0] < z_position < z_bounds[1]:
+            action_mask[1] = 1
+            action_mask[2] = 1
+            action_mask[3] = 1
+        
         # Mask roll/yaw commands based on how close it is to x/y bounds
 
         return action_mask
@@ -405,7 +425,6 @@ class EngageEnv(AbstracKinematicEnv):
         #         action=act)
 
         return obs, reward, done, info
-
 
 class AvoidEnv(AbstracKinematicEnv):
     def __init__agents(self):
