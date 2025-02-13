@@ -153,8 +153,8 @@ class PlaneKinematicModel:
     def __init__(self,
                  dt_val: float = 0.05,
                  tau_v: float = 0.15,
-                 tau_phi: float = 0.15,
-                 tau_theta: float = 0.15,
+                 tau_phi: float = 0.1,
+                 tau_theta: float = 0.12,
                  tau_psi: float = 0.15,
                  tau_p: float = 0.1,
                  tau_q: float = 0.1,
@@ -311,37 +311,6 @@ class PlaneKinematicModel:
         The ODE is defined using the kinematic equations for an aircraft in a NED frame,
         including wind effects and first-order lag dynamics for airspeed and angular rates.
         """
-        # epsilon: float = 1e-6  # Small threshold to avoid division by zero
-        # g: float = 9.81        # Gravity (m/s^2)
-
-        # # Safe cosine and tangent calculations for theta
-        # cos_theta: ca.SX = ca.cos(self.theta_f)
-        # safe_cos_theta: ca.SX = ca.if_else(
-        #     ca.fabs(cos_theta) < epsilon, epsilon, cos_theta)
-        # safe_tan_theta: ca.SX = ca.sin(self.theta_f) / safe_cos_theta
-
-        # # Simplified attitude dynamics: first order lag for Euler angles
-        # # Assume the control inputs now directly command the Euler angles
-        # phi_dot: ca.SX = (self.u_phi - self.phi_f) / self.tau_phi
-        # theta_dot: ca.SX = (self.u_theta - self.theta_f) / self.tau_theta
-        # psi_dot: ca.SX = (self.u_psi - self.psi_f) / self.tau_psi
-
-        # # Kinematic equations for position (including wind effects)
-        # x_dot: ca.SX = self.v_f * \
-        #     ca.cos(self.theta_f) * ca.cos(self.psi_f) + self.wind_x
-        # y_dot: ca.SX = self.v_f * \
-        #     ca.cos(self.theta_f) * ca.sin(self.psi_f) + self.wind_y
-        # z_dot: ca.SX = -self.v_f * ca.sin(self.theta_f) + self.wind_z
-
-        # x_dot = self.v_cmd * ca.cos(self.theta_f) * ca.cos(self.psi_f)
-        # y_dot = self.v_cmd * ca.cos(self.theta_f) * ca.sin(self.psi_f)
-        # z_dot = -self.v_cmd * ca.sin(self.theta_f)
-
-        # phi_dot = -self.u_phi * (1/self.tau_theta) - self.phi_f
-        # theta_dot = -self.u_theta * 1/0.5 - self.theta_f
-        # v_dot = ca.sqrt(x_dot**2 + y_dot **
-        #                 2 + z_dot**2)
-        # psi_dot = self.u_psi
 
         # # Airspeed dynamics (airspeed does not include wind)
         self.v_dot: ca.SX = (self.v_cmd - self.v_f) / self.tau_v
@@ -356,12 +325,12 @@ class PlaneKinematicModel:
 
         self.z_fdot = -self.v_f * ca.sin(self.theta_f) + self.wind_z
 
-        # self.phi_fdot = -self.u_phi * (1/self.tau_theta) - self.phi_f
-        # self.theta_fdot = -self.u_theta * 1/0.5 - self.theta_f
+        # Okay this is weird but what we are going to do is
+        # relate our roll to our yaw model, we're assuming that there is some
+        # proportional gain that maps the yaw desired to the roll of the aircraft
         yaw_error = wrap_to_pi(self.u_psi - self.psi_f)
-        k: float = 0.5
+        k: float = 0.2
         phi_cmd = k * yaw_error
-
         # self.phi_fdot: ca.SX = (self.u_phi - self.phi_f) / self.tau_phi
         self.phi_fdot: ca.SX = (phi_cmd - self.phi_f) / self.tau_phi
         self.theta_fdot: ca.SX = (self.u_theta - self.theta_f) / self.tau_theta
@@ -377,17 +346,6 @@ class PlaneKinematicModel:
             self.v_dot
         )
 
-        # # Combine all state derivatives into a single vector
-        # self.z_dot: ca.SX = ca.vertcat(
-        #     x_dot,
-        #     y_dot,
-        #     z_dot,
-        #     phi_dot,
-        #     theta_dot,
-        #     psi_dot,
-        #     v_dot
-        # )
-
         # Define the ODE function: f(states, controls, wind) -> state derivatives
         self.function: ca.Function = ca.Function(
             'f', [self.states, self.controls, self.wind], [self.z_dot])
@@ -402,7 +360,8 @@ class PlaneKinematicModel:
         self.data_handler.update_reward(reward)
 
     def rk45(self, x: ca.SX, u: ca.SX, dt: float, use_numeric: bool = True,
-             wind=np.array([0, 0, 0])) -> np.ndarray:
+             wind=np.array([0, 0, 0]),
+             save_next_step: bool = False) -> np.ndarray:
         """
         Perform one integration step using the 4th order Runge-Kutta (RK45) method.
 
@@ -412,6 +371,7 @@ class PlaneKinematicModel:
             dt (float): Integration time step.
             use_numeric (bool): If True, returns a flattened numpy array; otherwise returns a CasADi expression.
             wind (np.ndarray): Wind vector. Default is [0, 0, 0].
+            save_next_step (bool): If True, save the next state in the data handler.
         Returns:
             np.ndarray: Next state as a flattened numpy array if use_numeric is True.
         """
@@ -428,11 +388,14 @@ class PlaneKinematicModel:
 
         if use_numeric:
             next_step_np: np.ndarray = np.array(next_step).flatten()
-            print("next step np", next_step_np)
             # Wrap the yaw angle to be within [-pi, pi]
             next_step_np[2] = (next_step_np[2] + np.pi) % (2 * np.pi) - np.pi
+            if save_next_step:
+                self.data_handler.update_states(next_step_np)
             return next_step_np
         else:
+            if save_next_step:
+                self.data_handler.update_states(next_step)
             return next_step
 
 
@@ -440,26 +403,27 @@ class SimpleAgent():
     """
     """
     is_pursuer: bool = None
-    is_controlled: bool = None
 
     def __init__(self,
                  battle_space: BattleSpace,
                  state_vector: StateVector,
                  simple_model: PlaneKinematicModel,
-                 id: int = None,
+                 agent_id: int = None,
                  radius_bubble: float = 0.0,
                  wind_vector: np.ndarray = np.array([0, 0, 0]),
                  start_time: float = 0.0,
+                 is_controlled: bool = False
                  ) -> None:
         self.battle_space: BattleSpace = battle_space
         self.state_vector: StateVector = state_vector
         self.simple_model: PlaneKinematicModel = simple_model
-        self.id: int = id
+        self.agent_id: int = agent_id
         self.radius_bubble: float = radius_bubble
         self.crashed: bool = False
         self.actions = None
         self.wind_vector: np.ndarray = wind_vector
         self.start_time: float = start_time
+        self.is_controlled: bool = is_controlled
 
         if self.simple_model.state_info is None:
             self.simple_model.state_info = np.array([
@@ -472,7 +436,7 @@ class SimpleAgent():
                 self.state_vector.speed,
             ])
 
-        if self.id is None:
+        if self.agent_id is None:
             raise ValueError("Agent ID must be provided.")
 
     def return_data(self) -> DataHandler:
@@ -546,25 +510,24 @@ class SimpleAgent():
         state = self.simple_model.get_info(get_as_statevector=False)
         controls = self.actions
         wind = self.wind_vector
-        self.simple_model.rk45(x=state, u=controls,
-                               dt=self.simple_model.dt_val,
-                               wind=wind)
-        self.on_state_update()
+        next_step: np.array = self.simple_model.rk45(x=state, u=controls,
+                                                     dt=self.simple_model.dt_val,
+                                                     wind=wind, use_numeric=True,
+                                                     save_next_step=True)
+        self.update_states(next_state=next_step)
 
-    def on_state_update(self) -> None:
+    def update_states(self, next_state: np.array) -> None:
         """
-        Update the state of the agent
-        Note since we are in 2D we only care about
-        x,y,psi,v
+        Args:
+            next_state (np.array): The next state of the agent
+
+        Updates the state of the agent as a result of the action
         """
-        # aircraft_state: AircraftState = self.sim_interface.get_states()
+        assert len(next_state) == self.simple_model.n_states
+
+        self.simple_model.update_state_info(next_state)
         self.state_vector = self.simple_model.get_info(
             get_as_statevector=True)
-
-        # we're going to not use the state vector because we want more information
-        # that is not included in the state vector class (e.g. wind)
-        state_info = self.simple_model.get_info()
-        self.simple_model.update_state_info(state_info=state_info)
 
     def get_observation(self) -> np.ndarray:
         """
@@ -572,3 +535,39 @@ class SimpleAgent():
         Which is the state vector
         """
         return self.state_vector.array
+
+
+class Evader(SimpleAgent):
+    is_pursuer: bool = False
+
+    def __init__(self, battle_space: BattleSpace,
+                 state_vector: StateVector,
+                 simple_model: SimpleAgent,
+                 radius_bubble: float,
+                 agent_id: int = None,
+                 wind_vector: np.ndarray = np.array([0, 0, 0]),
+                 start_time: float = 0.0,
+                 is_controlled: bool = False) -> None:
+        super().__init__(battle_space, state_vector,
+                         simple_model, agent_id,
+                         radius_bubble, wind_vector, start_time,
+                         is_controlled)
+
+
+class Pursuer(SimpleAgent):
+    is_pursuer: bool = False
+
+    def __init__(self, battle_space: BattleSpace,
+                 state_vector: StateVector,
+                 simple_model: SimpleAgent,
+                 radius_bubble: float,
+                 agent_id: int = None,
+                 wind_vector: np.ndarray = np.array([0, 0, 0]),
+                 start_time: float = 0.0,
+                 is_controlled: bool = False,
+                 capture_radius: float = 10.0) -> None:
+        super().__init__(battle_space, state_vector,
+                         simple_model, agent_id,
+                         radius_bubble, wind_vector, start_time,
+                         is_controlled)
+        self.capture_radius: float = capture_radius

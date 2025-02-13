@@ -39,7 +39,7 @@ class TestGenerateRLData(unittest.TestCase):
         self.agent = SimpleAgent(
             battle_space=self.battlespace,
             state_vector=state_vector,
-            id=0,
+            agent_id=0,
             simple_model=self.plane_model)
 
     def test_spawn_agent(self) -> None:
@@ -67,7 +67,7 @@ class TestGenerateRLData(unittest.TestCase):
         agent = SimpleAgent(
             battle_space=self.battlespace,
             state_vector=state_vector,
-            id=0,
+            agent_id=0,
             simple_model=plane_model)
 
         assert agent is not None
@@ -107,6 +107,11 @@ class TestGenerateRLData(unittest.TestCase):
 
         ax.plot(data.x, data.y, data.z)
         plt.show()
+
+    # def test_config(self) -> None:
+    #     """
+    #     Test to make
+    #     """
 
 
 if __name__ == '__main__':

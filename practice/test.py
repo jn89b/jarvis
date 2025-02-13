@@ -12,12 +12,13 @@ x0[-1] = 15
 # Define a constant (step) control input:
 # Order: [u_phi, u_theta, u_psi, v_cmd]
 # Here, we set the attitude commands to 0 and command a step in airspeed to 10 m/s.
-roll_cmd: float = np.deg2rad(45)
-yaw_cmd: float = np.deg2rad(20)
-u = np.array([roll_cmd, 0.0, yaw_cmd, 15.0])
+roll_cmd: float = np.deg2rad(0)
+pitch_cmd: float = np.deg2rad(0)
+yaw_cmd: float = np.deg2rad(0)
+u = np.array([roll_cmd, pitch_cmd, yaw_cmd, 20.0])
 
 # Define wind as zero (i.e. [wind_x, wind_y, wind_z])
-wind = np.array([0.0, 0.0, 0.0])
+wind = np.array([10.0, 0.0, 0.0])
 
 # Set simulation parameters
 num_steps = 500
@@ -33,9 +34,15 @@ t_current = 0.0
 
 # Simulation loop: perform 50 integration steps using RK45
 for i in range(num_steps):
-    print("u", u)
-    u[2] = np.deg2rad(i)
-    x_next = model.rk45(x_current, u, dt, use_numeric=True)
+    # print("u", u)
+    # u[2] = np.deg2rad(i)
+    # wrap yaw command
+    if u[2] > np.pi:
+        u[2] -= 2 * np.pi
+    elif u[2] < -np.pi:
+        u[2] += 2 * np.pi
+    x_next = model.rk45(x_current, u, dt, use_numeric=True,
+                        wind=wind)
     t_current += dt
     state_history.append(x_next)
     time_history.append(t_current)
@@ -87,5 +94,8 @@ x = state_history[:, 0]
 y = state_history[:, 1]
 z = state_history[:, 2]
 ax.plot(x, y, z)
+
+# set z bounds
+ax.set_zlim(-50, 50)
 
 plt.show()
