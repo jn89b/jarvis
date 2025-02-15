@@ -130,11 +130,10 @@ class TestGenerateRLData(unittest.TestCase):
 
         # plt.show()
 
-    def test_max_pitch_commands(self)
-    # def test_config(self) -> None:
-    #     """
-    #     Test to make
-    #     """
+    def test_max_pitch_commands(self) -> None:
+        """
+
+        """
 
 
 if __name__ == '__main__':

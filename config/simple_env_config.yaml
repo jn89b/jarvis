@@ -1,9 +1,9 @@
 # Configurations for battlespace environment
 battlespace_environment:
   bounds:
-    x: [-3000, 3000]
-    y: [-3000, 3000]
-    z: [-100, 100]
+    x: [-1000, 1000]
+    y: [-1000, 1000]
+    z: [30, 100]
 
   spawning:
     distance_from_other_agents:
@@ -12,8 +12,8 @@ battlespace_environment:
     target:
       randomize: false
       position:
-        x: 200
-        y: 200
+        x: 300
+        y: 0
         z: 50
       spawn_radius_from_agent:
         min: 300
@@ -26,10 +26,10 @@ battlespace_environment:
     end_time: 50.0 # end time for each episode
   
   agents:
-    num_evaders: 1
+    num_evaders: 0
     num_pursuers: 1
     use_pursuer_heuristics: false
-    ai_pursuers: true    
+    ai_pursuers: false
 
     interaction:
       bubble_radius: 5 # wing span of aircraft
@@ -44,8 +44,8 @@ battlespace_environment:
           low: -750.0
           high: 750.0
         z:
-          low: -50.0
-          high: 50.0
+          low: -500.0
+          high: 500.0
 
       velocity:
         low: -75.0
@@ -106,7 +106,7 @@ battlespace_environment:
 
     pursuers:
       # observation 
-      is_controlled: false
+      is_controlled: true
       state_limits:
         x:
           min: -inf

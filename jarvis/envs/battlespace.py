@@ -116,8 +116,13 @@ class BattleSpace():
                 if agent.is_pursuer and other_agent.is_pursuer:
                     continue
 
-                if agent.id != other_agent.id:
+                # if agent.id is None or other_agent.id is None:
+                #     if agent.agent_id == other_agent.agent_id:
+                #         continue
+                if agent.agent_id != other_agent.agent_id:
                     self.check_collisions(agent, other_agent)
+                # if agent.id != other_agent.id:
+                #     self.check_collisions(agent, other_agent)
 
         # check out of bounds
         for agent in self.all_agents:

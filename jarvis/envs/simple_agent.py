@@ -295,7 +295,8 @@ class PlaneKinematicModel:
         self.n_controls: int = int(self.controls.size()[0])
 
     def define_wind(self) -> None:
-        """
+        """        return obs, reward, done, info
+
         Define the symbolic wind components in the inertial NED frame.
         """
         self.wind_x: ca.SX = ca.SX.sym('wind_x')
@@ -344,7 +345,7 @@ class PlaneKinematicModel:
         # relate our roll to our yaw model, we're assuming that there is some
         # proportional gain that maps the yaw desired to the roll of the aircraft
         yaw_error = wrap_to_pi(self.u_psi - self.psi_f)
-        k: float = 0.2
+        k: float = 0.25
         phi_cmd = k * yaw_error
         # self.phi_fdot: ca.SX = (self.u_phi - self.phi_f) / self.tau_phi
         self.phi_fdot: ca.SX = (phi_cmd - self.phi_f) / self.tau_phi

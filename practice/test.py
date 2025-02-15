@@ -14,8 +14,8 @@ x0[-1] = 15
 # Order: [u_phi, u_theta, u_psi, v_cmd]
 # Here, we set the attitude commands to 0 and command a step in airspeed to 10 m/s.
 roll_cmd: float = np.deg2rad(0)
-pitch_cmd: float = np.deg2rad(-20)
-yaw_cmd: float = np.deg2rad(0)
+pitch_cmd: float = np.deg2rad(0)
+yaw_cmd: float = np.deg2rad(45)
 u = np.array([roll_cmd, pitch_cmd, yaw_cmd, 20.0])
 
 # Define wind as zero (i.e. [wind_x, wind_y, wind_z])
@@ -74,7 +74,8 @@ plt.legend()
 
 # Plot yaw angle (psi is at index 5)
 plt.subplot(2, 2, 3)
-plt.plot(time_history, state_history[:, 5], 'g-', label='Yaw (psi)')
+plt.plot(time_history, np.rad2deg(
+    state_history[:, 5]), 'g-', label='Yaw (psi)')
 plt.xlabel('Time (s)')
 plt.ylabel('Yaw (rad)')
 plt.title('Yaw vs. Time')
