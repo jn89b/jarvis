@@ -27,7 +27,7 @@ high_rel_pos: 500.0
 low_rel_vel: -75.0
 high_rel_vel: 75.0
 
-low_rel_att: 0.0
+low_rel_att: -3.14159
 high_rel_att: 3.14159 
 
 sim_end_time : 50.0

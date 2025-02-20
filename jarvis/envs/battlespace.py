@@ -8,7 +8,10 @@ from jarvis.utils.vector import StateVector
 from jarvis.envs.tokens import ControlIndex
 # from jarvis.assets.Radar2D import RadarSystem2D
 if TYPE_CHECKING:
-    from jarvis.envs.agent import Agent, Pursuer, Evader
+    # from jarvis.envs.agent import Agent, Pursuer, Evader
+
+    from jarvis.envs.simple_agent import SimpleAgent as Agent
+    from jarvis.envs.simple_agent import Pursuer, Evader
 
 
 class BattleSpace():
@@ -39,11 +42,11 @@ class BattleSpace():
             for agent in self.all_agents:
                 if agent.is_controlled:
                     # check if key is in action
-                    if agent.id in action:
-                        agent.act(action[agent.id])
-                    else:
-                        raise ValueError(
-                            "Action key not found for agent but is supposed to be controlled {}".format(agent.id))
+                    if agent.agent_id in action:
+                        agent.act(action[agent.agent_id])
+                    # else:
+                    #     raise ValueError(
+                    #         "Action key not found for agent but is supposed to be controlled {}".format(agent.agent_id))
         else:
             controlled_agent: Agent = None
             for agent in self.all_agents:
@@ -70,13 +73,15 @@ class BattleSpace():
     def check_collisions(self, ego_agent: "Agent", other_agent: "Agent") -> None:
         distance = ego_agent.distance_to(other_agent)
         if ego_agent.is_pursuer:
-            threshold = ego_agent.capture_distance + other_agent.radius_bubble
+            threshold = ego_agent.capture_radius + other_agent.radius_bubble
         elif other_agent.is_pursuer:
-            threshold = other_agent.capture_distance + ego_agent.radius_bubble
+            threshold = other_agent.capture_radius + ego_agent.radius_bubble
         else:
             threshold = ego_agent.radius_bubble + other_agent.radius_bubble
 
         if distance <= threshold:
+            print("Collision between agents {} and {}, distance {}".format(
+                ego_agent.agent_id, other_agent.agent_id, distance))
             ego_agent.crashed = True
             other_agent.crashed = True
 
@@ -97,13 +102,50 @@ class BattleSpace():
         # make the pursuer act first
         for agent in self.all_agents:
             agent: Agent
+            if agent.actions is None:
+                continue
             if agent.is_pursuer:
                 agent.step()
 
         for agent in self.all_agents:
             agent: Agent
+            if agent.actions is None:
+                continue
             if not agent.is_pursuer:
                 agent.step()
+
+        # check for collisions
+        for agent in self.all_agents:
+            agent: Agent
+
+            for other_agent in self.all_agents:
+                other_agent: Agent
+
+                # ignore collisions with pursuers for now
+                if agent.is_pursuer and other_agent.is_pursuer:
+                    continue
+
+                # if agent.id is None or other_agent.id is None:
+                #     if agent.agent_id == other_agent.agent_id:
+                #         continue
+                if agent.agent_id != other_agent.agent_id:
+                    self.check_collisions(agent, other_agent)
+                # if agent.id != other_agent.id:
+                #     self.check_collisions(agent, other_agent)
+
+        # check out of bounds
+        for agent in self.all_agents:
+            if self.is_out_bounds(agent.state_vector):
+                agent.crashed = True
+
+    def step_single_agent(self, agent: "Agent") -> None:
+        """
+        Step a single agent.
+        """
+        if agent.actions is None:
+            return
+
+        agent.step()
 
         # check for collisions
         for agent in self.all_agents:

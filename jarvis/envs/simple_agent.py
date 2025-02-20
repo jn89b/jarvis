@@ -1,6 +1,7 @@
 import copy
 import pickle as pkl
-from abc import ABC
+# abstract methods
+from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Text, Tuple, TypeVar
 
 import casadi as ca
@@ -81,10 +82,10 @@ class DataHandler:
         Args:
             control_array (np.ndarray): Array containing control information.
         """
-        self.u_phi.append(control_array[0])
-        self.u_theta.append(control_array[1])
-        self.u_psi.append(control_array[2])
-        self.v_cmd.append(control_array[3])
+        # self.u_phi.append(control_array[0])
+        self.u_theta.append(control_array[0])
+        self.u_psi.append(control_array[1])
+        self.v_cmd.append(control_array[2])
 
     def update_reward(self, reward: float) -> None:
         """
@@ -287,7 +288,7 @@ class PlaneKinematicModel:
         self.v_cmd: ca.SX = ca.SX.sym('v_cmd')
 
         self.controls: ca.SX = ca.vertcat(
-            self.u_phi,
+            # self.u_phi,
             self.u_theta,
             self.u_psi,
             self.v_cmd
@@ -319,11 +320,16 @@ class PlaneKinematicModel:
         The ODE is defined using the kinematic equations for an aircraft in a NED frame,
         including wind effects and first-order lag dynamics for airspeed and angular rates.
 
-        Frame for these equations are in NED Inertial
-        Where x is North, y is East, z is Up or Down
-        Positive roll is right wing down
-        Positive pitch is nose up
-        Positive yaw is CW
+        If frame is NED:
+            Where x is North, y is East, z is Down
+            Positive roll is right wing down
+            Positive pitch is nose up
+            Positive yaw is CW
+        If frame is ENU:
+            Where x is North, y is East, z is Up
+            Positive roll is LEFT wing down
+            Positive pitch is nose up
+            Positive yaw is CCW 
         """
 
         # # Airspeed dynamics (airspeed does not include wind)
@@ -345,15 +351,22 @@ class PlaneKinematicModel:
         # relate our roll to our yaw model, we're assuming that there is some
         # proportional gain that maps the yaw desired to the roll of the aircraft
         yaw_error = wrap_to_pi(self.u_psi - self.psi_f)
-        k: float = 0.25
+        k: float = 0.6
         phi_cmd = k * yaw_error
+        # check if phi_f is within -pi/4 to pi/4
+        phi_cmd = ca.if_else(phi_cmd > ca.pi/4, ca.pi/4, phi_cmd)
+        phi_cmd = ca.if_else(phi_cmd < -ca.pi/4, -ca.pi/4, phi_cmd)
+
         # self.phi_fdot: ca.SX = (self.u_phi - self.phi_f) / self.tau_phi
         self.phi_fdot: ca.SX = (phi_cmd - self.phi_f) / self.tau_phi
 
         # So a positive u_theta means we want the nose to be up
         self.theta_fdot: ca.SX = (
             self.u_theta - self.theta_f) / self.tau_theta
-        self.psi_fdot = -self.g * (ca.tan(self.phi_f) / self.v_f)
+        if make_z_positive_up:
+            self.psi_fdot: ca.SX = self.g * (ca.tan(self.phi_f) / self.v_f)
+        else:
+            self.psi_fdot = -self.g * (ca.tan(self.phi_f) / self.v_f)
 
         self.z_dot = ca.vertcat(
             self.x_fdot,
@@ -497,6 +510,17 @@ class SimpleAgent():
                     the model. Expected: {}, Received: {}".format(
                     self.simple_model.n_controls, len(action)))
 
+        # TODO: revise this to make sure we constraint the roll to be within -45 to 45 degrees
+        k_p: float = 0.5
+        yaw_error = wrap_to_pi(
+            action[1] - self.state_vector.yaw_rad)
+
+        # wrap yaw error to be within -pi to pi
+        # yaw_error = wrap_to_pi(yaw_error)
+        # phi_cmd = k_p * yaw_error
+        # phi_cmd = np.clip(phi_cmd, -np.pi/4, np.pi/4)
+        # action[0] = phi_cmd
+
         self.actions = action
 
     def fall_down(self) -> None:
@@ -576,10 +600,12 @@ class Evader(SimpleAgent):
                          simple_model, agent_id,
                          radius_bubble, wind_vector, start_time,
                          is_controlled)
+        self.old_distance_from_pursuer: float = 0.0
+        self.old_line_of_sight: float = 0.0
 
 
 class Pursuer(SimpleAgent):
-    is_pursuer: bool = False
+    is_pursuer: bool = True
 
     def __init__(self, battle_space: BattleSpace,
                  state_vector: StateVector,
@@ -595,3 +621,33 @@ class Pursuer(SimpleAgent):
                          radius_bubble, wind_vector, start_time,
                          is_controlled)
         self.capture_radius: float = capture_radius
+        self.old_distance_from_evader: float = 0.0
+        self.old_line_of_sight: float = 0.0
+
+# --- Strategy Interface ---
+
+# class SpawnStrategy(ABC):
+#     @abstractmethod
+#     def spawn_agents(self, env, start_agent_id: int, num_agents: int, **kwargs) -> int:
+#         """
+#         Spawns agents in the environment.
+#         Returns the next available agent ID after spawning.
+#         """
+#         pass
+
+# # --- Concrete Strategy: Spawn Pursuers Relative to the Ego Agent ---
+
+
+class SpawnStrategy(ABC):
+    @abstractmethod
+    def spawn_agents(self, env, start_agent_id: int, num_agents: int, **kwargs) -> int:
+        """
+        Spawns agents in the environment.
+        Returns the next available agent ID after spawning.
+        """
+        pass
+
+
+class SpawnEvaders(SpawnStrategy):
+    def spawn_agents(self, env, start_agent_id, num_agents, **kwargs):
+        pass

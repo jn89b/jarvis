@@ -167,3 +167,72 @@ class MultiDimensionalMaskModule(ActionMaskingRLModule, PPOTorchRLModule, ValueF
         masked_logits = torch.cat([roll_logits, alt_logits, vel_logits], dim=1)
         outputs[Columns.ACTION_DIST_INPUTS] = masked_logits
         return outputs
+
+
+class SimpleEnvMaskModule(MultiDimensionalMaskModule):
+    """An RLModule for PPO with action masking that supports a simple action mask.
+
+    This module assumes the discrete action space is Discrete and that the environment provides
+    an action mask as a MultiBinary tensor of shape (n_actions).
+    """
+
+    def _mask_action_logits(
+        self, outputs: Dict[str, TensorType], action_mask: TensorType
+    ) -> Dict[str, TensorType]:
+        """Masks the action logits using the provided simple action mask.
+
+        The logits produced by the network are assumed to be a flattened vector for all actions.
+        We apply the mask directly to the logits.
+
+        Assumes that the provided `action_mask` tensor is of shape (B, n_actions)
+        (or (n_actions) if unbatched) and that it was generated as the outer product of
+        independent masks for each action.
+
+        Returns:
+            A dictionary with the modified logits under Columns.ACTION_DIST_INPUTS.
+        """
+        logits = outputs[Columns.ACTION_DIST_INPUTS]
+        batch_size = logits.shape[0]
+        n_pitch, n_yaw, n_vel = self.action_space['action'].nvec
+
+        # Assume action_mask is a tensor of shape (B, total_actions) with total_actions = 134.
+        # Split it into individual masks.
+        # roll_mask = action_mask[:, :n_roll]  # shape: (B, n_roll)
+        # # shape: (B, n_pitch)
+        # pitch_mask = action_mask[:, n_roll:n_roll+n_pitch]
+        # yaw_mask = action_mask[:, n_roll+n_pitch:n_roll+n_pitch+n_yaw]
+        # vel_mask = action_mask[:, n_roll+n_pitch+n_yaw:]  # shape: (B, n_vel)
+
+        pitch_mask = action_mask[:, :n_pitch]
+        yaw_mask = action_mask[:, n_pitch:n_pitch+n_yaw]
+        vel_mask = action_mask[:, n_pitch+n_yaw:]
+
+        # Convert the allowed masks to log-space.
+        # inf_mask_roll = torch.clamp(
+        #     torch.log(roll_mask.float()), min=FLOAT_MIN)
+        # inf_mask_alt = torch.clamp(torch.log(alt_mask.float()), min=FLOAT_MIN)
+        inf_mask_pitch = torch.clamp(
+            torch.log(pitch_mask.float()), min=FLOAT_MIN)
+        inf_mask_yaw = torch.clamp(torch.log(yaw_mask.float()), min=FLOAT_MIN)
+        inf_mask_vel = torch.clamp(torch.log(vel_mask.float()), min=FLOAT_MIN)
+
+        # roll_logits = logits[:, :n_roll]
+        # pitch_logits = logits[:, n_roll:n_roll+n_pitch]
+        # yaw_logits = logits[:, n_roll+n_pitch:n_roll+n_pitch+n_yaw]
+        # vel_logits = logits[:, n_roll+n_pitch+n_yaw:]
+
+        pitch_logits = logits[:, :n_pitch]
+        yaw_logits = logits[:, n_pitch:n_pitch+n_yaw]
+        vel_logits = logits[:, n_pitch+n_yaw:]
+
+        # Apply the log-space masks
+        # roll_logits = roll_logits + inf_mask_roll
+        pitch_logits = pitch_logits + inf_mask_pitch
+        yaw_logits = yaw_logits + inf_mask_yaw
+        vel_logits = vel_logits + inf_mask_vel
+
+        # Concatenate the logits back.
+        masked_logits = torch.cat(
+            [pitch_logits, yaw_logits, vel_logits], dim=1)
+        outputs[Columns.ACTION_DIST_INPUTS] = masked_logits
+        return outputs

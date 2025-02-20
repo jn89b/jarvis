@@ -86,7 +86,6 @@ def create_env(env_config: Dict[str, Any],
 def train_rllib() -> None:
     """
     """
-
     # tune.register_env("env", HierarchicalEnv)
 
     aircraft_config_dir: str = "config/aircraft_config.yaml"

@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from jarvis.envs.simple_agent import SimpleAgent, PlaneKinematicModel, DataHandler
 from jarvis.envs.battlespace import BattleSpace
 from jarvis.utils.vector import StateVector
+from jarvis.algos.pro_nav import ProNavV2
 
 
 class TestGenerateRLData(unittest.TestCase):
@@ -128,12 +129,126 @@ class TestGenerateRLData(unittest.TestCase):
         for a in ax:
             a.legend()
 
-        # plt.show()
+        plt.show()
 
-    def test_max_pitch_commands(self) -> None:
+    def test_pronav(self) -> None:
         """
+        A simple test to see if the pro nav policy
+        is working
+        """
+        pro_nav = ProNavV2()
 
-        """
+        pursuer_agent = SimpleAgent(
+            battle_space=self.battlespace,
+            state_vector=StateVector(
+                x=150,
+                y=100,
+                z=50,
+                roll_rad=0.1,
+                pitch_rad=0.1,
+                yaw_rad=0.0,
+                speed=25
+            ),
+            agent_id=0,
+            simple_model=PlaneKinematicModel()
+        )
+
+        agent_2 = SimpleAgent(
+            battle_space=self.battlespace,
+            state_vector=StateVector(
+                x=-30,
+                y=0,
+                z=30,
+                roll_rad=0.1,
+                pitch_rad=0.1,
+                yaw_rad=0,
+                speed=15.0
+            ),
+            agent_id=1,
+            simple_model=PlaneKinematicModel()
+        )
+
+        n_steps: int = 500
+        agent_2_commands = np.array([0, 0, 25])
+
+        agents = [pursuer_agent, agent_2]
+        distance_history: list[float] = []
+        for i in range(n_steps):
+            # NOTE WE need to flip this around to make it work
+            relative_pos = agent_2.state_vector - pursuer_agent.state_vector
+            relative_heading = pursuer_agent.state_vector.yaw_rad - \
+                agent_2.state_vector.yaw_rad
+
+            relative_pos = relative_pos.array[0:3]
+            relative_vel = pursuer_agent.state_vector.speed - \
+                agent_2.state_vector.speed
+
+            # pro_nav_actions = pro_nav.compute_commands(relative_pos=relative_pos,
+            #                                            current_yaw=pursuer_agent.state_vector.yaw_rad,
+            #                                            current_speed=pursuer_agent.state_vector.speed)
+            # print("pro nav actions", np.rad2deg(pro_nav_actions[1]))
+            #
+            # agent_2_commands[1] = np.deg2rad(i)
+            agent_2.act(action=agent_2_commands)
+            # augmented_pro_nav_actions = pro_nav.augmented_pro_nav(
+            #     relative_pos=relative_pos,
+            #     current_yaw=pursuer_agent.state_vector.yaw_rad,
+            #     current_speed=pursuer_agent.state_vector.speed,
+            # )
+            # augmented_pro_nav_actions = pro_nav.calculate(
+            #     relative_pos=relative_pos,
+            #     current_yaw=pursuer_agent.state_vector.yaw_rad,
+            #     current_speed=pursuer_agent.state_vector.speed,
+            #     evader_yaw=agent_2.state_vector.yaw_rad,
+            #     evader_speed=agent_2.state_vector.speed
+            # )
+            augmented_pro_nav_actions = pro_nav.predict(
+                current_pos=pursuer_agent.state_vector.array[0:3],
+                relative_pos=relative_pos,
+                current_heading=pursuer_agent.state_vector.yaw_rad,
+                current_speed=pursuer_agent.state_vector.speed,
+                relative_vel=relative_vel)
+
+            pursuer_agent.act(augmented_pro_nav_actions)
+            print("augmented pro nav actions", augmented_pro_nav_actions)
+            print("augmented pro nav actions", np.rad2deg(
+                augmented_pro_nav_actions[1]))
+
+            for agent in agents:
+                agent.step()
+
+            # compute the distance between the two agents
+            distance: float = pursuer_agent.state_vector.distance_3D(
+                agent_2.state_vector)
+            distance_history.append(distance)
+            # if distance < 30.0:
+            #     print("caught")
+            #     break
+
+        datas: list[DataHandler] = [agent.return_data() for agent in agents]
+
+        fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+        for data in datas:
+            ax.plot(data.x, data.y, data.z)
+            ax.scatter(data.x[0], data.y[0], data.z[0], c='r', label='start')
+        ax.set_xlabel('X Label')
+        ax.set_ylabel('Y Label')
+
+        ax.legend()
+        fig, ax = plt.subplots()
+        ax.plot(distance_history)
+
+        for agent in agents:
+            print("agent position",
+                  agent.state_vector.x,
+                  agent.state_vector.y,
+                  agent.state_vector.z)
+
+        fig, ax = plt.subplots(nrows=4, ncols=1)
+        ax[0].plot(np.rad2deg(datas[0].phi), label='phi')
+        ax[0].set_title('Phi')
+
+        plt.show()
 
 
 if __name__ == '__main__':

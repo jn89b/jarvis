@@ -141,14 +141,20 @@ class TestSimpleEnv(unittest.TestCase):
         # test masking
         # See if we are clipping the action space for higher pitches
         # if we are close
-        self.agent.battle_space = self.engage_env.battlespace
+        self.config = load_yaml_config(
+            "config/simple_env_config.yaml")['battlespace_environment']
+        self.engage_env = EngageEnv(
+            config=self.config)
+        self.init_agent()
+        self.agent = self.engage_env.get_controlled_agents[0]
         max_x: float = self.engage_env.battlespace.x_bounds[1]
         self.agent.state_vector.x = max_x - 3
+        print("agent state vector", self.agent.state_vector)
         action_mask: np.array = self.engage_env.get_action_mask(
             self.agent)
         assert action_mask.shape == self.engage_env.action_space.nvec.sum()
         unwrapped_mask = self.engage_env.unwrap_action_mask(action_mask)
-        # print("lateral mask", unwrapped_mask["yaw"])
+        print("lateral mask", unwrapped_mask["yaw"])
         # assert unwrapped_mask["yaw"][-1] == 0
 
         # see if we are clipping the action space for lower pitches
@@ -161,6 +167,66 @@ class TestSimpleEnv(unittest.TestCase):
             self.agent)
         assert action_mask.shape == self.engage_env.action_space.nvec.sum()
         unwrapped_mask = self.engage_env.unwrap_action_mask(action_mask)
+        print("lateral mask", unwrapped_mask["yaw"])
+
+    def test_pitch_mask_target_above(self) -> None:
+        """
+        A test to make sure we are masking the pitch action space
+        based on the target location, we want to negative 
+        pitches are masked if the target is above us
+        and positive pitches are masked if the target is below us
+        """
+        self.config = load_yaml_config(
+            "config/simple_env_config.yaml")['battlespace_environment']
+        self.engage_env = EngageEnv(
+            config=self.config)
+        agent = self.engage_env.get_controlled_agents[0]
+
+        # the target is above us so let's mask the negative pitches
+        agent.state_vector.z = 50
+        self.engage_env.target.z = 75
+
+        observation = self.engage_env.observe(agent)
+        action_mask = observation["action_mask"]
+
+        # unwrap the mask
+        mask_unwrapped = self.engage_env.unwrap_action_mask(action_mask)
+        pitch_mask = mask_unwrapped["pitch"]
+        print("pitch mask", pitch_mask)
+        assert pitch_mask[0] == 0
+
+        self.engage_env.target.z = 35
+        observation = self.engage_env.observe(agent)
+        action_mask = observation["action_mask"]
+        # unwrap the mask
+        mask_unwrapped = self.engage_env.unwrap_action_mask(action_mask)
+        pitch_mask = mask_unwrapped["pitch"]
+        print("pitch mask", pitch_mask)
+        assert pitch_mask[-1] == 0
+
+    def test_yaw_mask_target_right(self) -> None:
+        """
+        Similar to the pitch masking test, we want to mask
+        the yaw action space based on the target location
+        """
+        self.config = load_yaml_config(
+            "config/simple_env_config.yaml")['battlespace_environment']
+        self.engage_env = EngageEnv(
+            config=self.config)
+        agent = self.engage_env.get_controlled_agents[0]
+        agent.state_vector.x = 0
+        agent.state_vector.y = 0
+        agent.state_vector.yaw_rad = np.deg2rad(0)
+
+        # the target is to the left of us so let's mask the negative yaws
+        self.engage_env.target.x = 0
+        self.engage_env.target.y = 100
+
+        observation = self.engage_env.observe(agent)
+        action_mask = observation["action_mask"]
+        mask_unwrapped = self.engage_env.unwrap_action_mask(action_mask)
+        yaw_mask = mask_unwrapped["yaw"]
+        print("yaw mask", yaw_mask)
 
     def test_intermediate_reward(self) -> None:
         """
@@ -168,13 +234,18 @@ class TestSimpleEnv(unittest.TestCase):
         our target then we get a higher reward
         """
         # Get a reference to the agent once
+        self.config = load_yaml_config(
+            "config/simple_env_config.yaml")['battlespace_environment']
+        self.engage_env = EngageEnv(
+            config=self.config)
         agent = self.engage_env.get_controlled_agents[0]
 
         # Update its attributes
         agent.state_vector.x = 0
         agent.state_vector.y = 0
         agent.state_vector.z = 50
-        # agent.state_vector.yaw_rad = np.deg2rad(45)
+        agent.state_vector.yaw_rad = np.deg2rad(10)
+        agent.simple_model.set_state_space(agent.state_vector)
 
         # self.agent.state_vector.target_x = 100
         # self.agent.state_vector.target_y = 100
