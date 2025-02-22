@@ -156,7 +156,8 @@ class PlaneKinematicModel:
                  tau_psi: float = 0.15,
                  tau_p: float = 0.1,
                  tau_q: float = 0.1,
-                 tau_r: float = 0.1) -> None:
+                 tau_r: float = 0.1,
+                 set_z_up: bool = True) -> None:
         """
         Initialize the plane kinematic model with the specified time step and time constants.
 
@@ -169,6 +170,7 @@ class PlaneKinematicModel:
             tau_p (float): Time constant for roll rate dynamics.
             tau_q (float): Time constant for pitch rate dynamics.
             tau_r (float): Time constant for yaw rate dynamics.
+            set_z_up (bool): If True, enforce that the z-coordinate is positive.
         """
         self.dt_val: float = dt_val
         self.define_states()
@@ -182,9 +184,9 @@ class PlaneKinematicModel:
         self.tau_p: float = tau_p
         self.tau_q: float = tau_q
         self.tau_r: float = tau_r
-
+        self.set_z_up: bool = set_z_up
         self.state_info: Optional[np.ndarray] = None
-        self.set_state_space()
+        self.set_state_space(make_z_positive_up=set_z_up)
         self.data_handler: DataHandler = DataHandler()
 
     def update_state_info(self, state_info: np.ndarray) -> None:

@@ -9,6 +9,7 @@ devices: [ 0 ] # gpu ids
 # data related
 train_data_path: "evader_data_1" # data path
 max_num_agents: 4
+num_agent_feature: 7
 val_data_path: "evader_data_1/val"  # list of paths to the validation data
 load_num_workers: 0 # number of workers for loading data
 max_data_num: [ 1000 ] # maximum number of data for each training dataset
@@ -24,6 +25,34 @@ center_offset_of_map: [ 30.0, 0.0 ] # center offset of the map
 use_cache: False # use cache for data loading
 overwrite_cache: True # overwrite existing cache
 store_data_in_memory: False # store data in memory
+
+#model
+num_modes: 6
+hidden_size: 256
+num_encoder_layers: 2
+num_decoder_layers: 8
+tx_hidden_size: 1024
+tx_num_heads: 4
+dropout: 0.1
+entropy_weight: 40.0
+kl_weight: 20.0
+use_FDEADE_aux_loss: True
+num_queries_dec: 64
+num_queries_enc: 192
+
+
+# train
+modelmax_epochs: 150 #150 #40
+learning_rate: 0.0001 # 0.00075 # 1e-3 for lanegcn
+learning_rate_sched: [ 10, 20, 30, 40, 50 ]
+optimizer: AdamW #According to PyTorch naming
+scheduler: multistep # plateau, multistep
+ewc_lambda: 2000
+grad_clip_norm: 5
+train_batch_size: 128 #32 #128
+eval_batch_size: 512 #32 #128
+
+
 
 # official evaluation
 nuscenes_dataroot: '/mnt/nas3_rcp_enac_u0900_vita_scratch/datasets/Prediction-Dataset/nuscenes/nuscenes_root'

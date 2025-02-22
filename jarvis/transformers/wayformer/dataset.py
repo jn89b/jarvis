@@ -90,10 +90,7 @@ class BaseDataset(Dataset):
     def __init__(self, config=None,
                  is_validation=False,
                  num_samples=None):
-        if is_validation:
-            self.data_path: str = config['val_data_path']
-        else:
-            self.data_path: str = config['train_data_path']
+
         self.is_validation: bool = is_validation
 
         if is_validation:
@@ -218,7 +215,6 @@ class BaseDataset(Dataset):
         preprocess_data: List[Dict[str, Any]] = []
         for j_file in json_files:
             sim_data: List[Dict[str, Any]] = json.load(open(j_file, 'r'))
-            print(f"Loading data from {j_file}")
             overall_ego_position: List[List[float]] = []
             overall_controls: List[List[float]] = []
             overall_timestamps: List[float] = []
@@ -420,7 +416,6 @@ class BaseDataset(Dataset):
                 - Where num_attributes for the UAV is [x, y, z, phi, theta, psi, velocity, radius]
         """
         tracks: Dict[str, Any] = scenario['tracks']
-        map_features = scenario['map_features']
         past_length: int = self.config['past_length']
         future_length: int = self.config['future_length']
         total_steps: int = past_length + future_length

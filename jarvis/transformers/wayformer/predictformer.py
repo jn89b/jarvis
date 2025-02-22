@@ -3,9 +3,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import optim
-
+from typing import Dict, Any
 # from unitraj.models.base_model.base_model import BaseModel
-from jarvis.transformers.wayformer.base_model import BaseModel
+from jarvis.transformers.wayformer.base_modelV2 import BaseModelV2
 
 from jarvis.transformers.wayformer.wayformer_utils import \
     (PerceiverEncoder, PerceiverDecoder, TrainableQueryProvider)
@@ -20,7 +20,7 @@ def init(module, weight_init, bias_init, gain=1):
     return module
 
 
-class PredictFormer(BaseModel):
+class PredictFormer(BaseModelV2):
     def __init__(self, config):
         super(PredictFormer, self).__init__(config)
         self.config = config
@@ -29,27 +29,20 @@ class PredictFormer(BaseModel):
                                   lambda x: nn.init.constant_(x, 0), np.sqrt(2))
 
         self.fisher_information = None
-        self.map_attr = config['num_map_feature']
         self.k_attr = config['num_agent_feature']
         self.d_k = config['hidden_size']
         self._M = config['max_num_agents']  # num agents without the ego-agent
         self.c = config['num_modes']
         self.T = config['future_len']
         self.L_enc = config['num_encoder_layers']
-        self.dropout = config['dropout   ']
+        self.dropout = config['dropout']
         self.num_heads = config['tx_num_heads']
         self.L_dec = config['num_decoder_layers']
         self.tx_hidden_size = config['tx_hidden_size']
-        self.use_map_img = config['use_map_image']
-        self.use_map_lanes = config['use_map_lanes']
         self.past_T = config['past_len']
-        self.max_points_per_lane = config['max_points_per_lane']
-        self.max_num_roads = config['max_num_roads']
         self.num_queries_enc = config['num_queries_enc']
         self.num_queries_dec = config['num_queries_dec']
 
-        self.road_pts_lin = nn.Sequential(
-            init_(nn.Linear(self.map_attr, self.d_k)))
         # INPUT ENCODERS
         self.agents_dynamic_encoder = nn.Sequential(
             init_(nn.Linear(self.k_attr, self.d_k)))
@@ -75,10 +68,6 @@ class PredictFormer(BaseModel):
             requires_grad=True
         )
 
-        # self.map_positional_embedding = nn.parameter.Parameter(
-        #     torch.zeros((1, self.max_points_per_lane * self.max_num_roads, self.d_k)), requires_grad=True
-        # )
-
         self.perceiver_decoder = PerceiverDecoder(
             output_query_provider, self.d_k)
 
@@ -93,6 +82,127 @@ class PredictFormer(BaseModel):
 
         self.fisher_information = None
         self.optimal_params = None
+
+    def process_observations(self, ego, agents):
+        '''
+        :param observations: (B, T, N+2, A+1) where N+2 is [ego, other_agents, env]
+        :return: a tensor of only the agent dynamic states, active_agent masks and env masks.
+        '''
+        # ego stuff
+        ego_tensor = ego[:, :, :self.k_attr]
+        env_masks_orig = ego[:, :, -1]
+        env_masks = (1.0 - env_masks_orig).to(torch.bool)
+        env_masks = env_masks.unsqueeze(1).repeat(1, self.num_queries_dec, 1).view(ego.shape[0] * self.num_queries_dec,
+                                                                                   -1)
+
+        # Agents stuff
+        temp_masks = torch.cat(
+            (torch.ones_like(env_masks_orig.unsqueeze(-1)), agents[:, :, :, -1]), dim=-1)
+        opps_masks = (1.0 - temp_masks).to(torch.bool)  # only for agents.
+        opps_tensor = agents[:, :, :, :self.k_attr]  # only opponent states
+
+        return ego_tensor, opps_tensor, opps_masks, env_masks
+
+    def _forward(self, inputs):
+        '''
+        :param ego_in: [B, T_obs, k_attr+1] with last values being the existence mask.
+        :param agents_in: [B, T_obs, M-1, k_attr+1] with last values being the existence mask.
+        :return:
+            pred_obs: shape [c, T, B, 5] c trajectories for the ego agents with every point being the params of
+                                        Bivariate Gaussian distribution.
+            mode_probs: shape [B, c] mode probability predictions P(z|X_{1:T_obs})
+        '''
+        ego_in, agents_in = inputs['ego_in'], inputs['agents_in']
+
+        B = ego_in.size(0)
+        num_agents = agents_in.shape[2] + 1
+        # Encode all input observations (k_attr --> d_k)
+        ego_tensor, _agents_tensor, opps_masks_agents, env_masks = self.process_observations(
+            ego_in, agents_in)
+        agents_tensor = torch.cat(
+            (ego_tensor.unsqueeze(2), _agents_tensor), dim=2)
+        agents_tensor = agents_tensor.float()
+        agents_emb = self.selu(self.agents_dynamic_encoder(agents_tensor))
+        agents_emb = (agents_emb + self.agents_positional_embedding[
+            :, :, :num_agents] + self.temporal_positional_embedding).view(B, -1, self.d_k)
+
+        mixed_input_features = torch.concat(
+            [agents_emb], dim=1)
+        mixed_input_masks = torch.concat(
+            [opps_masks_agents.view(B, -1)], dim=1)
+        # Process through Wayformer's encoder
+
+        context = self.perceiver_encoder(
+            mixed_input_features, mixed_input_masks)
+
+        # Wazformer-Ego Decoding
+
+        out_seq = self.perceiver_decoder(context)
+
+        out_dists = self.output_model(
+            out_seq[:, :self.c]).reshape(B, self.c, self.T, -1)
+
+        # Mode prediction
+        mode_probs = self.prob_predictor(
+            out_seq[:, :self.c]).reshape(B, self.c)
+
+        # return  [c, T, B, 5], [B, c]
+        output = {}
+        output['predicted_probability'] = mode_probs  # #[B, c]
+        # [B, c, T, 5] to be able to parallelize code
+        output['predicted_trajectory'] = out_dists
+        output['scene_emb'] = out_seq[:, :self.num_queries_dec].reshape(B, -1)
+        if len(np.argwhere(np.isnan(out_dists.detach().cpu().numpy()))) > 1:
+            breakpoint()
+        return output
+
+    def forward(self, batch: Dict[str, Any]):
+        """
+        Args:
+            batch: A dictionary containing the following
+                input_dict: A dictionary containing the following
+                    obj_trajs: A tensor of shape [B, T, M, k_attr] where M is the number of agents in the scene.
+                    obj_trajs_mask: A tensor of shape [B, T, M] where M is the number of agents in the scene.
+        T
+
+        """
+        model_input = {}
+        inputs = batch['input_dict']
+        agents_in, agents_mask = inputs['obj_trajs'], inputs['obj_trajs_mask']
+        agents_in = agents_in.squeeze()
+        agents_mask = agents_mask.squeeze()
+        ego_in = torch.gather(agents_in, 1, inputs['track_index_to_predict'].view(-1, 1, 1, 1).repeat(1, 1,
+                                                                                                      *agents_in.shape[
+                                                                                                          -2:])).squeeze(1)
+        ego_mask = torch.gather(agents_mask, 1, inputs['track_index_to_predict'].view(-1, 1, 1).repeat(1, 1,
+                                                                                                       agents_mask.shape[
+                                                                                                           -1])).squeeze(
+            1)
+        agents_in = torch.cat([agents_in, agents_mask.unsqueeze(-1)], dim=-1)
+        agents_in = agents_in.transpose(1, 2)
+        ego_in = torch.cat([ego_in, ego_mask.unsqueeze(-1)], dim=-1)
+        model_input['ego_in'] = ego_in
+        model_input['agents_in'] = agents_in
+        output = self._forward(model_input)
+
+        ground_truth = torch.cat([inputs['center_gt_trajs'][..., :2], inputs['center_gt_trajs_mask'].unsqueeze(-1)],
+                                 dim=-1)
+        ground_truth = ground_truth.squeeze()
+        loss = self.criterion(output, ground_truth,
+                              inputs['center_gt_final_valid_idx'])
+        # output['dataset_name'] = inputs['dataset_name']
+        output['predicted_probability'] = F.softmax(
+            output['predicted_probability'], dim=-1)
+        return output, loss
+
+    def configure_optimizers(self):
+        optimizer = optim.AdamW(
+            self.parameters(), lr=self.config['learning_rate'], eps=0.0001)
+
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.0002, steps_per_epoch=1, epochs=150,
+                                                        pct_start=0.02, div_factor=100.0, final_div_factor=10)
+
+        return [optimizer], [scheduler]
 
 
 class Criterion(nn.Module):
@@ -176,6 +286,6 @@ class Criterion(nn.Module):
                     * gt_valid_mask).sum(dim=-1)
 
         loss_cls = (F.cross_entropy(input=pred_scores,
-                    target=nearest_mode_idxs, reduction='none'))
+                                    target=nearest_mode_idxs, reduction='none'))
 
         return (reg_loss + loss_cls).mean()

@@ -415,7 +415,6 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
         self.pitch_commands: np.array = np.arange(
             continous_action_space.low[pitch_idx], continous_action_space.high[pitch_idx],
             np.deg2rad(1))
-
         self.yaw_commands: np.array = np.arange(
             continous_action_space.low[yaw_idx], continous_action_space.high[yaw_idx],
             np.deg2rad(1))
@@ -479,6 +478,15 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
         """
         z_position = agent.state_vector.z
         v_current = agent.state_vector.speed
+
+        # get current pitch angle
+        pitch_rad: float = agent.state_vector.pitch_rad
+        # pitch_idx: int = np.argmin(np.abs(self.pitch_commands - pitch_rad))
+        # mask values outside 10 degrees of the current pitch angle
+        pitch_mask = np.ones_like(self.pitch_commands, dtype=np.int8)
+        pitch_mask = np.where(
+            np.abs(self.pitch_commands - pitch_rad) > np.deg2rad(10), 0, pitch_mask)
+
         for i, pitch_cmd in enumerate(self.pitch_commands):
             ascent_descent_rate = self.compute_ascent_descent_rate(
                 current_vel=v_current, pitch_cmd=pitch_cmd)
@@ -1029,7 +1037,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         if update:
             pursuer.old_distance_from_evader = distance
 
-        return delta_distance - 0.01 + (dot_product/2)
+        return reward
 
     def compute_evader_reward(self, pursuer: Pursuer, evader: Evader) -> float:
         """
@@ -1071,7 +1079,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
 
         reward = - delta_distance - dot_product
         # Return the negative reward for the evader without causing any state updates.
-        return - delta_distance + 0.01 - (dot_product/2)
+        return -reward
 
     def sigmoid(self, x: float) -> float:
         x = np.clip(x, -500, 500)

@@ -113,7 +113,9 @@ def infer(checkpoint_path: str, num_episodes: int = 1):
     terminated = {'__all__': False}
     next_agent = observation.keys()
     # n_steps: int = 500
-    # env.max_steps = 1000
+    # random seed
+    np.random.seed()
+    env.max_steps = 700
     reward_list = []
     while not terminated['__all__']:
         # for i in range(n_steps):
@@ -196,6 +198,14 @@ def infer(checkpoint_path: str, num_episodes: int = 1):
     print("sum of rewards: ", sum(reward_0), sum(reward_1))
     ax.legend()
     ray.shutdown()
+
+    # plot a 3D plot of the agents
+    fig, ax = plt.subplots()
+    for i, data in enumerate(datas):
+        print("data: ", i)
+        ax.plot(data.v, label=f"Agent {i}")
+
+    ax.legend()
     plt.show()
 
 
