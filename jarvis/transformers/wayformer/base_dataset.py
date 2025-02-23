@@ -620,6 +620,7 @@ class BaseDataset(Dataset):
             center_heading=center_objects[:, 6],
             heading_index=6, rot_vel_index=[7, 8]
         )
+        # TODO: CHANGE THIS to include x,y,z, vx, vy, vz
         obj_trajs_future_state = obj_trajs_future[:, :, :, [
             0, 1, 7, 8]]  # (x, y, vx, vy)
         obj_trajs_future_mask = obj_trajs_future[:, :, :, -1]

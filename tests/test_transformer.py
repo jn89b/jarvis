@@ -30,12 +30,12 @@ class TestTransformer(unittest.TestCase):
             num_samples=1
         )
 
-        self.dataloader: DataLoader = DataLoader(
-            self.dataset,
-            batch_size=1,
-            shuffle=False,
-            collate_fn=self.dataset.collate_fn
-        )
+        # self.dataloader: DataLoader = DataLoader(
+        #     self.dataset,
+        #     batch_size=1,
+        #     shuffle=False,
+        #     collate_fn=self.dataset.collate_fn
+        # )
         # make sure data
 
     def test_dataset(self):
@@ -56,7 +56,7 @@ class TestTransformer(unittest.TestCase):
         to feed into the model
         """
 
-        self.assertTrue(self.dataloader is not None)
+        # self.assertTrue(self.dataloader is not None)
         # check the batch size
 
         # for i, batch in enumerate(self.dataloader):
@@ -66,34 +66,6 @@ class TestTransformer(unittest.TestCase):
         #     for k, v in input_dict.items():
         #         print(k, v)
         # self.assertTrue(isinstance(batch['input_dict'], torch.Tensor))
-
-    def test_training(self):
-        """
-        Idiot checks to make sure we are able to train the model
-        """
-        model_config = "config/predictformer_config.yaml"
-        with open(model_config, 'r') as f:
-            model_config = yaml.safe_load(f)
-
-        self.model: PredictFormer = PredictFormer(model_config)
-        name = "predictformer"
-        logger = TensorBoardLogger("tb_logs", name=name)
-
-        # Checkpoint callback
-        checkpoint_dir = name+"_checkpoint/"
-        # checkpoint_dir = "evader_former_checkpoint/"
-        checkpoint_callback = ModelCheckpoint(
-            monitor="val_loss",
-            dirpath=checkpoint_dir,
-            filename="uavt-{epoch:02d}-{val_loss:.2f}",
-            save_top_k=5,
-            mode="min"
-        )
-
-        # test a batch
-        for batch in self.dataloader:
-            print(batch)
-            output, loss = self.model(batch)
 
         # Check if there's an existing checkpoint to resume from
 

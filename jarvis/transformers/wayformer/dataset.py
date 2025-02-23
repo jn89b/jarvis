@@ -44,31 +44,16 @@ def rotate_points_along_z(points, angle):
     cosa = np.cos(angle)
     sina = np.sin(angle)
 
-    if is_2d:
-        # Rotation matrix for 2D
-        rot_matrix = np.stack((
-            cosa, sina,
-            -sina, cosa
-        ), axis=1).reshape(-1, 2, 2)
+    # if is_2d:
+    # Rotation matrix for 2D
+    rot_matrix = np.stack((
+        cosa, sina,
+        -sina, cosa
+    ), axis=1).reshape(-1, 2, 2)
 
-        # Apply rotation
-        # points_rot = np.matmul(points, rot_matrix)
-        points_rot = np.einsum('bnj,nji->bni', points, rot_matrix)
-    else:
-        # Rotation matrix for 3D
-        rot_matrix = np.stack((
-            cosa, sina, np.zeros_like(angle),
-            -sina, cosa, np.zeros_like(angle),
-            np.zeros_like(angle), np.zeros_like(angle), np.ones_like(angle)
-        ), axis=1).reshape(-1, 3, 3)
-
-        # Apply rotation to the first 3 dimensions
-        points_rot = np.matmul(points[:, :, :3], rot_matrix)
-
-        # Concatenate any additional dimensions back
-        if points.shape[-1] > 3:
-            points_rot = np.concatenate(
-                (points_rot, points[:, :, 3:]), axis=-1)
+    # Apply rotation
+    # points_rot = np.matmul(points, rot_matrix)
+    points_rot = np.einsum('bnj,nji->bni', points, rot_matrix)
 
     return points_rot
 
@@ -171,6 +156,9 @@ class BaseDataset(Dataset):
             sim_data['timestamp'].append(
                 time_interval[start_idx: start_idx + total_len])
 
+            if idx_counter == 2:
+                break
+
         num_ego: int = 1
         total_agents = num_pursuers + num_ego
 
@@ -214,7 +202,9 @@ class BaseDataset(Dataset):
         # This massive array will be size: [num_objects, length_time, num_attributes]
         preprocess_data: List[Dict[str, Any]] = []
         for j_file in json_files:
-            sim_data: List[Dict[str, Any]] = json.load(open(j_file, 'r'))
+            with open(j_file, 'r') as f:
+                sim_data: List[Dict[str, Any]] = json.load(f)
+            # close the file
             overall_ego_position: List[List[float]] = []
             overall_controls: List[List[float]] = []
             overall_timestamps: List[float] = []
@@ -527,7 +517,9 @@ class BaseDataset(Dataset):
             sdc_track_index,
             timestamps,
             obj_types):
-
+        """
+        Centers the location of all the agents 
+        """
         center_objects = obj_trajs_past
         num_center_objects = center_objects.shape[0]
         num_objects, num_timestamps, num_attributes = obj_trajs_past.shape
@@ -594,7 +586,7 @@ class BaseDataset(Dataset):
         # obj_trajs_future_state = obj_trajs_future[:, :, :, [
         #     0, 1, 7, 8]]  # (x, y, vx, vy)
         obj_trajs_future_state = obj_trajs_future[:, :, :, [
-            0, 1, 2, VELOCITY_IDX]]  # (x, y, z, v)
+            0, 1, 2, 3, VELOCITY_IDX]]  # (x, y, z, v)
         obj_trajs_future_mask = obj_trajs_future[:, :, :, -1]
         obj_trajs_future_state[obj_trajs_future_mask == 0] = 0
 
@@ -686,21 +678,49 @@ class BaseDataset(Dataset):
             center_heading (num_center_objects):
             heading_index: the index of heading angle in the num_attr-axis of obj_trajs
         """
+
         num_objects, num_timestamps, num_attrs = obj_trajs.shape
         num_center_objects = center_xyz.shape[0]
         assert center_xyz.shape[0] == center_heading.shape[0]
         assert center_xyz.shape[1] in [3, 2]
+        # original_obj_trajs = obj_trajs.copy()
+        # # TODO: REMOVE
+        # test = original_obj_trajs[:, :, 0:3] - center_xyz[:, None, :]
+        # # obj_trajs = np.tile(
+        # #     obj_trajs[None, :, :, :], (num_center_objects, 1, 1, 1))
+        # # obj_trajs[:, :, :, 0:center_xyz.shape[1]
+        # #           ] -= center_xyz[:, None, None, :]
+        # # obj_trajs[:, :, :, 0:2] = rotate_points_along_z(
+        # #     points=obj_trajs[:, :, :, 0:2].reshape(num_center_objects, -1, 2),
+        # #     angle=-center_heading
+        # # ).reshape(num_center_objects, num_objects, num_timestamps, 2)
 
+        # import matplotlib.pyplot as plt
+        # fig, ax = plt.subplots()
+        # for i in range(num_center_objects):
+        #     x = test[i, :, 0]
+        #     y = test[i, :, 1]
+        #     ax.plot(x, y, label=f'center_{i}')
+        # ax.legend()
+
+        # fig, ax = plt.subplots()
+        # for i in range(num_center_objects):
+        #     x = obj_trajs[i, :, 0]
+        #     y = obj_trajs[i, :, 1]
+        #     ax.plot(x, y, label=f'center_{i}')
+        # ax.legend()
+        # plt.show()
+        # TODO: ADD ROTATION correctly based on the heading
         obj_trajs = np.tile(
             obj_trajs[None, :, :, :], (num_center_objects, 1, 1, 1))
         obj_trajs[:, :, :, 0:center_xyz.shape[1]
                   ] -= center_xyz[:, None, None, :]
-        obj_trajs[:, :, :, 0:2] = rotate_points_along_z(
-            points=obj_trajs[:, :, :, 0:2].reshape(num_center_objects, -1, 2),
-            angle=-center_heading
-        ).reshape(num_center_objects, num_objects, num_timestamps, 2)
+        # obj_trajs[:, :, :, 0:2] = rotate_points_along_z(
+        #     points=obj_trajs[:, :, :, 0:2].reshape(num_center_objects, -1, 2),
+        #     angle=-center_heading
+        # ).reshape(num_center_objects, num_objects, num_timestamps, 2)
 
-        obj_trajs[:, :, :, heading_index] -= center_heading[:, None, :]
+        # obj_trajs[:, :, :, heading_index] -= center_heading[:, None, :]
 
         # rotate direction of velocity
         # if rot_vel_index is not None:

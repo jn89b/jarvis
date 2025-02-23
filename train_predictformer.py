@@ -21,7 +21,7 @@ with open(data_config, 'r') as f:
 
 dataset = BaseDataset(
     config=data_config,
-    num_samples=50)
+    is_validation=True)
 
 dataloader: DataLoader = DataLoader(
     dataset,
@@ -34,7 +34,7 @@ model_config: str = "config/predictformer_config.yaml"
 with open(model_config, 'r') as f:
     model_config = yaml.safe_load(f)
 
-model: PredictFormer = PredictFormer(model_config)
+model: PredictFormer = PredictFormer(model_config,)
 name = "predictformer"
 logger = TensorBoardLogger("tb_logs", name=name)
 
@@ -59,10 +59,11 @@ if os.path.exists(checkpoint_dir):
         print(
             f"Resuming training from checkpoint: {latest_checkpoint}")
 
+
 # Initialize the Trainer
 trainer = Trainer(
     devices=1,
-    max_epochs=2000,
+    max_epochs=-1,
     logger=logger,
     callbacks=[checkpoint_callback],
     gradient_clip_val=1.0,
