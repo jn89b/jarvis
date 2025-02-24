@@ -120,6 +120,19 @@ class AbstracKinematicEnv(gym.Env, ABC):
 
         return controlled_agents
 
+    def remove_all_agents(self) -> None:
+        """
+        Removes all agents from the environment
+        """
+        self.battlespace.clear_agents()
+        self.agents = []
+
+    def insert_agent(self, agent: SimpleAgent) -> None:
+        if agent.is_controlled:
+            self.agents.append(agent.agent_id)
+
+        self.battlespace.all_agents.append(agent)
+
     def get_specific_agent(self, agent_id: int) -> SimpleAgent:
         """
         Returns a specific agent in the environment

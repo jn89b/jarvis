@@ -89,6 +89,21 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
 
         return controlled_agents
 
+    def remove_all_agents(self) -> None:
+        """
+        Removes all agents from the environment
+        """
+        self.battlespace.clear_agents()
+        self.agents = []
+
+    def insert_agent(self, agent: SimpleAgent) -> None:
+        if agent.is_controlled:
+            self.agents.append(agent.agent_id)
+
+        self.battlespace.all_agents.append(agent)
+        self.agents = [str(agent.agent_id)
+                       for agent in self.get_controlled_agents]
+
     def build(self) -> None:
         self.__init_battlespace()
         assert self.battlespace is not None
@@ -100,6 +115,7 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
         """
         Returns a specific agent in the environment
         """
+        agent_id = str(agent_id)
         for agent in self.battlespace.all_agents:
             if agent.agent_id == agent_id:
                 return agent
@@ -1109,7 +1125,31 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         reward: float = sigmoid_dot * sigmoid_distance
         return reward
 
-    def step(self, action_dict: Dict[str, Any]) -> Tuple[Dict, Dict, Dict, Dict, Dict]:
+    def adjust_pitch(self, selected_agent: Pursuer,
+                     evader: SimpleAgent,
+                     action: Dict[str, Any]) -> Dict[str, np.ndarray]:
+        """
+
+        Args: 
+            selected_agent (Pursuer): The pursuer agent
+            evader (SimpleAgent): The evader agent
+        Returns:
+            Dict[str, np.ndarray]: The adjusted action for the pursuer agent
+        """
+        pitch_idx: int = 0
+        dz: float = selected_agent.state_vector.z - evader.state_vector.z
+        distance: float = selected_agent.state_vector.distance_2D(
+            evader.state_vector)
+        pitch_cmd: float = np.arctan2(dz, distance)
+        max_pitch: float = self.pursuer_control_limits['u_theta']['max']
+        min_pitch: float = self.pursuer_control_limits['u_theta']['min']
+        pitch_cmd = np.clip(pitch_cmd, min_pitch, max_pitch)
+        action[pitch_idx] = -pitch_cmd
+
+        return action
+
+    def step(self, action_dict: Dict[str, Any],
+             specific_agent_id: int = None) -> Tuple[Dict, Dict, Dict, Dict, Dict]:
         """
         """
         terminateds = {"__all__": False}
@@ -1117,26 +1157,28 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         rewards = {agent: 0.0 for agent in self.agents}
         infos = {}
         observations = {}
-        selected_agent: SimpleAgent = self.get_specific_agent(
-            self.current_agent)
+
+        if specific_agent_id is None:
+            # action: np.array = self.discrete_to_continuous_action(
+            #     action_dict[selected_agent.agent_id]['action'])
+            # command_action: Dict[str, np.array] = {
+            #     selected_agent.agent_id: action
+            selected_agent: SimpleAgent = self.get_specific_agent(
+                self.current_agent)
+            selected_agent_id = selected_agent.agent_id
+        else:
+            selected_agent_id = specific_agent_id
+            selected_agent: SimpleAgent = self.get_specific_agent(
+                specific_agent_id)
+
         action: np.array = self.discrete_to_continuous_action(
-            action_dict[selected_agent.agent_id]['action'])
+            action_dict[str(selected_agent_id)]['action'])
 
         if selected_agent.is_pursuer:
-            # update the commanded action pitch to make it easier
-            evader: Evader = self.get_evader_agents()[0]
-            pitch_idx: int = 0
-            dz: float = selected_agent.state_vector.z - evader.state_vector.z
-            distance: float = selected_agent.state_vector.distance_2D(
-                evader.state_vector)
-            pitch_cmd: float = np.arctan2(dz, distance)
-            max_pitch: float = self.pursuer_control_limits['u_theta']['max']
-            min_pitch: float = self.pursuer_control_limits['u_theta']['min']
-            pitch_cmd = np.clip(pitch_cmd, min_pitch, max_pitch)
-            action[pitch_idx] = -pitch_cmd
+            action = self.adjust_pitch(
+                selected_agent, self.get_evader_agents()[0], action)
 
         command_action: Dict[str, np.array] = {selected_agent.agent_id: action}
-
         self.simulate(command_action, use_multi=True)
         # self.simulate_single(agent=selected_agent, action=action)
 
@@ -1151,11 +1193,14 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
             # rewards for the pursuers
             if agent.is_pursuer:
                 if self.is_caught(pursuer=agent, evader=evader) or evader.crashed:
+                    if evader.crashed:
+                        print("Evader Crashed")
+
+                    print("Evader Caught")
                     terminateds['__all__'] = True
                     rewards[evader.agent_id] = -self.terminal_reward
                     for pursuer in self.get_pursuer_agents():
                         rewards[pursuer.agent_id] = self.terminal_reward
-                    print("Evader Caught", rewards)
                     # game is over
                     break
                 else:
@@ -1194,6 +1239,11 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
                             evader.old_distance_from_pursuer = distance_from_evader
 
         self.current_agent = next(self.agent_cycle)
+        # check if key exists
+        if self.current_agent not in self.action_spaces:
+            while self.current_agent not in self.action_spaces:
+                self.current_agent = next(self.agent_cycle)
+
         num_actions: int = self.action_spaces[self.current_agent]["action"].nvec.sum(
         )
 
@@ -1226,3 +1276,8 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         infos = {}
 
         return observations, infos
+
+
+class PursuerEnvInference(AbstractKinematicEnv):
+    def __init__agents(self):
+        return super().__init__agents()

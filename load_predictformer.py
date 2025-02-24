@@ -113,11 +113,12 @@ for i in range(num_agents):
 
 fig, ax = plt.subplots(1, 1)
 # transpose this to ground truth trajectory [num_agents, num_timesteps, num_attributes]
+start_idx: int = 21
 for i in range(num_agents):
     x = ground_truth_world[i, :, 0]
     y = ground_truth_world[i, :, 1]
-    x_start = x[0]
-    y_start = y[0]
+    x_start = x[start_idx]
+    y_start = y[start_idx]
     ax.plot(x, y, label="Ground Truth " + str(i))
     agent_traj = predicted_trajectory[i]
     for j in range(num_modes):
@@ -138,20 +139,21 @@ for i in range(num_agents):
     x = ground_truth_world[i, :, 0]
     y = ground_truth_world[i, :, 1]
     z = ground_truth_world[i, :, 2]
-    x_start = x[0]
-    y_start = y[0]
-    z_start = z[0]
+    x_start = x[start_idx]
+    y_start = y[start_idx]
+    z_start = z[start_idx]
     ax.plot(x, y, z, label="Ground Truth " + str(i))
     agent_traj = predicted_trajectory[i]
     for j in range(num_modes):
         highest_probabilty_index = np.argmax(predicted_probability[i])
         x = x_start + agent_traj[j, :, 0]
         y = y_start + agent_traj[j, :, 1]
-        z =  agent_traj[j, :, 2]
+        z = agent_traj[j, :, 2]
         ax.scatter(
             x, y, z, label=f"Mode {j} for agent {i} ")
 
     ax.scatter(x_start, y_start, z_start, label="Start " + str(i))
+    ax.set_zlim([0, 50])
     ax.legend()
 
 plt.show()

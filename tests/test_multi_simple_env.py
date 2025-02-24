@@ -4,12 +4,16 @@ import matplotlib.pyplot as plt
 
 from ray.rllib.env import MultiAgentEnv
 # from jarvis.envs.battlespace import BattleSpace
-from jarvis.envs.multi_agent_env import PursuerEvaderEnv
-from jarvis.envs.simple_agent import SimpleAgent, PlaneKinematicModel, DataHandler
+from jarvis.envs.simple_multi_env import PursuerEvaderEnv
+from jarvis.envs.simple_agent import (
+    SimpleAgent, PlaneKinematicModel, DataHandler,
+    Evader, Pursuer)
+
 from jarvis.utils.trainer import load_yaml_config
 from jarvis.utils.vector import StateVector
 from jarvis.envs.battlespace import BattleSpace
 from typing import List, Dict, Any
+
 
 plt.close('all')
 
@@ -54,6 +58,33 @@ class TestMultiEnv(unittest.TestCase):
             if done['__all__']:
                 print("done", done)
                 self.env.reset()
+
+    def test_remove_all_agents(self) -> None:
+        """
+        Load up the environment and 
+        clear the agents 
+        then add a pursuer agent 
+        and an evader agent
+        """
+        env_config = load_yaml_config(
+            "config/simple_env_config.yaml")['battlespace_environment']
+        env = PursuerEvaderEnv(config=env_config)
+        env.remove_all_agents()
+        assert len(env.get_pursuer_agents()) == 0
+        # insert an agent
+        state_vector = StateVector(
+            x=0, y=0, z=0, yaw_rad=0, roll_rad=0,
+            pitch_rad=0, speed=20)
+        pursuer: Pursuer = Pursuer(
+            agent_id="0",
+            state_vector=state_vector,
+            battle_space=env.battlespace,
+            simple_model=PlaneKinematicModel(),
+            is_controlled=True,
+            radius_bubble=5
+        )
+        env.insert_agent(pursuer)
+        assert len(env.get_controlled_agents) == 1
 
     def test_intermediate_reward(self) -> None:
         """

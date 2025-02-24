@@ -352,13 +352,13 @@ class BaseDataset(Dataset):
     {
         "time_step": 0.0,
         "ego": [
-            1.8119741253874913,
-            8.637991404456686,
-            -10.695767092600466,
-            -15.85606934102197,
-            9.912715928234958,
-            119.69886507984286,
-            20.563904932489752
+            1.8119741253874913, x 
+            8.637991404456686, y 
+            -10.695767092600466, z
+            -15.85606934102197, phi
+            9.912715928234958, theta
+            119.69886507984286, psi
+            20.563904932489752 velocity
         ],
         "controls": [
             -15.85606934102197,
@@ -686,14 +686,14 @@ class BaseDataset(Dataset):
         # original_obj_trajs = obj_trajs.copy()
         # # TODO: REMOVE
         # test = original_obj_trajs[:, :, 0:3] - center_xyz[:, None, :]
-        # # obj_trajs = np.tile(
-        # #     obj_trajs[None, :, :, :], (num_center_objects, 1, 1, 1))
-        # # obj_trajs[:, :, :, 0:center_xyz.shape[1]
-        # #           ] -= center_xyz[:, None, None, :]
-        # # obj_trajs[:, :, :, 0:2] = rotate_points_along_z(
-        # #     points=obj_trajs[:, :, :, 0:2].reshape(num_center_objects, -1, 2),
-        # #     angle=-center_heading
-        # # ).reshape(num_center_objects, num_objects, num_timestamps, 2)
+        # obj_trajs = np.tile(
+        #     obj_trajs[None, :, :, :], (num_center_objects, 1, 1, 1))
+        # obj_trajs[:, :, :, 0:center_xyz.shape[1]
+        #           ] -= center_xyz[:, None, None, :]
+        # obj_trajs[:, :, :, 0:2] = rotate_points_along_z(
+        #     points=obj_trajs[:, :, :, 0:2].reshape(num_center_objects, -1, 2),
+        #     angle=-center_heading
+        # ).reshape(num_center_objects, num_objects, num_timestamps, 2)
 
         # import matplotlib.pyplot as plt
         # fig, ax = plt.subplots()
@@ -710,6 +710,26 @@ class BaseDataset(Dataset):
         #     ax.plot(x, y, label=f'center_{i}')
         # ax.legend()
         # plt.show()
+
+        # plot 3d
+        # fig, ax = plt.subplots(subplot_kw={'projection': '3d'})
+        # for i in range(num_center_objects):
+        #     x = test[i, :, 0]
+        #     y = test[i, :, 1]
+        #     z = test[i, :, 2]
+        #     ax.plot(x, y, z, label=f'center_{i}')
+        # # title
+        # ax.set_title('Zero')
+
+        # fig, ax = plt.subplots(subplot_kw={'projection': '3d'})
+        # for i in range(num_center_objects):
+        #     x = obj_trajs[i, :, 0]
+        #     y = obj_trajs[i, :, 1]
+        #     z = obj_trajs[i, :, 2]
+        #     ax.plot(x, y, z, label=f'center_{i}')
+
+        # plt.show()
+
         # TODO: ADD ROTATION correctly based on the heading
         obj_trajs = np.tile(
             obj_trajs[None, :, :, :], (num_center_objects, 1, 1, 1))
