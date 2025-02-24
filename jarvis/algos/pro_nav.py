@@ -72,8 +72,6 @@ class ProNavV2():
         norm_pos = safe_normalize(relative_evader_pos)
         los = np.arctan2(relative_evader_pos[1], relative_evader_pos[0])
         heading_error = self.angle_diff(current_heading, los)
-        print("heading error", np.rad2deg(heading_error))
-        print("line of sight", np.rad2deg(los))
         # compute the flight path rate
         flight_path_rate = self.N * los
 
@@ -90,8 +88,7 @@ class ProNavV2():
         Kp: float = 0.01
         los_error = np.arctan2(relative_evader_pos[1],
                                relative_evader_pos[0])
-        print("los error", np.rad2deg(los_error))
-        velocity_cmd = 20.0
+        velocity_cmd = 35.0
 
         return np.array([-pitch, yaw_cmd, velocity_cmd], dtype=np.float32)
 

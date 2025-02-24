@@ -7,8 +7,8 @@ battlespace_environment:
 
   spawning:
     distance_from_other_agents:
-      min: 150
-      max: 350
+      min: 250
+      max: 500
     target:
       randomize: true
       position:

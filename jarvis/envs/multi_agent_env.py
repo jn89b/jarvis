@@ -11,6 +11,8 @@ from jarvis.envs.simple_agent import (
 from jarvis.envs.battlespace import BattleSpace
 from jarvis.utils.vector import StateVector
 from jarvis.envs.tokens import KinematicIndex
+from jarvis.algos.pro_nav import ProNavV2
+
 import itertools
 
 # abstract methods
@@ -725,6 +727,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         self.current_agent: str = next(self.agent_cycle)
         self.terminal_reward: float = 1000.0
         self.all_done_step: int = 0
+        self.use_pronav: bool = True
 
         # self.__init_battlespace()
         assert self.battlespace is not None
@@ -1093,9 +1096,8 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
 
         evader.old_distance_from_pursuer = distance
 
-        reward = - delta_distance - dot_product
         # Return the negative reward for the evader without causing any state updates.
-        return -reward
+        return -dot_product - delta_distance + 0.01
 
     def sigmoid(self, x: float) -> float:
         x = np.clip(x, -500, 500)
@@ -1149,7 +1151,8 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         return action
 
     def step(self, action_dict: Dict[str, Any],
-             specific_agent_id: int = None) -> Tuple[Dict, Dict, Dict, Dict, Dict]:
+             specific_agent_id: int = None,
+             use_pronav: bool = False) -> Tuple[Dict, Dict, Dict, Dict, Dict]:
         """
         """
         terminateds = {"__all__": False}
@@ -1177,6 +1180,23 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         if selected_agent.is_pursuer:
             action = self.adjust_pitch(
                 selected_agent, self.get_evader_agents()[0], action)
+
+        if selected_agent.is_pursuer:
+            if self.use_pronav:
+                pronav: ProNavV2 = ProNavV2()
+                current_pos = selected_agent.state_vector.array[0:3]
+                evader: Evader = self.get_evader_agents()[0]
+                target_pos = evader.state_vector.array[0:3]
+                relative_pos = target_pos - current_pos
+                relative_vel = evader.state_vector.speed - \
+                    selected_agent.state_vector.speed
+                action = pronav.predict(
+                    current_pos=current_pos,
+                    relative_pos=relative_pos,
+                    current_heading=selected_agent.state_vector.yaw_rad,
+                    current_speed=selected_agent.state_vector.speed,
+                    relative_vel=relative_vel
+                )
 
         command_action: Dict[str, np.array] = {selected_agent.agent_id: action}
         self.simulate(command_action, use_multi=True)
@@ -1219,24 +1239,26 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
                     break
                 else:
                     for pursuer in self.get_pursuer_agents():
+                        # get closest pursuer
+                        min_distance = 1000
+                        distance = pursuer.state_vector.distance_3D(
+                            evader.state_vector)
+
+                        if distance < min_distance:
+                            min_distance = distance
+                            evader.old_distance_from_pursuer = min_distance
+                            # closest pursuer
+                            rewards[evader.agent_id] = self.compute_evader_reward(
+                                pursuer=pursuer, evader=evader)
+                            rewards[pursuer.agent_id] = -\
+                                rewards[evader.agent_id]
+
                         if pursuer.crashed and not evader.crashed:
                             terminateds['__all__'] = True
                             rewards[evader.agent_id] = self.terminal_reward
                             rewards[pursuer.agent_id] = - \
                                 rewards[agent.agent_id]
                             print("Pursuer Crashed", pursuer.state_vector)
-
-                        else:
-                            # closest pursuer
-                            rewards[evader.agent_id] = + self.compute_evader_reward(
-                                pursuer=pursuer, evader=evader)
-                            rewards[pursuer.agent_id] = -\
-                                rewards[evader.agent_id]
-                        old_distance: float = evader.old_distance_from_pursuer
-                        distance_from_evader: float = evader.state_vector.distance_3D(
-                            pursuer.state_vector)
-                        if old_distance < distance_from_evader:
-                            evader.old_distance_from_pursuer = distance_from_evader
 
         self.current_agent = next(self.agent_cycle)
         # check if key exists
@@ -1276,8 +1298,3 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         infos = {}
 
         return observations, infos
-
-
-class PursuerEnvInference(AbstractKinematicEnv):
-    def __init__agents(self):
-        return super().__init__agents()

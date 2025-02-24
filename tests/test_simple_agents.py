@@ -168,7 +168,7 @@ class TestGenerateRLData(unittest.TestCase):
             simple_model=PlaneKinematicModel()
         )
 
-        n_steps: int = 500
+        n_steps: int = 1000
         agent_2_commands = np.array([0, 0, 25])
 
         agents = [pursuer_agent, agent_2]
@@ -221,9 +221,9 @@ class TestGenerateRLData(unittest.TestCase):
             distance: float = pursuer_agent.state_vector.distance_3D(
                 agent_2.state_vector)
             distance_history.append(distance)
-            # if distance < 30.0:
-            #     print("caught")
-            #     break
+            if distance < 30.0:
+                print("caught")
+                break
 
         datas: list[DataHandler] = [agent.return_data() for agent in agents]
 

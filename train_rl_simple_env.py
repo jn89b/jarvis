@@ -139,7 +139,7 @@ def train_multi_agent() -> None:
 
     # Define the run configuration for Ray Tune.
     run_config = tune.RunConfig(
-        stop={"training_iteration": 1500},
+        stop={"training_iteration": 4500},
         checkpoint_config=tune.CheckpointConfig(
             checkpoint_frequency=20,
             checkpoint_at_end=True,

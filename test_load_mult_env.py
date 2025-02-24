@@ -99,7 +99,8 @@ def load_state(checkpoint_path: str, num_episodes: int = 1):
     ray.shutdown()
 
 
-def infer(checkpoint_path: str, num_episodes: int = 1):
+def infer(checkpoint_path: str, num_episodes: int = 1,
+          use_pronav: bool = True):
     ray.init(ignore_reinit_error=True)
     env = create_multi_agent_env(config=None, env_config=env_config)
 
@@ -120,10 +121,12 @@ def infer(checkpoint_path: str, num_episodes: int = 1):
     observation, info = env.reset()
     terminated = {'__all__': False}
     next_agent = observation.keys()
+    env.use_pronav = use_pronav
     # n_steps: int = 500
     # random seed
-    np.random.seed()
-    env.max_steps = 700
+    # np.random.seed()
+    # env.max_steps = 700
+    print("max steps", env.max_steps)
     reward_list = []
     while not terminated['__all__']:
         # for i in range(n_steps):
@@ -165,7 +168,7 @@ def infer(checkpoint_path: str, num_episodes: int = 1):
         # action = torch.argmax(action_logits).numpy()
         action_dict = {}
         action_dict[key_value] = {'action': discrete_actions}
-        print("action dict: ", action_dict)
+        # print("action dict: ", action_dict)
 
         observation, reward, terminated, truncated, info = env.step(
             action_dict=action_dict)
@@ -192,29 +195,30 @@ def infer(checkpoint_path: str, num_episodes: int = 1):
         ax.scatter(data.x[0], data.y[1], data.z[2], label=f"Agent Start {i}")
         ax.plot(data.x, data.y, data.z, label=f"Agent {i}")
 
+    print("env step", env.current_step)
     ax.set_xlabel('X Label')
     ax.set_ylabel('Y Label')
     ax.legend()
 
-    fig, ax = plt.subplots()
-    reward_0 = [r['0'] for r in reward_list]
-    reward_1 = [r['1'] for r in reward_list]
-    reward_2 = [r['2'] for r in reward_list]
-    ax.plot(reward_0, label='Evader Reward')
-    ax.plot(reward_1, label='Pursuer Reward')
-    ax.plot(reward_2, label='Pursuer Reward 2')
-    print("sum of rewards: ", sum(reward_0), sum(reward_1))
-    ax.legend()
+    # fig, ax = plt.subplots()
+    # reward_0 = [r['0'] for r in reward_list]
+    # reward_1 = [r['1'] for r in reward_list]
+    # reward_2 = [r['2'] for r in reward_list]
+    # ax.plot(reward_0, label='Evader Reward')
+    # ax.plot(reward_1, label='Pursuer Reward')
+    # ax.plot(reward_2, label='Pursuer Reward 2')
+    # print("sum of rewards: ", sum(reward_0), sum(reward_1))
+    # ax.legend()
     ray.shutdown()
 
     # plot a 3D plot of the agents
-    fig, ax = plt.subplots()
-    for i, data in enumerate(datas):
-        print("data: ", i)
-        ax.plot(data.v, label=f"Agent {i}")
+    # fig, ax = plt.subplots()
+    # for i, data in enumerate(datas):
+    #     print("data: ", i)
+    #     ax.plot(data.v, label=f"Agent {i}")
 
-    ax.legend()
-    plt.show()
+    # ax.legend()
+    # plt.show()
 
 
 # def infer_pursuer(checkpoint_path: str, num_episodes: int = 1):
@@ -236,6 +240,143 @@ def infer(checkpoint_path: str, num_episodes: int = 1):
 #         "learner_group" / "learner" / "rl_module"
 #     )["pursuer_policy"]
 
+def load_and_infer_evader(checkpoint_path: str):
+    """
+    If I was to load this in real life:
+    Need to load the purser policy 
+    - Get the observation
+    - Get the action mask
+    - Compute a step in the environment and see what happens
+    """
+    # Load the pursuer policy from the checkpoint.
+    evader_policy = RLModule.from_checkpoint(
+        pathlib.Path(checkpoint_path) / "learner_group" /
+        "learner" / "rl_module"
+    )["evader_policy"]
+
+    env = create_multi_agent_env(config=None, env_config=env_config)
+    env.remove_all_agents()
+    assert len(env.get_pursuer_agents()) == 0
+
+    # insert an agent
+
+    # evader_x: float = 100.0
+    # evader_y: float = 0.0
+    # evader_z: float = 40
+    evader_x: float = np.random.uniform(-300, 300)
+    evader_y: float = np.random.uniform(-300, 300)
+    evader_z: float = np.random.uniform(20, 60)
+    state_vector = StateVector(
+        x=evader_x, y=evader_y, z=evader_z, yaw_rad=0, roll_rad=0,
+        pitch_rad=0, speed=0)
+    evader: Evader = Evader(
+        agent_id="0",
+        state_vector=state_vector,
+        battle_space=env.battlespace,
+        simple_model=PlaneKinematicModel(),
+        is_controlled=True,
+        radius_bubble=5,
+    )
+
+    rand_x: float = np.random.uniform(-500, 500)
+    rand_y: float = np.random.uniform(-500, 500)
+    rand_z: float = np.random.uniform(35, 80)
+    state_vector = StateVector(
+        x=rand_x, y=rand_y, z=rand_z, yaw_rad=0.0, roll_rad=0,
+        pitch_rad=0, speed=20)
+
+    pursuer: Pursuer = Pursuer(
+        agent_id="1",
+        state_vector=state_vector,
+        battle_space=env.battlespace,
+        simple_model=PlaneKinematicModel(),
+        is_controlled=True,
+        radius_bubble=5
+    )
+
+    rand_x: float = np.random.uniform(-500, 500)
+    rand_y: float = np.random.uniform(-500, 500)
+    rand_z: float = np.random.uniform(35, 80)
+    state_vector = StateVector(
+        x=rand_x, y=rand_y, z=rand_z, yaw_rad=0.0, roll_rad=0,
+        pitch_rad=0, speed=20)
+
+    pursuer_2: Pursuer = Pursuer(
+        agent_id="2",
+        state_vector=state_vector,
+        battle_space=env.battlespace,
+        simple_model=PlaneKinematicModel(),
+        is_controlled=True,
+        radius_bubble=5
+    )
+
+    pursuer.capture_radius = 20
+    env.insert_agent(evader)
+    env.insert_agent(pursuer)
+    env.insert_agent(pursuer_2)
+
+    env.init_action_space()
+    env.init_observation_space()
+    # n_steps: int = 200
+
+    terminated = {'__all__': False}
+    # env.max_steps = 1000
+    while not terminated['__all__']:
+        # get number of age
+        num_actions: int = env.action_spaces["0"]["action"].nvec.sum()
+        current_evader: Evader = env.get_evader_agents()[0]
+        obs = env.observe(current_evader, num_actions)
+        torch_obs_batch = {k: torch.from_numpy(
+            np.array([v])) for k, v in obs.items()}
+        action_logits = evader_policy.forward_inference({"obs": torch_obs_batch})[
+            "action_dist_inputs"]
+        # For my action space I have a multidscrete environment
+        # Since my action logits are a [1 x total_actions] tensor
+        # I need to get the argmax of the tensor
+        action_logits = action_logits.detach().numpy().squeeze()
+        unwrapped_action: Dict[str, np.array] = env.unwrap_action_mask(
+            action_logits)
+
+        discrete_actions = []
+        for k, v in unwrapped_action.items():
+            v = torch.from_numpy(v)
+            best_action = torch.argmax(v).numpy()
+            discrete_actions.append(best_action)
+
+        # action = torch.argmax(action_logits).numpy()
+        action_dict = {}
+        action_dict['0'] = {'action': discrete_actions}
+        observation, reward, terminated, truncated, info = env.step(
+            action_dict=action_dict)
+
+        # check if done
+        if (terminated['__all__'] == True):
+            print("reward: ", reward)
+            break
+
+    datas: List[DataHandler] = []
+    agents = env.get_all_agents
+    for agent in agents:
+        agent: SimpleAgent
+        data: DataHandler = agent.simple_model.data_handler
+        datas.append(data)
+
+    # plot a 3D plot of the agents
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    for i, data in enumerate(datas):
+        # ax.scatter(data.x[0], data.y[1], data.z[2], label=f"Agent Start {i}")
+        ax.plot(data.x, data.y, data.z, label=f"Agent {i}")
+
+    ax.scatter(evader_x, evader_y, evader_z, label="Evader Start")
+
+    ax.set_xlabel('X Label')
+    ax.set_ylabel('Y Label')
+    ax.legend()
+    # plt.show()
+
+
 def load_and_infer_pursuer(checkpoint_path: str):
     """
     If I was to load this in real life:
@@ -255,9 +396,12 @@ def load_and_infer_pursuer(checkpoint_path: str):
     assert len(env.get_pursuer_agents()) == 0
 
     # insert an agent
-    evader_x: float = 500.0
+    evader_x: float = 100.0
     evader_y: float = 0.0
-    evader_z: float = 30
+    evader_z: float = 40
+    # evader_x: float = np.random.uniform(-300, 300)
+    # evader_y: float = np.random.uniform(-300, 300)
+    # evader_z: float = np.random.uniform(20, 60)
     state_vector = StateVector(
         x=evader_x, y=evader_y, z=evader_z, yaw_rad=0, roll_rad=0,
         pitch_rad=0, speed=0)
@@ -270,9 +414,13 @@ def load_and_infer_pursuer(checkpoint_path: str):
         radius_bubble=5,
     )
 
+    rand_x: float = np.random.uniform(-500, 500)
+    rand_y: float = np.random.uniform(-500, 500)
+    rand_z: float = np.random.uniform(35, 80)
     state_vector = StateVector(
-        x=-200, y=500, z=50, yaw_rad=0.0, roll_rad=0,
+        x=rand_x, y=rand_y, z=rand_z, yaw_rad=0.0, roll_rad=0,
         pitch_rad=0, speed=20)
+
     pursuer: Pursuer = Pursuer(
         agent_id="1",
         state_vector=state_vector,
@@ -287,11 +435,10 @@ def load_and_infer_pursuer(checkpoint_path: str):
 
     env.init_action_space()
     env.init_observation_space()
-
     n_steps: int = 200
 
     terminated = {'__all__': False}
-    env.max_steps = 10000
+    env.max_steps = 1000
     while not terminated['__all__']:
         # get number of age
         num_actions: int = env.action_spaces["1"]["action"].nvec.sum()
@@ -319,7 +466,7 @@ def load_and_infer_pursuer(checkpoint_path: str):
         action_dict = {}
         action_dict['1'] = {'action': discrete_actions}
         observation, reward, terminated, truncated, info = env.step(
-            action_dict=action_dict, specific_agent_id="1")
+            action_dict=action_dict, specific_agent_id="0")
 
         # check if done
         if (terminated['__all__'] == True):
@@ -340,8 +487,7 @@ def load_and_infer_pursuer(checkpoint_path: str):
     ax = fig.add_subplot(111, projection='3d')
 
     for i, data in enumerate(datas):
-        print("data: ", i)
-        ax.scatter(data.x[0], data.y[1], data.z[2], label=f"Agent Start {i}")
+        # ax.scatter(data.x[0], data.y[1], data.z[2], label=f"Agent Start {i}")
         ax.plot(data.x, data.y, data.z, label=f"Agent {i}")
 
     ax.scatter(evader_x, evader_y, evader_z, label="Evader Start")
@@ -349,6 +495,21 @@ def load_and_infer_pursuer(checkpoint_path: str):
     ax.set_xlabel('X Label')
     ax.set_ylabel('Y Label')
     ax.legend()
+
+
+def run_multiple_sims(checkpoint_path: str, num_sims: int = 10,
+                      type: str = 'evader'):
+
+    np.random.seed(0)
+    for i in range(num_sims):
+        if type == 'pursuer_evader':
+            infer(checkpoint_path=checkpoint_path, num_episodes=1,
+                  use_pronav=True)
+        if type == 'pursuer':
+            load_and_infer_pursuer(checkpoint_path=checkpoint_path)
+        if type == "evader":
+            load_and_infer_evader(checkpoint_path=checkpoint_path)
+
     plt.show()
 
 
@@ -359,8 +520,19 @@ if __name__ == '__main__':
     # path: str = "/home/justin/ray_results/PPO_2025-02-19_03-05-25/PPO_pursuer_evader_env_a81fe_00000_0_2025-02-19_03-05-25/checkpoint_000074"
     # path: str = "/home/justin/ray_results/PPO_2025-02-19_11-13-19/PPO_pursuer_evader_env_d0af9_00000_0_2025-02-19_11-13-19/checkpoint_000071"
     # path: str = "/home/justin/ray_results/PPO_2025-02-19_22-19-31/PPO_pursuer_evader_env_e2123_00000_0_2025-02-19_22-19-31/checkpoint_000063"
-    path: str = "/home/justin/ray_results/pursuer_evader/PPO_2025-02-22_16-12-02/PPO_pursuer_evader_env_0abe0_00000_0_2025-02-22_16-12-02/checkpoint_000414"
-    infer(
-        checkpoint_path=path, num_episodes=1)
+    # path: str = "/home/justin/ray_results/pursuer_evader/PPO_2025-02-22_16-12-02/PPO_pursuer_evader_env_0abe0_00000_0_2025-02-22_16-12-02/checkpoint_000414"
+    # path: str = "/home/justin/ray_results/PPO_2025-02-24_03-59-11/PPO_pursuer_evader_env_ff294_00000_0_2025-02-24_03-59-11/checkpoint_000006"
+    # path: str = "/home/justin/ray_results/PPO_2025-02-24_04-34-50/PPO_pursuer_evader_env_f9c3d_00000_0_2025-02-24_04-34-50/checkpoint_000002"
+    path: str = "/home/justin/ray_results/PPO_2025-02-24_04-53-02/PPO_pursuer_evader_env_84cd9_00000_0_2025-02-24_04-53-02/checkpoint_000123"
+    # n_sims: int = 10
+    # for i in range(n_sims):
+    #     infer(checkpoint_path=path, num_episodes=1)
+
+    # plt.show()
+    run_multiple_sims(checkpoint_path=path, num_sims=10, type='pursuer_evader')
+
+    # load_and_infer_pursuer(checkpoint_path=path)
+    # infer(
+    #     checkpoint_path=path, num_episodes=1)
 
     # load_and_infer_pursuer(checkpoint_path=path)
