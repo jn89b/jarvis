@@ -524,6 +524,7 @@ if __name__ == '__main__':
     # path: str = "/home/justin/ray_results/PPO_2025-02-24_03-59-11/PPO_pursuer_evader_env_ff294_00000_0_2025-02-24_03-59-11/checkpoint_000006"
     # path: str = "/home/justin/ray_results/PPO_2025-02-24_04-34-50/PPO_pursuer_evader_env_f9c3d_00000_0_2025-02-24_04-34-50/checkpoint_000002"
     path: str = "/home/justin/ray_results/PPO_2025-02-24_04-53-02/PPO_pursuer_evader_env_84cd9_00000_0_2025-02-24_04-53-02/checkpoint_000123"
+    path: str = "/home/justin/ray_results/pursuer_evader_2/PPO_2025-02-24_13-25-45/PPO_pursuer_evader_env_24ee9_00000_0_2025-02-24_13-25-45/checkpoint_000224"
     # n_sims: int = 10
     # for i in range(n_sims):
     #     infer(checkpoint_path=path, num_episodes=1)

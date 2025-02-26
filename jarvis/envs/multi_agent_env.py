@@ -1,7 +1,6 @@
 import yaml
 import gymnasium as gym
 import numpy as np
-import os
 from typing import List, Tuple, Dict, Optional, Any
 from dataclasses import dataclass, field
 from ray.rllib.env import MultiAgentEnv
@@ -14,7 +13,6 @@ from jarvis.envs.tokens import KinematicIndex
 from jarvis.algos.pro_nav import ProNavV2
 
 import itertools
-
 # abstract methods
 from abc import ABC, abstractmethod
 
@@ -98,13 +96,13 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
         self.battlespace.clear_agents()
         self.agents = []
 
-    def insert_agent(self, agent: SimpleAgent) -> None:
-        if agent.is_controlled:
-            self.agents.append(agent.agent_id)
+    # def insert_agent(self, agent: SimpleAgent) -> None:
+    #     if agent.is_controlled:
+    #         self.agents.append(agent.agent_id)
 
-        self.battlespace.all_agents.append(agent)
-        self.agents = [str(agent.agent_id)
-                       for agent in self.get_controlled_agents]
+    #     self.battlespace.all_agents.append(agent)
+    #     self.agents = [str(agent.agent_id)
+    #                    for agent in self.get_controlled_agents]
 
     def build(self) -> None:
         self.__init_battlespace()
@@ -214,6 +212,70 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
 
         return pursuer_agents
 
+    def spawn_pursuers(self, num_pursuers: int, agent_id: str,
+                       is_controlled: bool, evader: SimpleAgent) -> int:
+        """
+        Args:
+            num_pursuers (int): Number of pursuers to spawn
+            agent_id (int): The id of the agent to spawn
+            is_controlled (bool): True if the agent is controlled, False otherwise
+            evader (SimpleAgent): The evader to capture
+        Returns:
+            agent_id (int): The id of NEXT agent to spawn
+        """
+
+        min_radius_spawn: float = self.spawn_config['distance_from_other_agents']['min']
+        max_radius_spawn: float = self.spawn_config['distance_from_other_agents']['max']
+        state_limits: Dict[str, Any] = self.pursuer_state_limits
+
+        for i in range(num_pursuers):
+            random_heading: float = np.random.uniform(-np.pi, np.pi)
+            random_radius: float = np.random.uniform(
+                min_radius_spawn, max_radius_spawn)
+            x_pos: float = evader.state_vector.x + \
+                random_radius * np.cos(random_heading)
+
+            y_pos: float = evader.state_vector.y + \
+                random_radius * np.sin(random_heading)
+            z_pos: float = np.random.uniform(
+                self.pursuer_state_limits['z']['min']+20,
+                self.pursuer_state_limits['z']['max']-20)
+
+            dx: float = evader.state_vector.x - x_pos
+            dy: float = evader.state_vector.y - y_pos
+
+            heading = np.arctan2(dy, dx) + np.random.uniform(-np.pi/4, np.pi/4)
+            # wrap heading between -pi and pi
+            heading = (heading + np.pi) % (2 * np.pi) - np.pi
+
+            rand_velocity = np.random.uniform(
+                state_limits['v']['min'],
+                state_limits['v']['max'])
+
+            rand_phi = np.random.uniform(state_limits['phi']['min'],
+                                         state_limits['phi']['max'])
+            rand_theta = np.random.uniform(state_limits['theta']['min'],
+                                           state_limits['theta']['max'])
+            state_vector = StateVector(
+                x=x_pos, y=y_pos, z=z_pos, roll_rad=rand_phi,
+                pitch_rad=rand_theta, yaw_rad=heading, speed=rand_velocity)
+            plane_model: PlaneKinematicModel = PlaneKinematicModel()
+            radius_bubble: float = self.agent_config['interaction']['bubble_radius']
+            capture_radius: float = self.agent_config['interaction']['capture_radius']
+            agent: Pursuer = Pursuer(
+                battle_space=self.battlespace,
+                state_vector=state_vector,
+                simple_model=plane_model,
+                radius_bubble=radius_bubble,
+                is_controlled=is_controlled,
+                agent_id=str(agent_id),
+                capture_radius=capture_radius)
+
+            self.insert_agent(agent)
+            agent_id += 1
+
+        return agent_id
+
     def spawn_agents(self,
                      num_agents: int,
                      agent_id: str,
@@ -317,11 +379,35 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
 
         return control_limits_dict, state_limits_dict
 
-    def insert_agent(self, agent: SimpleAgent) -> None:
+    def insert_agent(self, agent: SimpleAgent,
+                     place_index: int = None) -> None:
+        """
+        Args: 
+            agent (SimpleAgent): The agent to insert into the environment
+            place_at_start (bool): True if we want to place the agent at the 
+            start of the list, False otherwise
+        Inserts an agent into the environment
+        if list of all agents is not initialized
+        then we initialize it
+        """
         if self.battlespace.all_agents is None:
             self.battlespace.all_agents: List[SimpleAgent] = []
 
-        self.battlespace.all_agents.append(agent)
+        if place_index:
+            self.battlespace.all_agents.insert(place_index, agent)
+        else:
+            self.battlespace.all_agents.append(agent)
+
+    def remove_agent(self, agent_id: str) -> None:
+        """
+        Args:
+            agent_id (str): The id of the agent to remove
+        Removes an agent from the environment
+        """
+        agent_id = str(agent_id)
+        for i, agent in enumerate(self.battlespace.all_agents):
+            if agent.agent_id == agent_id:
+                self.battlespace.all_agents.pop(i)
 
     def build_observation_space(self,
                                 is_pursuer: bool,
@@ -484,7 +570,7 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
         """
         Args:
             agent (SimpleAgent): The agent to mask the pitch commands for
-            action_mask (np.ndarray): The action mask to update
+            action_mask (np.ndaaction[]rray): The action mask to update
             z_bounds (List[float]): The bounds of the agent
             projection_time (float): The time to project the agent forward
         Returns:
@@ -1129,7 +1215,9 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
 
     def adjust_pitch(self, selected_agent: Pursuer,
                      evader: SimpleAgent,
-                     action: Dict[str, Any]) -> Dict[str, np.ndarray]:
+                     action: Dict[str, Any],
+                     target_instead: bool = False,
+                     target_statevector: StateVector = None) -> Dict[str, np.ndarray]:
         """
 
         Args: 
@@ -1139,7 +1227,10 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
             Dict[str, np.ndarray]: The adjusted action for the pursuer agent
         """
         pitch_idx: int = 0
-        dz: float = selected_agent.state_vector.z - evader.state_vector.z
+        if target_instead:
+            dz = selected_agent.state_vector.z - target_statevector.z
+        else:
+            dz: float = selected_agent.state_vector.z - evader.state_vector.z
         distance: float = selected_agent.state_vector.distance_2D(
             evader.state_vector)
         pitch_cmd: float = np.arctan2(dz, distance)
