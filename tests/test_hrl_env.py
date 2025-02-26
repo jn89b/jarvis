@@ -83,6 +83,7 @@ class TestHRLEnv(unittest.TestCase):
         print("actions", self.env.action_spaces)
         # print("observation", self.env.observation_spaces.keys())
         assert self.env.target is not None
+        self.env.reset()
         self.env.current_agent = "1"
         for i in range(20):
             # agent = next(self.env.agent_cycle)

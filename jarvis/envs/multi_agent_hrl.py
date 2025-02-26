@@ -270,6 +270,22 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         del self.observation_spaces[evader.agent_id]
         del self.action_spaces[evader.agent_id]
 
+    def update_good_guy(self) -> None:
+        """
+        """
+        # these guys need to be coupled together
+        evader: Evader = self.get_evader_agents()[0]
+        evader.is_controlled = True
+        self.remove_agent(evader.agent_id)
+        # create a copy of the evader
+        good_guy_hrl: Evader = copy.deepcopy(evader)
+        good_guy_hrl.agent_id = self.good_guy_hrl_key
+        self.insert_agent(good_guy_hrl)
+        self.agents = [agent.agent_id for agent in self.get_all_agents]
+
+        self.agents.append(self.good_guy_offensive_key)
+        self.agents.append(self.good_guy_defensive_key)
+
     def adjust_pitch(self, selected_agent: Pursuer,
                      evader: SimpleAgent,
                      action: Dict[str, Any],
@@ -1126,7 +1142,8 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         super().reset(seed=seed, options=options)
         assert self.battlespace is not None
         self.__init__agents()
-        self.replace_evader_with_good_guy()
+        print("self.agents", self.agents)
+        self.update_good_guy()
         self.insert_target()
         self.agents: List[int] = [
             str(agent.agent_id) for agent in self.get_controlled_agents]
