@@ -324,7 +324,6 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         self.target_config: Dict[str, Any] = self.spawn_config['target']
         randomize: bool = self.target_config['randomize']
         spawn_radius: float = self.target_config['spawn_radius_from_agent']
-        print("spawn radius", spawn_radius)
 
         evader: Evader = self.get_evader_agents()[0]
         if evader is None:
@@ -747,10 +746,10 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
                     relative_vel=relative_vel,
                     dont_predict=True
                 )
-                action_cmd = self.adjust_pitch(
-                    selected_agent, self.get_evader_agents()[
-                        0], action_cmd,
-                    target_instead=True, target_statevector=self.target)
+                # action_cmd = self.adjust_pitch(
+                #     selected_agent, self.get_evader_agents()[
+                #         0], action_cmd,
+                #     target_instead=True, target_statevector=self.target)
 
             else:
                 action_cmd: np.array = self.discrete_to_continuous_action(

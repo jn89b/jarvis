@@ -612,7 +612,6 @@ def load_good_guy(checkpoint_path: str) -> None:
     new_agents.append(env.get_evader_agents()[0])
     new_agents.extend(env.get_pursuer_agents())
     agents = new_agents
-    print("agents", agents)
     for agent in agents:
         data: DataHandler = agent.simple_model.data_handler
         datas.append(data)
@@ -622,7 +621,6 @@ def load_good_guy(checkpoint_path: str) -> None:
     ax = fig.add_subplot(111, projection='3d')
 
     for i, data in enumerate(datas):
-        print("data: ", i)
         ax.scatter(data.x[0], data.y[1], data.z[2], label=f"Agent Start {i}")
         ax.plot(data.x, data.y, data.z, label=f"Agent {i}")
 
@@ -677,6 +675,6 @@ if __name__ == '__main__':
     # n_sims: int = 10
     # for i in range(n_sims):
     #     infer(checkpoint_path=path, num_episodes=1)
-    path: str = "/home/justin/ray_results/PPO_2025-02-28_01-15-42/PPO_hrl_env_d21f7_00000_0_2025-02-28_01-15-42/checkpoint_000018"
+    path: str = "/home/justin/ray_results/PPO_2025-02-28_02-55-49/PPO_hrl_env_cecd1_00000_0_2025-02-28_02-55-50/checkpoint_000000"
     # plt.show()
-    run_multiple_sims(checkpoint_path=path, num_sims=5, type='good_guy')
+    run_multiple_sims(checkpoint_path=path, num_sims=15, type='good_guy')
