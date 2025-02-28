@@ -20,7 +20,7 @@ from jarvis.utils.vector import StateVector
 from jarvis.envs.simple_agent import (
     SimpleAgent, PlaneKinematicModel, DataHandler,
     Evader, Pursuer)
-
+from jarvis.envs.multi_agent_hrl import HRLMultiAgentEnv
 
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from jarvis.envs.battlespace import BattleSpace
@@ -77,6 +77,13 @@ def policy_mapping_fn(agent_id, episode, **kwargs):
         return "evader_policy"
     else:
         return "pursuer_policy"
+
+
+def create_hrl_env(config: Dict[str, Any],
+                   env_config: Dict[str, Any]) -> HRLMultiAgentEnv:
+
+    return HRLMultiAgentEnv(
+        config=env_config)
 
 
 # -------------------------
@@ -510,6 +517,132 @@ def load_and_infer_pursuer(checkpoint_path: str):
     # plt.show()
 
 
+def load_good_guy(checkpoint_path: str) -> None:
+    """
+    """
+    ray.init(ignore_reinit_error=True)
+    env = create_hrl_env(config=None, env_config=env_config)
+
+    policies: MultiRLModuleSpec = RLModule.from_checkpoint(
+        pathlib.Path(checkpoint_path) /
+        "learner_group" / "learner" / "rl_module"
+    )
+
+    print("policies", policies.keys())
+
+    good_guy_hrl = policies["good_guy_hrl"]
+    good_guy_offensive = policies["good_guy_offensive"]
+    good_guy_defensive = policies["good_guy_defensive"]
+    pursuer = policies["pursuer"]
+
+    observation, info = env.reset()
+    terminated = {'__all__': False}
+    # n_steps: int = 500
+    # random seed
+    # np.random.seed()
+    # env.max_steps = 700
+    print("max steps", env.max_steps)
+    reward_list = []
+
+    while not terminated['__all__']:
+        # for i in range(n_steps):
+        # compute the next action from a batch of observations
+        # torch_obs_batch = torch.from_numpy(np.array([obs]))
+        key_value = list(observation.keys())[0]
+        # print("key value: ", key_value)
+        if key_value == 'good_guy_hrl':
+            obs = observation['good_guy_hrl']
+            torch_obs_batch = {k: torch.from_numpy(
+                np.array([v])) for k, v in obs.items()}
+            action_logits = good_guy_hrl.forward_inference(
+                {"obs": torch_obs_batch})["action_dist_inputs"]
+        elif key_value == 'good_guy_offensive':
+            obs = observation['good_guy_offensive']
+            torch_obs_batch = {k: torch.from_numpy(
+                np.array([v])) for k, v in obs.items()}
+            action_logits = good_guy_offensive.forward_inference(
+                {"obs": torch_obs_batch})["action_dist_inputs"]
+        elif key_value == 'good_guy_defensive':
+            obs = observation['good_guy_defensive']
+            torch_obs_batch = {k: torch.from_numpy(
+                np.array([v])) for k, v in obs.items()}
+            action_logits = good_guy_defensive.forward_inference(
+                {"obs": torch_obs_batch})["action_dist_inputs"]
+        else:
+            obs = observation[key_value]
+            torch_obs_batch = {k: torch.from_numpy(
+                np.array([v])) for k, v in obs.items()}
+            action_logits = pursuer.forward_inference(
+                {"obs": torch_obs_batch})["action_dist_inputs"]
+
+        # For my action space I have a multidscrete environment
+        # Since my action logits are a [1 x total_actions] tensor
+        # I need to get the argmax of the tensor
+        action_logits = action_logits.detach().numpy().squeeze()
+        if key_value != 'good_guy_hrl':
+            unwrapped_action: Dict[str, np.array] = env.unwrap_action_mask(
+                action_logits)
+            discrete_actions = []
+            for k, v in unwrapped_action.items():
+                v = torch.from_numpy(v)
+                best_action = torch.argmax(v).numpy()
+                discrete_actions.append(best_action)
+        else:
+            discrete_actions = [torch.argmax(
+                torch.from_numpy(action_logits)).numpy()]
+            discrete_actions = discrete_actions[0]
+
+        # action = torch.argmax(action_logits).numpy()
+        action_dict = {}
+        action_dict[key_value] = {'action': discrete_actions}
+        # print("action dict: ", action_dict)
+
+        observation, reward, terminated, truncated, info = env.step(
+            action_dict=action_dict)
+
+        # check if done
+        if (terminated['__all__'] == True):
+            print("reward: ", reward)
+            break
+
+    datas: List[DataHandler] = []
+    agents = env.get_all_agents
+    # agents
+    new_agents = []
+    new_agents.append(env.get_evader_agents()[0])
+    new_agents.extend(env.get_pursuer_agents())
+    agents = new_agents
+    print("agents", agents)
+    for agent in agents:
+        data: DataHandler = agent.simple_model.data_handler
+        datas.append(data)
+
+    # plot a 3D plot of the agents
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    for i, data in enumerate(datas):
+        print("data: ", i)
+        ax.scatter(data.x[0], data.y[1], data.z[2], label=f"Agent Start {i}")
+        ax.plot(data.x, data.y, data.z, label=f"Agent {i}")
+
+    target: StateVector = env.target
+    # plot the goal target as a cylinder
+    ax.scatter(target.x, target.y, target.z,
+               label="Target", color='red', s=100)
+
+    print("env step", env.current_step)
+    ax.set_xlabel('X Label')
+    ax.set_ylabel('Y Label')
+    ax.legend()
+
+    # save the datas and the rewards
+    pickle_info = {
+        "datas": datas,
+        "reward": reward
+    }
+
+
 def run_multiple_sims(checkpoint_path: str, num_sims: int = 10,
                       type: str = 'evader',
                       save: bool = False):
@@ -523,6 +656,8 @@ def run_multiple_sims(checkpoint_path: str, num_sims: int = 10,
             load_and_infer_pursuer(checkpoint_path=checkpoint_path)
         if type == "evader":
             load_and_infer_evader(checkpoint_path=checkpoint_path)
+        if type == "good_guy":
+            load_good_guy(checkpoint_path=checkpoint_path)
 
     plt.show()
 
@@ -542,12 +677,6 @@ if __name__ == '__main__':
     # n_sims: int = 10
     # for i in range(n_sims):
     #     infer(checkpoint_path=path, num_episodes=1)
-
+    path: str = "/home/justin/ray_results/PPO_2025-02-28_01-15-42/PPO_hrl_env_d21f7_00000_0_2025-02-28_01-15-42/checkpoint_000018"
     # plt.show()
-    run_multiple_sims(checkpoint_path=path, num_sims=5, type='pursuer')
-
-    # load_and_infer_pursuer(checkpoint_path=path)
-    # infer(
-    #     checkpoint_path=path, num_episodes=1)
-
-    # load_and_infer_pursuer(checkpoint_path=path)
+    run_multiple_sims(checkpoint_path=path, num_sims=5, type='good_guy')

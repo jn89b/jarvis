@@ -21,7 +21,7 @@ from ray.rllib.examples.rl_modules.classes.action_masking_rlm import (
     ActionMaskingTorchRLModule,
 )
 
-# from ray.rllib.core.rl_module import RLModule
+from ray.rllib.core.rl_module import RLModule
 # from ray.rllib.examples.rl_modules.classes.action_masking_rlm import (
 #     ActionMaskingTorchRLModule,
 # )
@@ -75,8 +75,8 @@ gc.collect()
 # Used to clean up the Ray processes after training
 ray.shutdown()
 # For debugging purposes
-ray.init(local_mode=True)
-# ray.init()
+# ray.init(local_mode=True)
+ray.init()
 
 #
 
@@ -263,14 +263,14 @@ def train_hrl(checkpoint_path=None) -> None:
 
     # load the model from our checkpoints
     # # Create only the neural network (RLModule) from our checkpoint.
-    # if checkpoint_path is None:
-    #     evader_policy = None
-    # else:
-    #     evader_policy: SimpleEnvMaskModule = RLModule.from_checkpoint(
-    #         pathlib.Path(checkpoint_path) /
-    #         "learner_group" / "learner" / "rl_module"
-    #     )["evader_policy"]
-    #     print("evader_policy", evader_policy)
+    if checkpoint_path is None:
+        evader_policy = None
+    else:
+        evader_policy: SimpleEnvMaskModule = RLModule.from_checkpoint(
+            pathlib.Path(checkpoint_path) /
+            "learner_group" / "learner" / "rl_module"
+        )["evader_policy"]
+        print("evader_policy", evader_policy)
 
     # Extract the observation and action spaces from your environment.
     # (You might need to create or compute these from HRLMultiAgentEnv)
@@ -339,16 +339,18 @@ def train_hrl(checkpoint_path=None) -> None:
             policies={
                 "good_guy_hrl": (None, hrl_obs_space, hrl_act_space, {}),
                 "good_guy_offensive": (None, offensive_obs_space, offensive_act_space, {}),
-                "good_guy_defensive": (None, defensive_obs_space, defensive_act_space, {}),
+                "good_guy_defensive": (evader_policy, defensive_obs_space, defensive_act_space, {}),
                 "pursuer": (None, pursuer_obs_space, pursuer_act_space, {})
             },
             # policies=["good_guy_hrl", "good_guy_offensive",
             #           "good_guy_defensive", "pursuer"],
             policy_mapping_fn=policy_mapping_fn,
+            policies_to_train=["good_guy_hrl", "good_guy_offensive",
+                               "good_guy_defensive", "pursuer"]
         )
         .resources(num_gpus=1)
         .env_runners(observation_filter="MeanStdFilter",
-                     num_env_runners=1)
+                     num_env_runners=6)
     )
     # Initialize and run the training using Ray Tune.
     tuner = tune.Tuner("PPO", param_space=config, run_config=run_config)

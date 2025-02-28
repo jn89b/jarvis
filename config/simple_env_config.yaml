@@ -16,14 +16,14 @@ battlespace_environment:
         y: 0
         z: 50
       spawn_radius_from_agent:
-        min: 200
-        max: 400
+        min: 450
+        max: 650
 
   # Used to define resolution of sim 
   simulation:
     dt: 0.05 
     frequency: 100  # Hz
-    end_time: 30.0 # end time for each episode
+    end_time: 35.0 # end time for each episode
   
   agents:
     num_evaders: 1

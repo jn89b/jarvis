@@ -58,6 +58,7 @@ class ProNavV2():
                 current_speed: float,
                 current_heading: float,
                 relative_vel: float,
+                dont_predict: bool = False,
                 dt=0.2) -> np.array:
         """
         Runs pure pursuit but predicts the next state of the target
@@ -67,7 +68,10 @@ class ProNavV2():
         evader_pos = current_pos - relative_pos
         evader_vel = current_speed - relative_vel
 
-        relative_evader_pos = relative_pos + (relative_vel * dt)
+        if dont_predict:
+            relative_evader_pos = relative_pos
+        else:
+            relative_evader_pos = relative_pos + (relative_vel * dt)
 
         norm_pos = safe_normalize(relative_evader_pos)
         los = np.arctan2(relative_evader_pos[1], relative_evader_pos[0])
@@ -88,7 +92,12 @@ class ProNavV2():
         Kp: float = 0.01
         los_error = np.arctan2(relative_evader_pos[1],
                                relative_evader_pos[0])
-        velocity_cmd = 35.0
+
+        yaw_error = self.angle_diff(current_heading, los_error)
+        if yaw_error > np.deg2rad(45):
+            velocity_cmd = 15.0
+        else:
+            velocity_cmd = 35.0
 
         return np.array([-pitch, yaw_cmd, velocity_cmd], dtype=np.float32)
 

@@ -324,6 +324,7 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         self.target_config: Dict[str, Any] = self.spawn_config['target']
         randomize: bool = self.target_config['randomize']
         spawn_radius: float = self.target_config['spawn_radius_from_agent']
+        print("spawn radius", spawn_radius)
 
         evader: Evader = self.get_evader_agents()[0]
         if evader is None:
@@ -611,6 +612,10 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
                 evader.state_vector.speed
             relative_heading: np.array = agent.state_vector.yaw_rad - \
                 evader.state_vector.yaw_rad
+            # wrap heading between -pi and pi
+            relative_heading = (
+                relative_heading + np.pi) % (2 * np.pi) - np.pi
+
             relative_pos = relative_pos[:3]
 
             relative_info: List[float] = [
@@ -739,14 +744,22 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
                     relative_pos=relative_pos,
                     current_heading=selected_agent.state_vector.yaw_rad,
                     current_speed=selected_agent.state_vector.speed,
-                    relative_vel=relative_vel
+                    relative_vel=relative_vel,
+                    dont_predict=True
                 )
+                action_cmd = self.adjust_pitch(
+                    selected_agent, self.get_evader_agents()[
+                        0], action_cmd,
+                    target_instead=True, target_statevector=self.target)
+
             else:
                 action_cmd: np.array = self.discrete_to_continuous_action(
                     action[str(self.good_guy_offensive_key)]['action'])
                 if selected_agent.is_pursuer:
                     action_cmd = self.adjust_pitch(
-                        selected_agent, self.get_evader_agents()[0], action_cmd)
+                        selected_agent, self.get_evader_agents()[
+                            0], action_cmd,
+                        target_instead=True, target_statevector=self.target)
 
             command_action: Dict[str, np.array] = {
                 selected_agent.agent_id: action_cmd}
@@ -836,6 +849,24 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         )
         action_cmd: np.array = self.discrete_to_continuous_action(
             action[str(selected_agent.agent_id)]['action'])
+        action_cmd = self.adjust_pitch(
+            selected_agent, self.get_evader_agents()[0], action_cmd)
+
+        if self.use_pronav:
+            pronav: ProNavV2 = ProNavV2()
+            current_pos = selected_agent.state_vector.array[0:3]
+            evader: Evader = self.get_evader_agents()[0]
+            target_pos = evader.state_vector.array[0:3]
+            relative_pos = target_pos - current_pos
+            relative_vel = evader.state_vector.speed - \
+                selected_agent.state_vector.speed
+            action_cmd = pronav.predict(
+                current_pos=current_pos,
+                relative_pos=relative_pos,
+                current_heading=selected_agent.state_vector.yaw_rad,
+                current_speed=selected_agent.state_vector.speed,
+                relative_vel=relative_vel
+            )
 
         command_action: Dict[str, np.array] = {
             selected_agent.agent_id: action_cmd}
@@ -850,7 +881,6 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         # Using this in case we have the same cycle
         while self.current_agent == selected_agent.agent_id:
             self.current_agent: str = next(self.agent_cycle)
-
         if (self.current_agent == self.good_guy_hrl_key or
             self.current_agent == self.good_guy_offensive_key or
                 self.current_agent == self.good_guy_defensive_key):
@@ -1114,6 +1144,7 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
 
         if self.current_step >= self.max_steps:
             # out of time
+            print("Out of time for the environment Good Guy loses")
             rewards[self.good_guy_hrl_key] = -self.terminal_reward
             rewards[self.good_guy_offensive_key] = -self.terminal_reward
             rewards[self.good_guy_defensive_key] = -self.terminal_reward
@@ -1129,6 +1160,7 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         # TODO: reconfig this
         capture_distance: float = 20.0
         if distance <= capture_distance:
+            print("Good Guy captures the target", distance)
             rewards[self.good_guy_hrl_key] = self.terminal_reward
             rewards[self.good_guy_offensive_key] = self.terminal_reward
             rewards[self.good_guy_defensive_key] = self.terminal_reward
@@ -1142,7 +1174,8 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
             pursuer: Pursuer
             distance: float = good_guy.state_vector.distance_3D(
                 pursuer.state_vector)
-            if distance <= pursuer.capture_radius:
+            if distance <= pursuer.capture_radius or good_guy.crashed:
+                print("Good Guy has been captured", distance)
                 rewards[self.good_guy_hrl_key] = -self.terminal_reward
                 rewards[self.good_guy_offensive_key] = -self.terminal_reward
                 rewards[self.good_guy_defensive_key] = -self.terminal_reward
@@ -1169,8 +1202,10 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
             good_guy, target)
         intermediate_evader_reward: float = self.compute_evader_reward(
             closet_pursuer, good_guy)
-        rewards[self.good_guy_hrl_key] = intermediate_dist_reward + \
-            intermediate_evader_reward
+        lambda_1: float = 1.0
+        lambda_2: float = 0.5
+        rewards[self.good_guy_hrl_key] = (lambda_1*intermediate_dist_reward) + \
+            (lambda_2*intermediate_evader_reward) - 0.1
 
         rewards[self.good_guy_offensive_key] = intermediate_dist_reward
         rewards[self.good_guy_defensive_key] = intermediate_evader_reward
