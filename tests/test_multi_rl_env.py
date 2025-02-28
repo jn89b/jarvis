@@ -102,7 +102,7 @@ class TorchMaskedActions(DQNTorchModel):
             {"obs": input_dict["obs"]["observation"]})
 
         # Apply action mask
-        inf_mask = torch.clamp(torch.log(action_mask), -1e10, FLOAT_MAX)
+        inf_mask = torch.clamp(torch.log(action_mask), -1e  10, FLOAT_MAX)
         return action_logits + inf_mask, state
 
     def value_function(self):

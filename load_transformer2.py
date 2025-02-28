@@ -1,3 +1,4 @@
+import seaborn as sns
 import random
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
@@ -40,8 +41,10 @@ class AgentHistory():
         self.vz: List[float] = []
         self.waypoints_x: List[float] = []
         self.waypoints_y: List[float] = []
+        self.waypoints_z: List[float] = []
         self.pred_waypoints_x: List[float] = []
         self.pred_waypoints_y: List[float] = []
+        self.pred_waypoints_z: List[float] = []
         self.attention_scores: List[float] = []
         self.dr: List[float] = []  # distance to reference
         self.dv: List[float] = []  # velocity difference
@@ -129,7 +132,7 @@ with open(data_config_path, 'r') as f:
     data_config = yaml.safe_load(f)
 
 # Set up the dataset and dataloader
-dataset = UAVTDataset(config=data_config, is_validation=False)
+dataset = UAVTDataset(config=data_config, is_validation=True)
 dataloader = DataLoader(dataset, batch_size=1,
                         shuffle=False, collate_fn=dataset.collate_fn)
 
@@ -304,9 +307,10 @@ for i, s in enumerate(samples):
     ego.psi.append(bias_position[3])
     ego.waypoints_x.extend(waypoints[:, 0])
     ego.waypoints_y.extend(waypoints[:, 1])
+    ego.waypoints_z.extend(waypoints[:, 2])
     ego.pred_waypoints_x.extend(global_predicted_waypoints[:, 0])
     ego.pred_waypoints_y.extend(global_predicted_waypoints[:, 1])
-
+    ego.pred_waypoints_z.extend(global_predicted_waypoints[:, 2])
     # an idiot check to make sure attention value is doing something
     if fill_dummy:
         # convert to torch tensor
@@ -375,6 +379,21 @@ for i, s in enumerate(samples):
             # pursuer_3.dv.append(dv)
             pursuer_3.attention_scores.append(pursuer_relevance_scores[2])
 
+
+# %%
+save_folder: str = "figures"
+matplotlib.rc('font', size=16)          # Base font
+matplotlib.rc('axes', labelsize=18)     # X, Y labels
+matplotlib.rc('axes', titlesize=22)     # Axes title
+matplotlib.rc('xtick', labelsize=16)    # Tick labels
+matplotlib.rc('ytick', labelsize=16)
+matplotlib.rc('legend', fontsize=16)
+matplotlib.rc('figure', titlesize=24)   # Figure "suptitle"
+plt.close('all')
+sns.set_palette("colorblind")
+time_overall = 30.0
+time_vector = np.linspace(0, time_overall, len(ego.waypoints_x))
+
 pursuer_1_dr_corr = compute_correlation(
     pursuer_1.dr, pursuer_1.attention_scores)
 pursuer_1_psi_corr = compute_correlation(
@@ -416,13 +435,15 @@ pursuer_colors = ['red', 'orange', 'green']
 fig, ax = plt.subplots()
 ax.plot(ego.x, ego.y, label='Ego', color='black')
 ax.scatter(ego.x[0], ego.y[0], color='black', marker='x', label='Start')
-ax.plot(ego.pred_waypoints_x, ego.pred_waypoints_y,
-        label='Predicted Waypoints')
+ax.scatter(ego.pred_waypoints_x, ego.pred_waypoints_y,
+           label='Predicted Waypoints', color='orange')
 for i, pursuer in enumerate(pursuer_list):
     ax.plot(pursuer.x, pursuer.y, label=f'Pursuer {i+1}',
             color=pursuer_colors[i])
     ax.scatter(pursuer.x[0], pursuer.y[0],
                color=pursuer_colors[i], marker='x', label='Start')
+ax.set_xlabel("X")
+ax.set_ylabel("Y")
 ax.legend()
 ax.set_title("Ego and Pursuers Trajectory")
 
@@ -496,10 +517,34 @@ ax[2].set_title(f"Z Coordinates, MSE: {mse_z:.2f}")
 for a in ax:
     a.legend()
 
+# Let's plot the x prediction vs the actual x
+fig, ax = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
+
+# set a supertitle with the mse for each coordinate
+fig.suptitle(f"MSE for X: {mse_x:.2f}, Y: {mse_y:.2f}, Z: {mse_z:.2f}")
+ax[0].scatter(time_vector, ego.pred_waypoints_x,
+              label='Predicted Waypoints X', color='orange')
+ax[0].plot(time_vector, ego.waypoints_x, label='Actual Waypoints X')
+
+ax[1].scatter(time_vector, ego.pred_waypoints_y,
+              label='Predicted Waypoints Y', color='orange')
+ax[1].plot(time_vector, ego.waypoints_y, label='Actual Waypoints Y')
+
+ax[2].scatter(time_vector, ego.pred_waypoints_z,
+              label='Predicted Waypoints Z', color='orange')
+ax[2].plot(time_vector, ego.waypoints_z, label='Actual Waypoints Z')
+
+for a in ax:
+    a.legend()
+# share the x axiss
+# tight axis
+fig.tight_layout()
+# save figure
+fig.savefig(save_folder+"/predicted_waypoints.svg")
 # plot the json data
 # fig, ax = plt.subplots()
 # ax.plot(json_data.ego.x, json_data.ego.y, label='Ego', color='black')
-# ax.scatter(json_data.ego.x[0], json_data.ego.y[0],
+# ax.plot(json_data.ego.x[0], json_data.ego.y[0],
 #            color='black', marker='x', label='Start')
 # ax.plot(json_data.pursuer_1.x, json_data.pursuer_1.y,
 #         label='Pursuer 1', color='red')
@@ -703,56 +748,70 @@ for a in ax:
 # plt.show()
 # Set up the figure with a 3D subplot and a bar chart subplot
 # make a subplot with 1 row and 2 columns
+
+
+# Define a variant red palette for the pursuers
+pursuer_colors = ['#ff9999', '#ff4d4d', '#cc0000']  # light, medium, dark red
+
+# First figure: Distance vs. Attention Score
 fig, ax = plt.subplots(1, 1, figsize=(12, 6))
-for p in pursuer_list:
-    # we will plot the distance wrt to attention score
+for i, p in enumerate(pursuer_list):
+    # Plot distance vs. attention score for each pursuer
     ax.plot(p.attention_scores, p.dr, label=f"Pursuer {i+1}",
             color=pursuer_colors[i])
 ax.legend()
 
+# Second figure: 3D plot and bar chart
 fig = plt.figure(figsize=(12, 6))
-gs = GridSpec(1, 2, width_ratios=[1, 1])  # 2 columns: 3D plot and bar chart
-
-# 3D plot on the right
-ax_3d = fig.add_subplot(gs[1], projection='3d')
+gs = GridSpec(1, 2, width_ratios=[1, 1])  # 2 columns: bar chart and 3D plot
 
 # Bar chart on the left
 ax_bar = fig.add_subplot(gs[0])
 ax_bar.set_ylim(0, 0.6)  # Attention score range
 bar_labels = ['Pursuer 1', 'Pursuer 2', 'Pursuer 3']
-bars = ax_bar.bar(bar_labels, [0, 0, 0], color=['red', 'orange', 'green'])
+bars = ax_bar.bar(bar_labels, [0, 0, 0], color=pursuer_colors)
 ax_bar.set_ylabel('Attention Score')
 ax_bar.set_title('Attention Values')
 
-# Set up color normalization and colormap for the 3D plot
+# 3D plot on the right
+ax_3d = fig.add_subplot(gs[1], projection='3d')
+
+# Set up color normalization and colormap (if needed later)
 norm = Normalize(vmin=0, vmax=0.6)
 cmap = plt.get_cmap("plasma")
 
-# Initialize lines for ego and pursuers
+# Initialize lines for ego and pursuers in the 3D plot
 ego_line, = ax_3d.plot([], [], [], label='Ego', color='blue')
-pursuer_1_line, = ax_3d.plot([], [], [], label='Pursuer 1',
-                             color='red')  # Dashed line
-pursuer_2_line, = ax_3d.plot([], [], [], label='Pursuer 2',
-                             color='orange')  # Dotted line
-pursuer_3_line, = ax_3d.plot([], [], [], label='Pursuer 3',
-                             color='green')  # Dash-dot line
+pursuer_1_line, = ax_3d.plot(
+    [], [], [], label='Pursuer 1', color=pursuer_colors[0])
+pursuer_2_line, = ax_3d.plot(
+    [], [], [], label='Pursuer 2', color=pursuer_colors[1])
+pursuer_3_line, = ax_3d.plot(
+    [], [], [], label='Pursuer 3', color=pursuer_colors[2])
 
-# Color bar setup
-# sm = ScalarMappable(norm=norm, cmap=cmap)
-# sm.set_array([])  # Dummy array for color bar
-# cbar = fig.colorbar(sm, ax=ax_3d, label="Attention Score")
+# Instead of hard-coded axis limits, compute limits based on the data.
+# This assumes ego.x, pursuer_1.x, etc. have been filled with trajectory data.
+all_x = ego.x + pursuer_1.x + pursuer_2.x + pursuer_3.x
+all_y = ego.y + pursuer_1.y + pursuer_2.y + pursuer_3.y
+all_z = ego.z + pursuer_1.z + pursuer_2.z + pursuer_3.z
 
-# Set limits for the 3D plot
-ax_3d.set_xlim(-500, 400)
-ax_3d.set_ylim(-500, 400)
-ax_3d.set_zlim(-30, 30)  # Adjust Z limits based on your data
+x_min, x_max = min(all_x), max(all_x)
+y_min, y_max = min(all_y), max(all_y)
+z_min, z_max = min(all_z), max(all_z)
+
+# Add a 10% margin to the computed bounds
+margin_x = 0.1 * (x_max - x_min)
+margin_y = 0.1 * (y_max - y_min)
+margin_z = 0.1 * (z_max - z_min)
+
+ax_3d.set_xlim(x_min - margin_x, x_max + margin_x)
+ax_3d.set_ylim(y_min - margin_y, y_max + margin_y)
+ax_3d.set_zlim(z_min - margin_z, z_max + margin_z)
 
 # Set labels for axes
 ax_3d.set_xlabel("X")
 ax_3d.set_ylabel("Y")
 ax_3d.set_zlabel("Z")
-
-# Animation initialization function
 
 
 def init():
@@ -768,8 +827,6 @@ def init():
         bar.set_height(0)  # Initialize bar heights to zero
     return ego_line, pursuer_1_line, pursuer_2_line, pursuer_3_line, *bars
 
-# Update function for the animation
-
 
 def update(frame):
     # Define the frame range for trailing effect
@@ -777,7 +834,7 @@ def update(frame):
     start_frame = max(0, frame - last_frame)
     frame_span = slice(start_frame, frame)
 
-    # Update 3D trajectories
+    # Update 3D trajectories for ego and pursuers
     ego_line.set_data(ego.x[frame_span], ego.y[frame_span])
     ego_line.set_3d_properties(ego.z[frame_span])
 
@@ -790,18 +847,12 @@ def update(frame):
     pursuer_3_line.set_data(pursuer_3.x[frame_span], pursuer_3.y[frame_span])
     pursuer_3_line.set_3d_properties(pursuer_3.z[frame_span])
 
-    # Update line colors based on attention scores
-    # pursuer_1_color = cmap(norm(pursuer_1.attention_scores[frame]))
-    # pursuer_2_color = cmap(norm(pursuer_2.attention_scores[frame]))
-    # pursuer_3_color = cmap(norm(pursuer_3.attention_scores[frame]))
-    pursuer_1_color = 'red'
-    pursuer_2_color = 'orange'
-    pursuer_3_color = 'green'
-    pursuer_1_line.set_color(pursuer_1_color)
-    pursuer_2_line.set_color(pursuer_2_color)
-    pursuer_3_line.set_color(pursuer_3_color)
+    # Ensure the pursuer line colors remain our variant red palette
+    pursuer_1_line.set_color(pursuer_colors[0])
+    pursuer_2_line.set_color(pursuer_colors[1])
+    pursuer_3_line.set_color(pursuer_colors[2])
 
-    # Update bar chart
+    # Update bar chart heights based on attention scores
     bar_heights = [
         pursuer_1.attention_scores[frame],
         pursuer_2.attention_scores[frame],
@@ -813,13 +864,10 @@ def update(frame):
     return ego_line, pursuer_1_line, pursuer_2_line, pursuer_3_line, *bars
 
 
-# Create animation
+# Create the animation
 ani = FuncAnimation(fig, update, frames=len(ego.x),
                     init_func=init, blit=True, interval=40)
 
 ax_3d.legend()
 plt.tight_layout()
-# save the video
-# writervideo = animation.FFMpegWriter(fps=60)
-# ani.save('3d_animation.mp4', writer=writervideo)
 plt.show()

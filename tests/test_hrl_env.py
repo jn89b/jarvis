@@ -81,9 +81,10 @@ class TestHRLEnv(unittest.TestCase):
         """
         print("agents", self.env.agents)
         print("actions", self.env.action_spaces)
-        # print("observation", self.env.observation_spaces.keys())
+        # print("observatio     n", self.env.observation_spaces.keys())
         assert self.env.target is not None
         self.env.reset()
+        print("agents now ", self.env.agents)
         self.env.current_agent = "1"
         for i in range(20):
             # agent = next(self.env.agent_cycle)
@@ -96,9 +97,16 @@ class TestHRLEnv(unittest.TestCase):
                 "action": current_action
             }
             action_dict = {self.env.current_agent: current_action}
-            print("current agent", self.env.current_agent)
             obs, reward, done, _, info = self.env.step(
                 action_dict=action_dict)
+            print("obs", obs)
+            # check if obs is empty dictionary
+            if not obs:
+                raise ValueError("obs is empty current agent is",
+                                 self.env.current_agent)
+                print("obs is empty")
+
+        print("agents now ", self.env.agents)
 
 
 if __name__ == "__main__":

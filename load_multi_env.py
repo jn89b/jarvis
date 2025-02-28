@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import pathlib
 import torch
 import numpy as np
+import pickle as pkl
 from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from typing import List, Dict, Any
@@ -100,7 +101,8 @@ def load_state(checkpoint_path: str, num_episodes: int = 1):
 
 
 def infer(checkpoint_path: str, num_episodes: int = 1,
-          use_pronav: bool = True):
+          use_pronav: bool = True, save: bool = False,
+          index_save: int = 0):
     ray.init(ignore_reinit_error=True)
     env = create_multi_agent_env(config=None, env_config=env_config)
 
@@ -200,6 +202,16 @@ def infer(checkpoint_path: str, num_episodes: int = 1,
     ax.set_ylabel('Y Label')
     ax.legend()
 
+    # save the datas and the rewards
+    pickle_info = {
+        "datas": datas,
+        "reward": reward
+    }
+
+    pickle_name = "index_" + str(index_save) + "_reward.pkl"
+    with open(pickle_name, 'wb') as f:
+        pkl.dump(pickle_info, f)
+
     # fig, ax = plt.subplots()
     # reward_0 = [r['0'] for r in reward_list]
     # reward_1 = [r['1'] for r in reward_list]
@@ -209,7 +221,7 @@ def infer(checkpoint_path: str, num_episodes: int = 1,
     # ax.plot(reward_2, label='Pursuer Reward 2')
     # print("sum of rewards: ", sum(reward_0), sum(reward_1))
     # ax.legend()
-    ray.shutdown()
+    # ray.shutdown()
 
     # plot a 3D plot of the agents
     # fig, ax = plt.subplots()
@@ -439,6 +451,7 @@ def load_and_infer_pursuer(checkpoint_path: str):
 
     terminated = {'__all__': False}
     env.max_steps = 1000
+    env.use_pronav = False
     while not terminated['__all__']:
         # get number of age
         num_actions: int = env.action_spaces["1"]["action"].nvec.sum()
@@ -466,7 +479,7 @@ def load_and_infer_pursuer(checkpoint_path: str):
         action_dict = {}
         action_dict['1'] = {'action': discrete_actions}
         observation, reward, terminated, truncated, info = env.step(
-            action_dict=action_dict, specific_agent_id="0")
+            action_dict=action_dict, specific_agent_id="1")
 
         # check if done
         if (terminated['__all__'] == True):
@@ -481,7 +494,6 @@ def load_and_infer_pursuer(checkpoint_path: str):
             continue
         data: DataHandler = agent.simple_model.data_handler
         datas.append(data)
-
     # plot a 3D plot of the agents
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
@@ -495,16 +507,18 @@ def load_and_infer_pursuer(checkpoint_path: str):
     ax.set_xlabel('X Label')
     ax.set_ylabel('Y Label')
     ax.legend()
+    # plt.show()
 
 
 def run_multiple_sims(checkpoint_path: str, num_sims: int = 10,
-                      type: str = 'evader'):
+                      type: str = 'evader',
+                      save: bool = False):
 
     np.random.seed(0)
     for i in range(num_sims):
         if type == 'pursuer_evader':
             infer(checkpoint_path=checkpoint_path, num_episodes=1,
-                  use_pronav=True)
+                  use_pronav=True, save=save, index_save=i)
         if type == 'pursuer':
             load_and_infer_pursuer(checkpoint_path=checkpoint_path)
         if type == "evader":
@@ -524,13 +538,13 @@ if __name__ == '__main__':
     # path: str = "/home/justin/ray_results/PPO_2025-02-24_03-59-11/PPO_pursuer_evader_env_ff294_00000_0_2025-02-24_03-59-11/checkpoint_000006"
     # path: str = "/home/justin/ray_results/PPO_2025-02-24_04-34-50/PPO_pursuer_evader_env_f9c3d_00000_0_2025-02-24_04-34-50/checkpoint_000002"
     path: str = "/home/justin/ray_results/PPO_2025-02-24_04-53-02/PPO_pursuer_evader_env_84cd9_00000_0_2025-02-24_04-53-02/checkpoint_000123"
-    path: str = "/home/justin/ray_results/pursuer_evader_2/PPO_2025-02-24_13-25-45/PPO_pursuer_evader_env_24ee9_00000_0_2025-02-24_13-25-45/checkpoint_000224"
+    # path: str = "/home/justin/ray_results/pursuer_evader_2/PPO_2025-02-24_13-25-45/PPO_pursuer_evader_env_24ee9_00000_0_2025-02-24_13-25-45/checkpoint_000224"
     # n_sims: int = 10
     # for i in range(n_sims):
     #     infer(checkpoint_path=path, num_episodes=1)
 
     # plt.show()
-    run_multiple_sims(checkpoint_path=path, num_sims=10, type='pursuer_evader')
+    run_multiple_sims(checkpoint_path=path, num_sims=5, type='pursuer')
 
     # load_and_infer_pursuer(checkpoint_path=path)
     # infer(

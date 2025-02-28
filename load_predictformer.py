@@ -12,7 +12,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import Trainer
 import os
 
-plt.close('all')
+plt.close('all')    
 
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device = "cpu"

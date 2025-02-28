@@ -70,6 +70,30 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
         self.agents: List[int] = [
             str(agent.agent_id) for agent in self.get_controlled_agents]
 
+    @abstractmethod
+    def step(self, action: Dict[int, int]) -> Tuple[Dict[int, np.ndarray], Dict[int, float], Dict[int, bool], Dict]:
+        """
+        An abstract method that defines the step function
+        users must implement this method when they inherit from this class
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def init_observation_space(self) -> gym.spaces.Dict:
+        """
+        An abstract method that defines the observation space
+        users must implement this method when they inherit from this class
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def init_action_space(self) -> gym.spaces.Dict:
+        """
+        An abstract method that defines the action space
+        users must implement this method when they inherit from this class
+        """
+        raise NotImplementedError
+
     @property
     def get_all_agents(self) -> List[SimpleAgent]:
         """
@@ -119,30 +143,6 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
         for agent in self.battlespace.all_agents:
             if agent.agent_id == agent_id:
                 return agent
-
-    @abstractmethod
-    def step(self, action: Dict[int, int]) -> Tuple[Dict[int, np.ndarray], Dict[int, float], Dict[int, bool], Dict]:
-        """
-        An abstract method that defines the step function
-        users must implement this method when they inherit from this class
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def init_observation_space(self) -> gym.spaces.Dict:
-        """
-        An abstract method that defines the observation space
-        users must implement this method when they inherit from this class
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def init_action_space(self) -> gym.spaces.Dict:
-        """
-        An abstract method that defines the action space
-        users must implement this method when they inherit from this class
-        """
-        raise NotImplementedError
 
     def __init_battlespace(self) -> None:
         """
@@ -431,6 +431,10 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
             - 4:pitch: The pitch of the agent
             - 5:yaw: The yaw of the agent
             - 6:speed: The speed of the agent
+            - 7:vx: The x velocity of the agent
+            - 8:vy: The y velocity of the agent
+            - 9:vz: The z velocity of the agent
+
         """
         if is_pursuer:
             obs_config = self.pursuer_state_limits
@@ -1386,6 +1390,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         observations: Dict[str, np.ndarray] = {}
         observations[self.current_agent] = self.observe(
             agent=agent, num_actions=num_actions)
+        print("returned observations ", observations)
         infos = {}
 
         return observations, infos

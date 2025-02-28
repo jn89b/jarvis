@@ -85,7 +85,9 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
                                       Any] = self.agent_config['interaction']
         self.relative_state_observations: Dict[str,
                                                Any] = self.agent_config['relative_state_observations']
-
+        # TODO: This is super hacky, but I have to do this for now
+        # Have to call out the action spaces and observation spaces
+        # because its a requirement for the environment class to work
         self.action_spaces: Dict[str,
                                  gym.spaces.Dict] = self.init_action_space()
 
@@ -100,7 +102,6 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         self.all_done_step: int = 0
         self.use_pronav: bool = True
         # we have to override this agent_cycle to include the good guy
-        self.agent_cycle = itertools.cycle(self.possible_agents)
         self.last_high_level_action: int = 0
         assert self.battlespace is not None
         self.__init__agents()
@@ -225,6 +226,7 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         high_level_obs_space: Dict[str, gym.spaces.Dict] = {
             self.good_guy_hrl_key: self.good_guy_obs_space(),
         }
+
         high_level_obs_space[self.good_guy_offensive_key] = self.good_guy_offensive_obs_space(
         )
         high_level_obs_space[self.good_guy_defensive_key] = self.good_guy_defensive_obs_space(
@@ -236,9 +238,9 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
 
         # Updating the action space for the good guy
         good_guy_action_space = {}
-        hrl_action_space: gym.spaces.Dict = {
+        hrl_action_space: gym.spaces.Dict = gym.spaces.Dict({
             "action": gym.spaces.Discrete(n=2)
-        }
+        })
         offensive_action_space: gym.spaces.Dict = gym.spaces.Dict({
             "action": self.get_discrete_action_space(is_pursuer=True)
         })
@@ -377,22 +379,24 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         obs_space = gym.spaces.Box(low=np.array(low_obs),
                                    high=np.array(high_obs),
                                    dtype=np.float32)
+        action_mask = gym.spaces.Box(low=0.0, high=1.0,
+                                     shape=(
+                                         2,),
+                                     dtype=np.float32)
 
         return gym.spaces.Dict({
-            "observations": obs_space
+            "observations": obs_space,
+            "action_mask": action_mask
         })
 
     def good_guy_offensive_obs_space(self) -> gym.spaces.Dict:
         """
         Returns an offensive observation space based
-        on the pursuer observation space
+        which is the same thing as the pursuer's 
+        observation space
         """
         pursuer: Pursuer = self.get_pursuer_agents()[0]
-        action_sum = self.action_spaces[pursuer.agent_id]["action"].nvec.sum()
-        obs_space: gym.spaces.Dict = self.build_observation_space(
-            is_pursuer=True,
-            num_actions=action_sum
-        )
+        obs_space: Dict[str, Any] = self.observation_spaces[pursuer.agent_id]
 
         return obs_space
 
@@ -402,11 +406,9 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         evader observation space
         """
         evader: Evader = self.get_evader_agents()[0]
-        action_sum = self.action_spaces[evader.agent_id]["action"].nvec.sum()
-        obs_space: gym.spaces.Dict = self.build_observation_space(
-            is_pursuer=False,
-            num_actions=action_sum
-        )
+        # action_sum = self.action_spaces[evader.agent_id]["action"].nvec.sum()
+
+        obs_space: Dict[str, Any] = self.observation_spaces[evader.agent_id]
 
         return obs_space
 
@@ -414,12 +416,6 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         """
         Returns the action space for the pursuers and evaders
         """
-        # self.action_spaces: Dict[str, gym.spaces.Dict] = {}
-        # for agent in self.get_controlled_agents:
-        #     action_space: gym.spaces.Dict = self.get_discrete_action_space(
-        #         is_pursuer=agent.is_pursuer
-        #     )
-        #     self.action_spaces[agent.agent_id] = action_space
 
         self.action_spaces: Dict[str, gym.spaces.Dict] = {}
         for agent in self.get_controlled_agents:
@@ -598,8 +594,6 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
 
                 obs = np.concatenate(
                     [obs, overall_relative_pos]).astype(np.float32)
-            else:
-                raise ValueError("High level action is ot defined")
 
             observation['observations'] = obs
             return observation
@@ -652,9 +646,18 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
             obs.append(distance)
 
         obs = np.array(obs, dtype=np.float32)
+        # num actions is 2 for the HRL
+        num_actions: int = 2
+        valid_actions = np.ones(num_actions,
+                                dtype=np.float32)
         observations: Dict[str, np.array] = {
-            "observations": obs
-        }
+            "observations": obs,
+            "action_mask": valid_actions}
+
+        actual_obs_shape = self.observation_spaces[self.good_guy_hrl_key]['observations'].shape
+        if observations['observations'].shape[0] != actual_obs_shape[0]:
+            raise ValueError("The observation space is not the same \
+                current shape and actual shape is", observations['observations'].shape, actual_obs_shape)
 
         return observations
 
@@ -694,6 +697,9 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         else:
             raise ValueError("High level action is not defined \
                 value is {}".format(action_val))
+
+        if not self.valid_observations(observations, self.current_agent):
+            raise ValueError("Observations are not defined")
 
         return observations
 
@@ -780,12 +786,32 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
             num_actions = self.action_spaces[self.current_agent]["action"].nvec.sum(
             )
             agent: Pursuer = self.get_specific_agent(self.current_agent)
-            observations: Dict[str, np.array] = self.observe(
+            observations = {}
+            observations[agent.agent_id] = self.observe(
                 agent=agent, total_actions=num_actions)
         else:
             raise ValueError("High level action is not defined")
 
+        if not self.valid_observations(observations, self.current_agent):
+            raise ValueError("Observations are not defined")
+
         return observations
+
+    def valid_observations(self, observations: Dict[str, np.array],
+                           agent_id: str) -> None:
+        """
+        Check if the observations are defined
+        """
+        if not observations:
+            print("Observations are not defined")
+            return False
+
+        if agent_id not in observations:
+            print("Agent ID is not in the observations",
+                  observations)
+            return False
+
+        return True
 
     def step_pursuer_policy(self, action: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -821,13 +847,15 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         observations = {}
         self.current_agent: str = next(self.agent_cycle)
 
+        # Using this in case we have the same cycle
+        while self.current_agent == selected_agent.agent_id:
+            self.current_agent: str = next(self.agent_cycle)
+
         if (self.current_agent == self.good_guy_hrl_key or
             self.current_agent == self.good_guy_offensive_key or
                 self.current_agent == self.good_guy_defensive_key):
             self.current_agent = self.good_guy_hrl_key
             observations[self.current_agent] = self.get_hrl_observation()
-        elif self.current_agent == selected_agent.agent_id:
-            self.current_agent: str = next(self.agent_cycle)
         else:
             num_actions = self.action_spaces[self.current_agent]["action"].nvec.sum(
             )
@@ -838,8 +866,17 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
             agent: SimpleAgent = self.get_specific_agent(self.current_agent)
             if agent is None:
                 raise ValueError("The agent is not defined")
-            observations: Dict[str, np.array] = self.observe(
+            observations: Dict[str, np.array] = {}
+            observations[agent.agent_id] = self.observe(
                 agent=agent, total_actions=num_actions)
+
+        if not self.valid_observations(observations, self.current_agent):
+            raise ValueError("Observations are not defined")
+
+        actual_obs_shape = self.observation_spaces[self.current_agent]['observations'].shape
+        if observations[self.current_agent]['observations'].shape[0] != actual_obs_shape[0]:
+            raise ValueError("The observation space is not the same \
+                current shape and actual shape is", observations[self.current_agent]['observations'].shape, actual_obs_shape)
 
         # compute the rewards here
         return observations
@@ -858,7 +895,6 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         # rewards: Dict[str, float] = {agent: 0.0 for agent in self.agents}
         # infos: Dict[str, Any] = {}
         # observations: Dict[str, np.array] = {}
-
         use_low_level_policy: bool = False
         # Since we don't have an actual agent for the offensive and
         # defensive policies hook it to the good guy agent
@@ -904,6 +940,9 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
             self.all_done_step = 0
             self.current_step += 1
 
+        if not next_observations:
+            raise ValueError("Observations are not defined")
+
         return next_observations, rewards, terminateds, truncateds, infos
 
     def sigmoid(self, x: float) -> float:
@@ -922,11 +961,11 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         Returns:
             float: The reward from the dot product and the change in distance
 
-        The reward is computed as the sigmoid of the dot product 
+        The reward is computed as the sigmoid of the dot product
         and the sigmoid of the change in distance
 
         Dot products close to 1 will be rewarded higher
-        Positive change in distance will be rewarded higher 
+        Positive change in distance will be rewarded higher
         """
         sigmoid_dot: float = self.sigmoid(alpha*dot_product)
         sigmoid_distance: float = self.sigmoid(beta*delta_distance)
@@ -1050,7 +1089,7 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
             If good guy captures the target:
                 - Good guy gets a reward of terminal_reward to all good guy policies
                 - Bad guys get a reward of -terminal_reward to all pursuers
-            If good guy gets captured: 
+            If good guy gets captured:
                 - Good guy gets a reward of -terminal_reward to all good guy policies
                 - Bad guys get a reward of terminal_reward  to all pursuers
 
@@ -1142,17 +1181,17 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         super().reset(seed=seed, options=options)
         assert self.battlespace is not None
         self.__init__agents()
-        print("self.agents", self.agents)
         self.update_good_guy()
         self.insert_target()
-        self.agents: List[int] = [
-            str(agent.agent_id) for agent in self.get_controlled_agents]
+        self.possible_agents: List[int] = self.agents
+        self.agent_cycle = itertools.cycle(self.possible_agents)
         self.current_agent = '1'
 
         agent: SimpleAgent = self.get_specific_agent(self.current_agent)
         num_actions: int = self.action_spaces[agent.agent_id]["action"].nvec.sum(
         )
-        observations: Dict[str, np.ndarray] = self.observe(
+        observations: Dict[str, np.array] = {}
+        observations[agent.agent_id] = self.observe(
             agent=agent, total_actions=num_actions)
         # observations[self.current_agent] = self.observe(
         #     agent=agent, num_actions=num_actions)

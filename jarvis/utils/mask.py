@@ -236,3 +236,186 @@ class SimpleEnvMaskModule(MultiDimensionalMaskModule):
             [pitch_logits, yaw_logits, vel_logits], dim=1)
         outputs[Columns.ACTION_DIST_INPUTS] = masked_logits
         return outputs
+
+
+class MultiDimensionalMaskModule(ActionMaskingRLModule, PPOTorchRLModule, ValueFunctionAPI):
+    """An RLModule for PPO with action masking that supports a multi-dimensional action mask.
+
+    This module assumes the discrete action space is MultiDiscrete with three branches (roll, alt, vel)
+    and that the environment provides an action mask as a MultiBinary tensor of shape (n_roll, n_alt, n_vel).
+    """
+
+    @override(PPOTorchRLModule)
+    def setup(self):
+        super().setup()
+        # Reset the observation space to include the action mask.
+        self.observation_space = self.observation_space_with_mask
+
+    @override(PPOTorchRLModule)
+    def _forward_inference(
+        self, batch: Dict[str, TensorType], **kwargs
+    ) -> Dict[str, TensorType]:
+        action_mask, batch = self._preprocess_batch(batch)
+        outs = super()._forward_inference(batch, **kwargs)
+        return self._mask_action_logits(outs, action_mask)
+
+    @override(PPOTorchRLModule)
+    def _forward_exploration(
+        self, batch: Dict[str, TensorType], **kwargs
+    ) -> Dict[str, TensorType]:
+        action_mask, batch = self._preprocess_batch(batch)
+        outs = super()._forward_exploration(batch, **kwargs)
+        return self._mask_action_logits(outs, action_mask)
+
+    @override(PPOTorchRLModule)
+    def _forward_train(
+        self, batch: Dict[str, TensorType], **kwargs
+    ) -> Dict[str, TensorType]:
+        outs = super()._forward_train(batch, **kwargs)
+        return self._mask_action_logits(outs, batch["action_mask"])
+
+    @override(ValueFunctionAPI)
+    def compute_values(self, batch: Dict[str, TensorType], embeddings=None):
+        if isinstance(batch[Columns.OBS], dict):
+            action_mask, batch = self._preprocess_batch(batch)
+            batch["action_mask"] = action_mask
+        return super().compute_values(batch, embeddings)
+
+    def _preprocess_batch(
+        self, batch: Dict[str, TensorType], **kwargs
+    ) -> Tuple[TensorType, Dict[str, TensorType]]:
+        # Check that the batch observation includes the required keys.
+        self._check_batch(batch)
+        action_mask = batch[Columns.OBS].pop("action_mask")
+        batch[Columns.OBS] = batch[Columns.OBS].pop("observations")
+        return action_mask, batch
+
+    def _check_batch(self, batch: Dict[str, TensorType]) -> None:
+        if not self._checked_observations:
+            if "action_mask" not in batch[Columns.OBS]:
+                raise ValueError(
+                    "No action_mask found in observation. Ensure the observation space contains "
+                    "'action_mask' and 'observations'."
+                )
+            if "observations" not in batch[Columns.OBS]:
+                raise ValueError(
+                    "No observations found in observation. Ensure the observation space contains "
+                    "'action_mask' and 'observations'."
+                )
+            self._checked_observations = True
+
+    def _mask_action_logits(
+        self, outputs: Dict[str, TensorType], action_mask: TensorType
+    ) -> Dict[str, TensorType]:
+        """Masks the action logits using the provided multi-dimensional action mask.
+
+        The logits produced by the network are assumed to be a flattened vector for all branches,
+        with total_actions = n_roll + n_alt + n_vel. We split these logits into three parts,
+        apply the corresponding mask to each, and then concatenate them back.
+
+        Assumes that the provided `action_mask` tensor is of shape (B, n_roll, n_alt, n_vel)
+        (or (n_roll, n_alt, n_vel) if unbatched) and that it was generated as the outer product of
+        independent masks for each branch.
+
+        Returns:
+            A dictionary with the modified logits under Columns.ACTION_DIST_INPUTS.
+        """
+        logits = outputs[Columns.ACTION_DIST_INPUTS]
+        batch_size = logits.shape[0]
+        n_roll, n_alt, n_vel = self.action_space.nvec  # e.g., [19, 100, 15]
+
+        # Assume action_mask is a tensor of shape (B, total_actions) with total_actions = 134.
+        # Split it into individual masks.
+        roll_mask = action_mask[:, :n_roll]  # shape: (B, n_roll)
+        alt_mask = action_mask[:, n_roll:n_roll+n_alt]  # shape: (B, n_alt)
+        vel_mask = action_mask[:, n_roll+n_alt:]  # shape: (B, n_vel)
+
+        # Convert the allowed masks to log-space.
+        inf_mask_roll = torch.clamp(
+            torch.log(roll_mask.float()), min=FLOAT_MIN)
+        inf_mask_alt = torch.clamp(torch.log(alt_mask.float()), min=FLOAT_MIN)
+        inf_mask_vel = torch.clamp(torch.log(vel_mask.float()), min=FLOAT_MIN)
+
+        # Split logits into branches.
+        roll_logits = logits[:, :n_roll]
+        alt_logits = logits[:, n_roll:n_roll+n_alt]
+        vel_logits = logits[:, n_roll+n_alt:]
+
+        # Apply the log-space masks.
+        roll_logits = roll_logits + inf_mask_roll
+        alt_logits = alt_logits + inf_mask_alt
+        vel_logits = vel_logits + inf_mask_vel
+
+        # Concatenate the logits back.
+        masked_logits = torch.cat([roll_logits, alt_logits, vel_logits], dim=1)
+        outputs[Columns.ACTION_DIST_INPUTS] = masked_logits
+        return outputs
+
+
+class HRLMaskModule(MultiDimensionalMaskModule):
+    """An RLModule for PPO with action masking that supports a simple action mask.
+
+    This module assumes the discrete action space is Discrete and that the environment provides
+    an action mask as a MultiBinary tensor of shape (n_actions).
+    """
+
+    def _mask_action_logits(
+        self, outputs: Dict[str, TensorType], action_mask: TensorType
+    ) -> Dict[str, TensorType]:
+        """Masks the action logits using the provided simple action mask.
+
+        The logits produced by the network are assumed to be a flattened vector for all actions.
+        We apply the mask directly to the logits.
+
+        Assumes that the provided `action_mask` tensor is of shape (B, n_actions)
+        (or (n_actions) if unbatched) and that it was generated as the outer product of
+        independent masks for each action.
+
+        Returns:
+            A dictionary with the modified logits under Columns.ACTION_DIST_INPUTS.
+        """
+        logits = outputs[Columns.ACTION_DIST_INPUTS]
+        batch_size = logits.shape[0]
+        n_pitch, n_yaw, n_vel = self.action_space['action'].nvec
+
+        # Assume action_mask is a tensor of shape (B, total_actions) with total_actions = 134.
+        # Split it into individual masks.
+        # roll_mask = action_mask[:, :n_roll]  # shape: (B, n_roll)
+        # # shape: (B, n_pitch)
+        # pitch_mask = action_mask[:, n_roll:n_roll+n_pitch]
+        # yaw_mask = action_mask[:, n_roll+n_pitch:n_roll+n_pitch+n_yaw]
+        # vel_mask = action_mask[:, n_roll+n_pitch+n_yaw:]  # shape: (B, n_vel)
+
+        pitch_mask = action_mask[:, :n_pitch]
+        yaw_mask = action_mask[:, n_pitch:n_pitch+n_yaw]
+        vel_mask = action_mask[:, n_pitch+n_yaw:]
+
+        # Convert the allowed masks to log-space.
+        # inf_mask_roll = torch.clamp(
+        #     torch.log(roll_mask.float()), min=FLOAT_MIN)
+        # inf_mask_alt = torch.clamp(torch.log(alt_mask.float()), min=FLOAT_MIN)
+        inf_mask_pitch = torch.clamp(
+            torch.log(pitch_mask.float()), min=FLOAT_MIN)
+        inf_mask_yaw = torch.clamp(torch.log(yaw_mask.float()), min=FLOAT_MIN)
+        inf_mask_vel = torch.clamp(torch.log(vel_mask.float()), min=FLOAT_MIN)
+
+        # roll_logits = logits[:, :n_roll]
+        # pitch_logits = logits[:, n_roll:n_roll+n_pitch]
+        # yaw_logits = logits[:, n_roll+n_pitch:n_roll+n_pitch+n_yaw]
+        # vel_logits = logits[:, n_roll+n_pitch+n_yaw:]
+
+        pitch_logits = logits[:, :n_pitch]
+        yaw_logits = logits[:, n_pitch:n_pitch+n_yaw]
+        vel_logits = logits[:, n_pitch+n_yaw:]
+
+        # Apply the log-space masks
+        # roll_logits = roll_logits + inf_mask_roll
+        pitch_logits = pitch_logits + inf_mask_pitch
+        yaw_logits = yaw_logits + inf_mask_yaw
+        vel_logits = vel_logits + inf_mask_vel
+
+        # Concatenate the logits back.
+        masked_logits = torch.cat(
+            [pitch_logits, yaw_logits, vel_logits], dim=1)
+        outputs[Columns.ACTION_DIST_INPUTS] = masked_logits
+        return outputs

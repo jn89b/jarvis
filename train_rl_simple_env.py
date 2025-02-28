@@ -13,14 +13,48 @@ from jarvis.envs.multi_agent_hrl import HRLMultiAgentEnv
 from jarvis.utils.trainer import load_yaml_config
 from jarvis.utils.mask import SimpleEnvMaskModule
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.models import ModelCatalog
-from ray.rllib.core.rl_module import RLModule
+from ray.rllib.examples.rl_modules.classes.action_masking_rlm import (
+    ActionMaskingTorchRLModule,
+)
+
+# from ray.rllib.core.rl_module import RLModule
 # from ray.rllib.examples.rl_modules.classes.action_masking_rlm import (
 #     ActionMaskingTorchRLModule,
 # )
+from jarvis.utils.mask import ActionMaskingRLModule
+from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 
+# A simple RL module that does not perform any action masking.
+
+import torch.nn as nn
+
+
+class SimpleTorchRLModule(TorchModelV2, nn.Module):
+    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        nn.Module.__init__(self)
+        TorchModelV2.__init__(self, obs_space, action_space,
+                              num_outputs, model_config, name)
+        # Build a basic fully connected network.
+        self.internal_model = TorchFC(
+            obs_space,
+            action_space,
+            num_outputs,
+            model_config,
+            name + "_internal"
+        )
+
+    def forward(self, input_dict, state, seq_lens):
+        # Simply pass the observations to the internal model.
+        logits, _ = self.internal_model({"obs": input_dict["obs"]})
+        return logits, state
+
+    def value_function(self):
+        return self.internal_model.value_function()
 
 # from ray.rllib.examples.rl_modules.classes.action_masking_rlm import (
 #     ActionMaskingTorchRLModule)
@@ -31,18 +65,18 @@ from ray.rllib.core.rl_module import RLModule
 # ModelCatalog.register_custom_model(
 #     "masked_action_model", MultiActionMaskingTorchRLModule)
 
+
 # Register your custom model with a name so you can reference it in your RLlib config.
 # ModelCatalog.register_custom_model(
 #     "unpacked_masked_torch_model", UnpackedMaskedActionsTorchModel)
-import gc
 
 gc.collect()
 
 # Used to clean up the Ray processes after training
 ray.shutdown()
 # For debugging purposes
-# ray.init(local_mode=True)
-ray.init()
+ray.init(local_mode=True)
+# ray.init()
 
 #
 
@@ -209,12 +243,13 @@ def train_hrl(checkpoint_path=None) -> None:
     def policy_mapping_fn(agent_id, episode, **kwargs):
         if agent_id == "good_guy_hrl":
             return "good_guy_hrl"
-        elif agent_id in ["good_guy_offensive", "good_guy_defensive"]:
-            # Low-level policies for the HRL agent
-            return agent_id
+        if agent_id == "good_guy_offensive":
+            return "good_guy_offensive"
+        elif agent_id == "good_guy_defensive":
+            return "good_guy_defensive"
         else:
             # All remaining agents (e.g. pursuers) use the pursuer policy.
-            return "pursuer_policy"
+            return "pursuer"
 
     env_config = load_yaml_config(
         "config/simple_env_config.yaml")['battlespace_environment']
@@ -224,16 +259,18 @@ def train_hrl(checkpoint_path=None) -> None:
                                            env_config=env_config))
 
     example_env = create_hrl_agent_env(config=None, env_config=env_config)
+    example_env.close()
 
     # load the model from our checkpoints
-    # Create only the neural network (RLModule) from our checkpoint.
-    if checkpoint_path is None:
-        evader_policy = None
-    else:
-        evader_policy: SimpleEnvMaskModule = RLModule.from_checkpoint(
-            pathlib.Path(checkpoint_path) /
-            "learner_group" / "learner" / "rl_module"
-        )["evader_policy"]
+    # # Create only the neural network (RLModule) from our checkpoint.
+    # if checkpoint_path is None:
+    #     evader_policy = None
+    # else:
+    #     evader_policy: SimpleEnvMaskModule = RLModule.from_checkpoint(
+    #         pathlib.Path(checkpoint_path) /
+    #         "learner_group" / "learner" / "rl_module"
+    #     )["evader_policy"]
+    #     print("evader_policy", evader_policy)
 
     # Extract the observation and action spaces from your environment.
     # (You might need to create or compute these from HRLMultiAgentEnv)
@@ -262,27 +299,21 @@ def train_hrl(checkpoint_path=None) -> None:
         ),
     )
 
+    # Build the PPO configuration.
     config = (
         PPOConfig()
+        # Use the registered normalized env.
         .environment(env="hrl_env")
-        .multi_agent(
-            policies={
-                "good_guy_hrl": (None, hrl_obs_space, hrl_act_space, {}),
-                "good_guy_offensive": (None, offensive_obs_space, offensive_act_space, {}),
-                "good_guy_defensive": (evader_policy, defensive_obs_space, defensive_act_space, {}),
-                "pursuer_policy": (None, pursuer_obs_space, pursuer_act_space, {}),
-            },
-            policy_mapping_fn=policy_mapping_fn,
-            policies_to_train=["good_guy_hrl",
-                               "good_guy_offensive", "pursuer_policy"]
-        )
-        .resources(num_gpus=1)
-        .env_runners(observation_filter="MeanStdFilter",
-                     num_env_runners=3)
         .framework("torch")
         .rl_module(
             rl_module_spec=MultiRLModuleSpec(
                 rl_module_specs={
+                    "good_guy_hrl": RLModuleSpec(
+                        module_class=ActionMaskingTorchRLModule,
+                        observation_space=hrl_obs_space,
+                        action_space=hrl_act_space,
+                        model_config={}
+                    ),
                     "good_guy_offensive": RLModuleSpec(
                         module_class=SimpleEnvMaskModule,
                         observation_space=offensive_obs_space,
@@ -304,19 +335,25 @@ def train_hrl(checkpoint_path=None) -> None:
                 }
             )
         )
+        .multi_agent(
+            policies={
+                "good_guy_hrl": (None, hrl_obs_space, hrl_act_space, {}),
+                "good_guy_offensive": (None, offensive_obs_space, offensive_act_space, {}),
+                "good_guy_defensive": (None, defensive_obs_space, defensive_act_space, {}),
+                "pursuer": (None, pursuer_obs_space, pursuer_act_space, {})
+            },
+            # policies=["good_guy_hrl", "good_guy_offensive",
+            #           "good_guy_defensive", "pursuer"],
+            policy_mapping_fn=policy_mapping_fn,
+        )
+        .resources(num_gpus=1)
+        .env_runners(observation_filter="MeanStdFilter",
+                     num_env_runners=1)
     )
-
     # Initialize and run the training using Ray Tune.
     tuner = tune.Tuner("PPO", param_space=config, run_config=run_config)
     tuner.fit()
     ray.shutdown()
-
-    def load_agents(checkpoint_path: str) -> None:
-        """
-        https://github.com/ray-project/ray/issues/36798
-        """
-
-        pass
 
 
 if __name__ == '__main__':
@@ -324,5 +361,5 @@ if __name__ == '__main__':
     # train_rllib()
     # train_multi_agent()
     path: str = "/home/justin/ray_results/pursuer_evader_2/PPO_2025-02-24_13-25-45/PPO_pursuer_evader_env_24ee9_00000_0_2025-02-24_13-25-45/checkpoint_000224"
-    train_hrl(checkpoint_path=path)
+    train_hrl(checkpoint_path=None)
     ray.shutdown()
