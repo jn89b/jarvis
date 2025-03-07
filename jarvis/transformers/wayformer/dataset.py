@@ -778,7 +778,13 @@ class BaseDataset(Dataset):
                 np.stack([data[key] for data in data_list]))
 
         input_dict['center_objects_type'] = input_dict['center_objects_type'].numpy()
-        batch_size = num_vehicles
+        # batch_size = num_vehicles
+
+        batch_list = []
+        for batch in data_list:
+            batch_list += batch
+
+        batch_size = len(batch_list)
 
         batch_dict = {
             'batch_size': batch_size,

@@ -341,9 +341,9 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
             z: float = np.random.uniform(z_bounds[0], z_bounds[1])
 
         else:
-            x: float = self.target_config['x']
-            y: float = self.target_config['y']
-            z: float = self.target_config['z']
+            x: float = self.target_config['position']['x']
+            y: float = self.target_config['position']['y']
+            z: float = self.target_config['position']['z']
 
         target_vector: StateVector = StateVector(
             x=x, y=y, z=z, yaw_rad=0, roll_rad=0, pitch_rad=0, speed=0)

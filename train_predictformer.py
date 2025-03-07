@@ -25,7 +25,7 @@ dataset = BaseDataset(
 
 dataloader: DataLoader = DataLoader(
     dataset,
-    batch_size=1,
+    batch_size=6,
     shuffle=True,
     collate_fn=dataset.collate_fn
 )

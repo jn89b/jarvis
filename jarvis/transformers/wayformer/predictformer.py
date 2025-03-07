@@ -173,8 +173,10 @@ class PredictFormer(BaseModelV2):
         model_input = {}
         inputs = batch['input_dict']
         agents_in, agents_mask = inputs['obj_trajs'], inputs['obj_trajs_mask']
-        agents_in = agents_in.squeeze()
-        agents_mask = agents_mask.squeeze()
+        # agents_in = agents_in.squeeze()
+        # agents_mask = agents_mask.squeeze()
+        agents_in = agents_in.reshape(-1, *agents_in.shape[2:])
+        agents_mask = agents_mask.reshape(-1, *agents_mask.shape[2:])
         ego_in = torch.gather(agents_in, 1, inputs['track_index_to_predict'].view(-1, 1, 1, 1).repeat(1, 1,
                                                                                                       *agents_in.shape[
                                                                                                           -2:])).squeeze(1)
@@ -189,11 +191,20 @@ class PredictFormer(BaseModelV2):
         model_input['agents_in'] = agents_in
         output = self._forward(model_input)
 
-        ground_truth = torch.cat([inputs['center_gt_trajs'][..., :2], inputs['center_gt_trajs_mask'].unsqueeze(-1)],
+        center_gt_trajs = inputs['center_gt_trajs']
+        center_gt_trajs_mask = inputs['center_gt_trajs_mask']
+        center_gt_final_valid_idx = inputs['center_gt_final_valid_idx']
+        center_gt_trajs = center_gt_trajs.reshape(
+            -1, *center_gt_trajs.shape[2:])
+        center_gt_trajs_mask = center_gt_trajs_mask.reshape(
+            -1, *center_gt_trajs_mask.shape[2:])
+        center_gt_final_valid_idx = center_gt_final_valid_idx.reshape(
+            -1, *center_gt_final_valid_idx.shape[2:])
+        ground_truth = torch.cat([center_gt_trajs, center_gt_trajs_mask.unsqueeze(-1)],
                                  dim=-1)
-        ground_truth = ground_truth.squeeze()
+        # ground_truth = ground_truth.reshape(-1, *ground_truth.shape[2:])
         loss = self.criterion(output, ground_truth,
-                              inputs['center_gt_final_valid_idx'])
+                              center_gt_final_valid_idx)
         # output['dataset_name'] = inputs['dataset_name']
         output['predicted_probability'] = F.softmax(
             output['predicted_probability'], dim=-1)

@@ -13,7 +13,7 @@ battlespace_environment:
       randomize: true
       position:
         x: 300
-        y: 0
+        y: -450
         z: 50
       spawn_radius_from_agent:
         min: 450

@@ -109,7 +109,7 @@ def load_state(checkpoint_path: str, num_episodes: int = 1):
 
 def infer(checkpoint_path: str, num_episodes: int = 1,
           use_pronav: bool = True, save: bool = False,
-          index_save: int = 0):
+          index_save: int = 0, folder_dir: str = 'rl_pickle'):
     ray.init(ignore_reinit_error=True)
     env = create_multi_agent_env(config=None, env_config=env_config)
 
@@ -205,9 +205,11 @@ def infer(checkpoint_path: str, num_episodes: int = 1,
         ax.plot(data.x, data.y, data.z, label=f"Agent {i}")
 
     print("env step", env.current_step)
-    ax.set_xlabel('X Label')
-    ax.set_ylabel('Y Label')
+    ax.set_xlabel('X Label (m)')
+    ax.set_ylabel('Y Label (m)')
     ax.legend()
+    # tight axis
+    fig.tight_layout()
 
     # save the datas and the rewards
     pickle_info = {
@@ -215,7 +217,7 @@ def infer(checkpoint_path: str, num_episodes: int = 1,
         "reward": reward
     }
 
-    pickle_name = "index_" + str(index_save) + "_reward.pkl"
+    pickle_name = folder_dir+"/index_" + str(index_save) + "_reward.pkl"
     with open(pickle_name, 'wb') as f:
         pkl.dump(pickle_info, f)
 
@@ -517,7 +519,8 @@ def load_and_infer_pursuer(checkpoint_path: str):
     # plt.show()
 
 
-def load_good_guy(checkpoint_path: str) -> None:
+def load_good_guy(checkpoint_path: str, index_save: int = 0,
+                  folder_dir: str = '') -> None:
     """
     """
     ray.init(ignore_reinit_error=True)
@@ -543,7 +546,7 @@ def load_good_guy(checkpoint_path: str) -> None:
     # env.max_steps = 700
     print("max steps", env.max_steps)
     reward_list = []
-
+    goal_history: List[StateVector] = []
     while not terminated['__all__']:
         # for i in range(n_steps):
         # compute the next action from a batch of observations
@@ -603,6 +606,9 @@ def load_good_guy(checkpoint_path: str) -> None:
         # check if done
         if (terminated['__all__'] == True):
             print("reward: ", reward)
+            target = env.target
+            print("target: ", target.x, target.y, target.z)
+            goal_history.append(target)
             break
 
     datas: List[DataHandler] = []
@@ -632,7 +638,21 @@ def load_good_guy(checkpoint_path: str) -> None:
     print("env step", env.current_step)
     ax.set_xlabel('X Label')
     ax.set_ylabel('Y Label')
+    # tight axis
+    fig.tight_layout()
     ax.legend()
+
+    # save the datas and the rewards
+    # pickle_info = {
+    #     "datas": datas,
+    #     "reward": reward,
+    #     "goal_history": goal_history
+    # }
+
+    # # save the datas and the rewards
+    # pickle_name = "index_hrl" + str(index_save) + "_reward.pkl"
+    # with open(pickle_name, 'wb') as f:
+    #     pkl.dump(pickle_info, f)
 
     # save the datas and the rewards
     pickle_info = {
@@ -640,22 +660,50 @@ def load_good_guy(checkpoint_path: str) -> None:
         "reward": reward
     }
 
+    pickle_name = folder_dir+"/index_" + str(index_save) + "_reward.pkl"
+    with open(pickle_name, 'wb') as f:
+        pkl.dump(pickle_info, f)
+
 
 def run_multiple_sims(checkpoint_path: str, num_sims: int = 10,
                       type: str = 'evader',
-                      save: bool = False):
+                      save: bool = False,
+                      use_random_seed: bool = True,
+                      num_random_seeds: int = 10) -> None:
 
-    np.random.seed(0)
-    for i in range(num_sims):
-        if type == 'pursuer_evader':
-            infer(checkpoint_path=checkpoint_path, num_episodes=1,
-                  use_pronav=True, save=save, index_save=i)
-        if type == 'pursuer':
-            load_and_infer_pursuer(checkpoint_path=checkpoint_path)
-        if type == "evader":
-            load_and_infer_evader(checkpoint_path=checkpoint_path)
-        if type == "good_guy":
-            load_good_guy(checkpoint_path=checkpoint_path)
+    if use_random_seed:
+        for j in range(num_random_seeds):
+            seed_num = j
+            np.random.seed(seed_num)
+            folder_name: str = 'hrl_data/'+'seed_'+str(seed_num)
+            for i in range(num_sims):
+                if type == 'pursuer_evader':
+                    infer(checkpoint_path=checkpoint_path, num_episodes=1,
+                          use_pronav=True, save=save, index_save=i,
+                          folder_dir=folder_name)
+                if type == 'pursuer':
+                    load_and_infer_pursuer(checkpoint_path=checkpoint_path)
+                if type == "evader":
+                    load_and_infer_evader(checkpoint_path=checkpoint_path)
+                if type == "good_guy":
+                    load_good_guy(
+                        checkpoint_path=checkpoint_path, index_save=i,
+                        folder_dir=folder_name)
+
+    else:
+        np.random.seed(0)
+        folder_dir = 'rl_pickle'
+        for i in range(num_sims):
+            if type == 'pursuer_evader':
+                infer(checkpoint_path=checkpoint_path, num_episodes=1,
+                      use_pronav=True, save=save, index_save=i)
+            if type == 'pursuer':
+                load_and_infer_pursuer(checkpoint_path=checkpoint_path)
+            if type == "evader":
+                load_and_infer_evader(checkpoint_path=checkpoint_path)
+            if type == "good_guy":
+                load_good_guy(checkpoint_path=checkpoint_path, index_save=i,
+                              folder_dir=folder_dir)
 
     plt.show()
 
@@ -667,14 +715,14 @@ if __name__ == '__main__':
     # path: str = "/home/justin/ray_results/PPO_2025-02-19_03-05-25/PPO_pursuer_evader_env_a81fe_00000_0_2025-02-19_03-05-25/checkpoint_000074"
     # path: str = "/home/justin/ray_results/PPO_2025-02-19_11-13-19/PPO_pursuer_evader_env_d0af9_00000_0_2025-02-19_11-13-19/checkpoint_000071"
     # path: str = "/home/justin/ray_results/PPO_2025-02-19_22-19-31/PPO_pursuer_evader_env_e2123_00000_0_2025-02-19_22-19-31/checkpoint_000063"
-    # path: str = "/home/justin/ray_results/pursuer_evader/PPO_2025-02-22_16-12-02/PPO_pursuer_evader_env_0abe0_00000_0_2025-02-22_16-12-02/checkpoint_000414"
     # path: str = "/home/justin/ray_results/PPO_2025-02-24_03-59-11/PPO_pursuer_evader_env_ff294_00000_0_2025-02-24_03-59-11/checkpoint_000006"
     # path: str = "/home/justin/ray_results/PPO_2025-02-24_04-34-50/PPO_pursuer_evader_env_f9c3d_00000_0_2025-02-24_04-34-50/checkpoint_000002"
-    path: str = "/home/justin/ray_results/PPO_2025-02-24_04-53-02/PPO_pursuer_evader_env_84cd9_00000_0_2025-02-24_04-53-02/checkpoint_000123"
     # path: str = "/home/justin/ray_results/pursuer_evader_2/PPO_2025-02-24_13-25-45/PPO_pursuer_evader_env_24ee9_00000_0_2025-02-24_13-25-45/checkpoint_000224"
-    # n_sims: int = 10
-    # for i in range(n_sims):
-    #     infer(checkpoint_path=path, num_episodes=1)
+    # ---- Pursuer Evader----
+
+    # ---- HRL ----
     path: str = "/home/justin/ray_results/PPO_2025-02-28_02-55-49/PPO_hrl_env_cecd1_00000_0_2025-02-28_02-55-50/checkpoint_000000"
     # plt.show()
-    run_multiple_sims(checkpoint_path=path, num_sims=15, type='good_guy')
+
+    run_multiple_sims(checkpoint_path=path, num_sims=5, type='good_guy',
+                      use_random_seed=False)
