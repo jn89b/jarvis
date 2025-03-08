@@ -1,3 +1,15 @@
+import yaml
+import os
+import matplotlib.pyplot as plt
+import sys
+import matplotlib
+import json
+import torch
+import numpy as np
+import pathlib
+import ray
+import pickle as pkl
+
 from jarvis.utils.callbacks import SaveVecNormalizeCallback
 from jarvis.envs.env import DynamicThreatAvoidance, AbstractBattleEnv
 from jarvis.envs.agent import Agent, Evader, Pursuer
@@ -9,15 +21,27 @@ from stable_baselines3.common.vec_env import VecNormalize, SubprocVecEnv, VecMon
 from stable_baselines3 import PPO
 
 from aircraftsim.utils.report_diagrams import SimResults
-from typing import List, Tuple, TYPE_CHECKING, Dict
+from typing import List, Tuple, TYPE_CHECKING, Dict, Any
 from copy import deepcopy
 from dataclasses import dataclass
-import yaml
-import os
-import matplotlib.pyplot as plt
-import sys
-import matplotlib
-import json
+
+from jarvis.utils.mask import SimpleEnvMaskModule
+from jarvis.envs.simple_agent import DataHandler, Pursuer, Evader
+from jarvis.utils.vector import StateVector
+from jarvis.envs.simple_agent import (
+    SimpleAgent, PlaneKinematicModel, DataHandler,
+    Evader, Pursuer)
+from jarvis.envs.multi_agent_hrl import HRLMultiAgentEnv
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from jarvis.envs.battlespace import BattleSpace
+from jarvis.envs.multi_agent_env import PursuerEvaderEnv
+
+
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.core.rl_module import RLModule
+
 matplotlib.use('TkAgg')
 
 
@@ -44,7 +68,7 @@ class DatasetGenerator():
                     pursuers_states: List[List[float]]) -> None:
         return {
             "time_step": time_step,
-            "ego": current_ego_state,  # stores the x,y,theta,vx,vy of the evader
+            "ego": current_ego_state,  # stores the x,y,z,theta,vx,vy of the evader
             "controls": current_control,  # stores the controls of the evader
             # list of lists of rel_x,rel_y, rel_thet, rel_velocity of pursuers
             "vehicles": pursuers_states,
@@ -372,3 +396,198 @@ class Trainer():
 
             # plt.show()
             # save the data to a json file
+
+
+class RayTrainerSimpleEnv():
+    def __init__(self,
+                 convert_json: bool = True) -> None:
+        # self.model_config: dict = model_config
+        # self.env_config: dict = env_config
+        # self.training_config: dict = training_config
+        # Load your environment configuration (same as used in training).
+        self.env_config = load_yaml_config(
+            "config/simple_env_config.yaml")['battlespace_environment']
+        self.convert_json = convert_json
+
+    def train(self) -> None:
+        pass
+
+    def generate_dataset(self) -> None:
+        pass
+
+    def infer_pursuer_evader(
+            self, checkpoint_path: str, num_episodes: int = 1,
+            use_pronav: bool = True, save: bool = False,
+            index_save: int = 0, folder_dir: str = 'rl_pickle'):
+
+        ray.init(ignore_reinit_error=True)
+
+        env = create_multi_agent_env(config=None, env_config=self.env_config)
+
+        # load the model from our checkpoints
+        # Create only the neural network (RLModule) from our checkpoint.
+        evader_policy: SimpleEnvMaskModule = RLModule.from_checkpoint(
+            pathlib.Path(checkpoint_path) /
+            "learner_group" / "learner" / "rl_module"
+        )["evader_policy"]
+
+        pursuer_policy: SimpleEnvMaskModule = RLModule.from_checkpoint(
+            pathlib.Path(checkpoint_path) /
+            "learner_group" / "learner" / "rl_module"
+        )["pursuer_policy"]
+
+        episode_return = 0
+
+        observation, info = env.reset()
+        terminated = {'__all__': False}
+        next_agent = observation.keys()
+        env.use_pronav = use_pronav
+        # n_steps: int = 500
+        # random seed
+        # np.random.seed()
+        # env.max_steps = 700
+        print("max steps", env.max_steps)
+        reward_list = []
+        while not terminated['__all__']:
+            # for i in range(n_steps):
+            # compute the next action from a batch of observations
+            # torch_obs_batch = torch.from_numpy(np.array([obs]))
+            key_value = list(observation.keys())[0]
+            if key_value == '1':
+                obs = observation['1']
+                torch_obs_batch = {k: torch.from_numpy(
+                    np.array([v])) for k, v in obs.items()}
+                action_logits = pursuer_policy.forward_inference({"obs": torch_obs_batch})[
+                    "action_dist_inputs"]
+            elif key_value == '0':
+                obs = observation['0']
+                torch_obs_batch = {k: torch.from_numpy(
+                    np.array([v])) for k, v in obs.items()}
+                action_logits = evader_policy.forward_inference({"obs": torch_obs_batch})[
+                    "action_dist_inputs"]
+            elif key_value == '2':
+                obs = observation['2']
+                torch_obs_batch = {k: torch.from_numpy(
+                    np.array([v])) for k, v in obs.items()}
+                action_logits = pursuer_policy.forward_inference({"obs": torch_obs_batch})[
+                    "action_dist_inputs"]
+
+            # For my action space I have a multidscrete environment
+            # Since my action logits are a [1 x total_actions] tensor
+            # I need to get the argmax of the tensor
+            action_logits = action_logits.detach().numpy().squeeze()
+            unwrapped_action: Dict[str, np.array] = env.unwrap_action_mask(
+                action_logits)
+
+            discrete_actions = []
+            for k, v in unwrapped_action.items():
+                v = torch.from_numpy(v)
+                best_action = torch.argmax(v).numpy()
+                discrete_actions.append(best_action)
+
+            # action = torch.argmax(action_logits).numpy()
+            action_dict = {}
+            action_dict[key_value] = {'action': discrete_actions}
+            # print("action dict: ", action_dict)
+
+            observation, reward, terminated, truncated, info = env.step(
+                action_dict=action_dict)
+
+            reward_list.append(reward)
+
+            # check if done
+            if (terminated['__all__'] == True):
+                print("reward: ", reward)
+                break
+
+        datas: List[DataHandler] = []
+        agents = env.get_all_agents
+        for agent in agents:
+            data: DataHandler = agent.simple_model.data_handler
+            datas.append(data)
+
+        folder_name = folder_dir+"/index_" + str(index_save)
+        if self.convert_json:
+            self.convert_to_json(datas, folder_name)
+
+        # plot a 3D plot of the agents
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+
+        for i, data in enumerate(datas):
+            print("data: ", i)
+            ax.scatter(data.x[0], data.y[1], data.z[2],
+                       label=f"Agent Start {i}")
+            ax.plot(data.x, data.y, data.z, label=f"Agent {i}")
+
+        print("env step", env.current_step)
+        ax.set_xlabel('X Label (m)')
+        ax.set_ylabel('Y Label (m)')
+        ax.legend()
+        # tight axis
+        fig.tight_layout()
+
+        # save the datas and the rewards
+        pickle_info = {
+            "datas": datas,
+            "reward": reward
+        }
+
+        pickle_name = folder_dir+"/index_" + str(index_save) + "_reward.pkl"
+        with open(pickle_name, 'wb') as f:
+            pkl.dump(pickle_info, f)
+
+    def convert_to_json(self, datas: List[DataHandler],
+                        folder_name: str) -> None:
+        """
+        Converts data to be used to train predictformer
+        """
+        dataset_generator = DatasetGenerator(data_dir='./data')
+        save_dir: str = folder_name+".json"
+        evader_index: int = 0
+
+        # pop out the evader
+        evader_data: DataHandler = datas.pop(evader_index)
+        simulation_data = []
+        for i, x in enumerate(evader_data.x):
+            time_step: float = i*0.1
+
+            current_ego_state: List[float] = [
+                evader_data.x[i],
+                evader_data.y[i],
+                evader_data.z[i],
+                np.rad2deg(evader_data.phi[i]),
+                np.rad2deg(evader_data.theta[i]),
+                np.rad2deg(evader_data.psi[i]),
+                evader_data.v[i]]
+
+            current_control: List[float] = [
+                0.0,  # we are controling yaw
+                np.rad2deg(evader_data.theta[i]),
+                np.rad2deg(evader_data.psi[i]),
+                evader_data.v[i]]
+
+            pursuers_states: List[List[float]] = []
+            for pursuer in datas:
+                pursuer_state: List[float] = [
+                    pursuer.x[i], pursuer.y[i], pursuer.z[i],
+                    np.rad2deg(pursuer.phi[i]),
+                    np.rad2deg(pursuer.theta[i]),
+                    np.rad2deg(pursuer.psi[i]),
+                    pursuer.v[i]]
+
+                pursuers_states.append(pursuer_state)
+
+            data = dataset_generator.return_data(
+                time_step, current_ego_state, current_control, pursuers_states)
+            simulation_data.append(data)
+
+        with open(save_dir, 'w', encoding='utf-8') as f:
+            json.dump(simulation_data, f, ensure_ascii=False, indent=4)
+
+
+def create_multi_agent_env(config: Dict[str, Any],
+                           env_config: Dict[str, Any]) -> PursuerEvaderEnv:
+
+    return PursuerEvaderEnv(
+        config=env_config)

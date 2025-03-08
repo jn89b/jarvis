@@ -1,12 +1,9 @@
 import numpy as np
-import unittest
 import yaml
 import torch
-
 from jarvis.transformers.wayformer.dataset import BaseDataset
 from jarvis.transformers.wayformer.predictformer import PredictFormer
 from torch.utils.data import DataLoader
-
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import Trainer
@@ -14,32 +11,44 @@ import os
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-data_config = "config/predictformer_config.yaml"
-with open(data_config, 'r') as f:
-    data_config = yaml.safe_load(f)
+# Load configuration
+config_path = "config/predictformer_config.yaml"
+with open(config_path, 'r') as f:
+    config = yaml.safe_load(f)
 
+# Create separate datasets for training and validation
+train_dataset = BaseDataset(config=config, is_validation=False)
+val_dataset = BaseDataset(config=config, is_validation=True)
 
-dataset = BaseDataset(
-    config=data_config,
-    is_validation=True)
-
-dataloader: DataLoader = DataLoader(
-    dataset,
+# Create DataLoaders for each dataset
+train_dataloader = DataLoader(
+    train_dataset,
     batch_size=6,
-    shuffle=True,
-    collate_fn=dataset.collate_fn
+    shuffle=True,         # Shuffle training data
+    num_workers=4,
+    pin_memory=True,
+    collate_fn=train_dataset.collate_fn
 )
 
-model_config: str = "config/predictformer_config.yaml"
-with open(model_config, 'r') as f:
+val_dataloader = DataLoader(
+    val_dataset,
+    batch_size=6,
+    shuffle=False,        # Usually don't shuffle validation data
+    num_workers=4,
+    pin_memory=True,
+    collate_fn=val_dataset.collate_fn
+)
+
+# Load model configuration (if different from data config, adjust accordingly)
+with open(config_path, 'r') as f:
     model_config = yaml.safe_load(f)
 
-model: PredictFormer = PredictFormer(model_config,)
+model = PredictFormer(model_config)
 name = "predictformer"
 logger = TensorBoardLogger("tb_logs", name=name)
 
-# Check if there's an existing checkpoint to resume from
-checkpoint_dir = name+"_checkpoint/"
+# Set up checkpointing
+checkpoint_dir = name + "_checkpoint/"
 checkpoint_callback = ModelCheckpoint(
     monitor="val_loss",
     dirpath=checkpoint_dir,
@@ -56,19 +65,19 @@ if os.path.exists(checkpoint_dir):
     )
     if checkpoint_files:
         latest_checkpoint = checkpoint_files[-1]
-        print(
-            f"Resuming training from checkpoint: {latest_checkpoint}")
+        print(f"Resuming training from checkpoint: {latest_checkpoint}")
 
-
-# Initialize the Trainer
+# Initialize the Trainer (adjust parameters as needed)
 trainer = Trainer(
+    accelerator='gpu',  # Use 'gpu' if available
     devices=1,
-    max_epochs=-1,
+    max_epochs=100,       # Specify a finite number of epochs
     logger=logger,
     callbacks=[checkpoint_callback],
     gradient_clip_val=1.0,
+    precision=16          # Optionally, enable mixed precision for speed
 )
 
-# Train the model, resuming from the latest checkpoint if it exists
-trainer.fit(model, train_dataloaders=dataloader,
-            val_dataloaders=dataloader, ckpt_path=latest_checkpoint)
+# Train the model using both training and validation DataLoaders
+trainer.fit(model, train_dataloaders=train_dataloader,
+            val_dataloaders=val_dataloader, ckpt_path=latest_checkpoint)

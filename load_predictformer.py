@@ -148,12 +148,17 @@ for i in range(num_agents):
         highest_probabilty_index = np.argmax(predicted_probability[i])
         x = x_start + agent_traj[j, :, 0]
         y = y_start + agent_traj[j, :, 1]
-        z = agent_traj[j, :, 2]
+        z = z_start + agent_traj[j, :, 2]
         ax.scatter(
             x, y, z, label=f"Mode {j} for agent {i} ")
 
     ax.scatter(x_start, y_start, z_start, label="Start " + str(i))
     ax.set_zlim([0, 50])
     ax.legend()
+
+#%% 
+
+x= 6
+
 
 plt.show()

@@ -156,8 +156,8 @@ class BaseDataset(Dataset):
             sim_data['timestamp'].append(
                 time_interval[start_idx: start_idx + total_len])
 
-            if idx_counter == 2:
-                break
+            # if idx_counter == 2:
+            #     break
 
         num_ego: int = 1
         total_agents = num_pursuers + num_ego

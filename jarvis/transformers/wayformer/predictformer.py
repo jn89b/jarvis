@@ -214,7 +214,7 @@ class PredictFormer(BaseModelV2):
         optimizer = optim.AdamW(
             self.parameters(), lr=self.config['learning_rate'], eps=0.0001)
 
-        scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.0002, steps_per_epoch=1, epochs=500,
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.0002, steps_per_epoch=1, epochs=750,
                                                         pct_start=0.02, div_factor=100.0, final_div_factor=10)
 
         return [optimizer], [scheduler]

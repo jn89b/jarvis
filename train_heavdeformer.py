@@ -48,7 +48,6 @@ for batch in dataloader:
     break
 
 # Check if there's an existing checkpoint to resume from
-
 latest_checkpoint = None
 if os.path.exists(checkpoint_dir):
     checkpoint_files = sorted(

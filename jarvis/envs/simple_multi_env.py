@@ -556,7 +556,6 @@ class AbstracKinematicEnv(gym.Env, ABC):
 
         current_speed: float = agent.state_vector.speed
         current_state: float = agent.simple_model.state_info
-        print("current_state", current_state)
         for i, yaw_cmd in enumerate(self.yaw_commands):
             u: np.ndarray = np.array([0,
                                       0,
