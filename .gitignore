@@ -11,6 +11,7 @@ jarvis/__pycache__/
 models/*
 ray_results/
 logs/
+*.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

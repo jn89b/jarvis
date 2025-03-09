@@ -415,10 +415,58 @@ class RayTrainerSimpleEnv():
     def generate_dataset(self) -> None:
         pass
 
+    def infer_multiple_times(self,
+            checkpoint_path: str,
+            folder_name:str, 
+            num_sims: int = 10,
+            type: str = 'evader',
+            save: bool = False,
+            use_random_seed: bool = True,
+            num_random_seeds: int = 10,
+            ) -> None:
+        
+        if use_random_seed:
+            for j in range(num_random_seeds):
+                seed_num = j
+                np.random.seed(seed_num)
+                folder_name: str = 'hrl_data/'+'seed_'+str(seed_num)
+                for i in range(num_sims):
+                    if type == 'pursuer_evader':
+                        self.infer_pursuer_evader(checkpoint_path=checkpoint_path, 
+                            num_episodes=1,
+                            use_pronav=True, save=save, index_save=i,
+                            folder_dir=folder_name)
+                    # if type == 'pursuer':
+                    #     load_and_infer_pursuer(checkpoint_path=checkpoint_path)
+                    # if type == "evader":
+                    #     load_and_infer_evader(checkpoint_path=checkpoint_path)
+                    # if type == "good_guy":
+                    #     load_good_guy(
+                    #         checkpoint_path=checkpoint_path, index_save=i,
+                    #         folder_dir=folder_name)
+
+        else:
+            np.random.seed(0)
+            for i in range(num_sims):
+                if type == 'pursuer_evader':
+                    self.infer_pursuer_evader(checkpoint_path=checkpoint_path, 
+                        num_episodes=1,
+                        use_pronav=True, save=save, index_save=i,
+                        folder_dir=folder_name)
+                # if type == 'pursuer':
+                #     load_and_infer_pursuer(checkpoint_path=checkpoint_path)
+                # if type == "evader":
+                #     load_and_infer_evader(checkpoint_path=checkpoint_path)
+                # if type == "good_guy":
+                #     load_good_guy(checkpoint_path=checkpoint_path, index_save=i,
+                #                 folder_dir=folder_dir)
+        
     def infer_pursuer_evader(
-            self, checkpoint_path: str, num_episodes: int = 1,
+            self, checkpoint_path: str, 
+            folder_dir:str, 
+            num_episodes: int = 1,
             use_pronav: bool = True, save: bool = False,
-            index_save: int = 0, folder_dir: str = 'rl_pickle'):
+            index_save: int = 0) -> None:
 
         ray.init(ignore_reinit_error=True)
 
@@ -510,32 +558,32 @@ class RayTrainerSimpleEnv():
         if self.convert_json:
             self.convert_to_json(datas, folder_name)
 
-        # plot a 3D plot of the agents
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
+        # # plot a 3D plot of the agents
+        # fig = plt.figure()
+        # ax = fig.add_subplot(111, projection='3d')
 
-        for i, data in enumerate(datas):
-            print("data: ", i)
-            ax.scatter(data.x[0], data.y[1], data.z[2],
-                       label=f"Agent Start {i}")
-            ax.plot(data.x, data.y, data.z, label=f"Agent {i}")
+        # for i, data in enumerate(datas):
+        #     print("data: ", i)
+        #     ax.scatter(data.x[0], data.y[1], data.z[2],
+        #                label=f"Agent Start {i}")
+        #     ax.plot(data.x, data.y, data.z, label=f"Agent {i}")
 
-        print("env step", env.current_step)
-        ax.set_xlabel('X Label (m)')
-        ax.set_ylabel('Y Label (m)')
-        ax.legend()
-        # tight axis
-        fig.tight_layout()
+        # print("env step", env.current_step)
+        # ax.set_xlabel('X Label (m)')
+        # ax.set_ylabel('Y Label (m)')
+        # ax.legend()
+        # # tight axis
+        # fig.tight_layout()
 
-        # save the datas and the rewards
-        pickle_info = {
-            "datas": datas,
-            "reward": reward
-        }
+        # # save the datas and the rewards
+        # pickle_info = {
+        #     "datas": datas,
+        #     "reward": reward
+        # }
 
-        pickle_name = folder_dir+"/index_" + str(index_save) + "_reward.pkl"
-        with open(pickle_name, 'wb') as f:
-            pkl.dump(pickle_info, f)
+        # pickle_name = folder_dir+"/index_" + str(index_save) + "_reward.pkl"
+        # with open(pickle_name, 'wb') as f:
+        #     pkl.dump(pickle_info, f)
 
     def convert_to_json(self, datas: List[DataHandler],
                         folder_name: str) -> None:

@@ -24,7 +24,8 @@ from jarvis.envs.multi_agent_hrl import HRLMultiAgentEnv
 
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from jarvis.envs.battlespace import BattleSpace
-
+from jarvis.utils.mask import ActionMaskingRLModule
+from jarvis.utils.trainer import RayTrainerSimpleEnv
 
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.models import ModelCatalog
@@ -718,12 +719,23 @@ if __name__ == '__main__':
     # path: str = "/home/justin/ray_results/PPO_2025-02-19_22-19-31/PPO_pursuer_evader_env_e2123_00000_0_2025-02-19_22-19-31/checkpoint_000063"
     # path: str = "/home/justin/ray_results/PPO_2025-02-24_03-59-11/PPO_pursuer_evader_env_ff294_00000_0_2025-02-24_03-59-11/checkpoint_000006"
     # path: str = "/home/justin/ray_results/PPO_2025-02-24_04-34-50/PPO_pursuer_evader_env_f9c3d_00000_0_2025-02-24_04-34-50/checkpoint_000002"
-    path: str = "/home/justin/ray_results/pursuer_evader_2/PPO_2025-02-24_13-25-45/PPO_pursuer_evader_env_24ee9_00000_0_2025-02-24_13-25-45/checkpoint_000224"
+    path:str = "/root/ray_results/pursuer_evader_2/PPO_2025-02-24_13-25-45/PPO_pursuer_evader_env_24ee9_00000_0_2025-02-24_13-25-45/checkpoint_000224"
     # ---- Pursuer Evader----
 
     # ---- HRL ----
     # path: str = "/home/justin/ray_results/PPO_2025-02-28_02-55-49/PPO_hrl_env_cecd1_00000_0_2025-02-28_02-55-50/checkpoint_000000"
     # plt.show()
 
-    run_multiple_sims(checkpoint_path=path, num_sims=5, type='pursuer_evader',
-                      use_random_seed=False)
+    # run_multiple_sims(checkpoint_path=path, num_sims=5, type='pursuer_evader',
+    #                   use_random_seed=False)  
+    ray_trainer = RayTrainerSimpleEnv()
+    # ray_trainer.infer_pursuer_evader(
+    #     checkpoint_path=path, num_episodes=1, save=True,
+    # )
+    ray_trainer.infer_multiple_times(checkpoint_path=path, 
+                                     folder_name='pursuer_evader_data',
+                                     num_sims=500,
+                                     use_random_seed=False, 
+                                     type='pursuer_evader', 
+                                     save=True)
+    

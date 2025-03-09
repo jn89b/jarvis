@@ -1,7 +1,7 @@
 import numpy as np
 import yaml
 import torch
-from jarvis.transformers.wayformer.dataset import BaseDataset
+from jarvis.transformers.wayformer.dataset import BaseDataset, LazyBaseDataset
 from jarvis.transformers.wayformer.predictformer import PredictFormer
 from torch.utils.data import DataLoader
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -17,24 +17,27 @@ with open(config_path, 'r') as f:
     config = yaml.safe_load(f)
 
 # Create separate datasets for training and validation
-train_dataset = BaseDataset(config=config, is_validation=False)
-val_dataset = BaseDataset(config=config, is_validation=True)
+train_dataset = LazyBaseDataset(config=config, is_validation=False)
+print("Train dataset length: ", len(train_dataset))
+val_dataset = LazyBaseDataset(config=config, is_validation=True)
 
+num_workers:int = 12
+batch_size:int = 8
 # Create DataLoaders for each dataset
 train_dataloader = DataLoader(
     train_dataset,
-    batch_size=6,
+    batch_size=batch_size,
     shuffle=True,         # Shuffle training data
-    num_workers=4,
+    num_workers=num_workers,
     pin_memory=True,
     collate_fn=train_dataset.collate_fn
 )
 
 val_dataloader = DataLoader(
     val_dataset,
-    batch_size=6,
+    batch_size=batch_size,
     shuffle=False,        # Usually don't shuffle validation data
-    num_workers=4,
+    num_workers=num_workers,
     pin_memory=True,
     collate_fn=val_dataset.collate_fn
 )

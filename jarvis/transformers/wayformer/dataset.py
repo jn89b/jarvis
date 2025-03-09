@@ -1,6 +1,5 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List,Tuple
 from omegaconf import OmegaConf
-import hydra
 import os
 import pickle
 
@@ -155,9 +154,6 @@ class BaseDataset(Dataset):
             idx_counter += 1
             sim_data['timestamp'].append(
                 time_interval[start_idx: start_idx + total_len])
-
-            # if idx_counter == 2:
-            #     break
 
         num_ego: int = 1
         total_agents = num_pursuers + num_ego
@@ -683,74 +679,12 @@ class BaseDataset(Dataset):
         num_center_objects = center_xyz.shape[0]
         assert center_xyz.shape[0] == center_heading.shape[0]
         assert center_xyz.shape[1] in [3, 2]
-        # original_obj_trajs = obj_trajs.copy()
-        # # TODO: REMOVE
-        # test = original_obj_trajs[:, :, 0:3] - center_xyz[:, None, :]
-        # obj_trajs = np.tile(
-        #     obj_trajs[None, :, :, :], (num_center_objects, 1, 1, 1))
-        # obj_trajs[:, :, :, 0:center_xyz.shape[1]
-        #           ] -= center_xyz[:, None, None, :]
-        # obj_trajs[:, :, :, 0:2] = rotate_points_along_z(
-        #     points=obj_trajs[:, :, :, 0:2].reshape(num_center_objects, -1, 2),
-        #     angle=-center_heading
-        # ).reshape(num_center_objects, num_objects, num_timestamps, 2)
-
-        # import matplotlib.pyplot as plt
-        # fig, ax = plt.subplots()
-        # for i in range(num_center_objects):
-        #     x = test[i, :, 0]
-        #     y = test[i, :, 1]
-        #     ax.plot(x, y, label=f'center_{i}')
-        # ax.legend()
-
-        # fig, ax = plt.subplots()
-        # for i in range(num_center_objects):
-        #     x = obj_trajs[i, :, 0]
-        #     y = obj_trajs[i, :, 1]
-        #     ax.plot(x, y, label=f'center_{i}')
-        # ax.legend()
-        # plt.show()
-
-        # plot 3d
-        # fig, ax = plt.subplots(subplot_kw={'projection': '3d'})
-        # for i in range(num_center_objects):
-        #     x = test[i, :, 0]
-        #     y = test[i, :, 1]
-        #     z = test[i, :, 2]
-        #     ax.plot(x, y, z, label=f'center_{i}')
-        # # title
-        # ax.set_title('Zero')
-
-        # fig, ax = plt.subplots(subplot_kw={'projection': '3d'})
-        # for i in range(num_center_objects):
-        #     x = obj_trajs[i, :, 0]
-        #     y = obj_trajs[i, :, 1]
-        #     z = obj_trajs[i, :, 2]
-        #     ax.plot(x, y, z, label=f'center_{i}')
-
-        # plt.show()
 
         # TODO: ADD ROTATION correctly based on the heading
         obj_trajs = np.tile(
             obj_trajs[None, :, :, :], (num_center_objects, 1, 1, 1))
         obj_trajs[:, :, :, 0:center_xyz.shape[1]
                   ] -= center_xyz[:, None, None, :]
-        # obj_trajs[:, :, :, 0:2] = rotate_points_along_z(
-        #     points=obj_trajs[:, :, :, 0:2].reshape(num_center_objects, -1, 2),
-        #     angle=-center_heading
-        # ).reshape(num_center_objects, num_objects, num_timestamps, 2)
-
-        # obj_trajs[:, :, :, heading_index] -= center_heading[:, None, :]
-
-        # rotate direction of velocity
-        # if rot_vel_index is not None:
-        #     assert len(rot_vel_index) == 2
-        #     obj_trajs[:, :, :, rot_vel_index] = rotate_points_along_z(
-        #         points=obj_trajs[:, :, :, rot_vel_index].reshape(
-        #             num_center_objects, -1, 2),
-        #         angle=-center_heading
-        #     ).reshape(num_center_objects, num_objects, num_timestamps, 2)
-
         return obj_trajs
 
     def __getitem__(self, index: int) -> Dict[str, Any]:
@@ -791,29 +725,414 @@ class BaseDataset(Dataset):
             'input_dict': input_dict,
             'batch_sample_count': batch_size
         }
+        return batch_dict
 
-        # batch_size = num_vehicles
 
-        # batch_list = []
-        # for batch in data_list:
-        #     batch_list += batch
+class LazyBaseDataset(Dataset):
+    def __init__(self, config: Dict[str, Any], is_validation: bool = False, num_samples: int = None):
+        """
+        Initializes the dataset in lazy mode.
+        Instead of loading all JSON files and processing every segment up front,
+        we build an index mapping that treats each segment (slice) as a separate sample.
+        """
+        self.is_validation = is_validation
+        self.config = config
+        # Determine the data directory based on whether we're validating or training.
+        self.data_path = config['val_data_path'] if is_validation else config['train_data_path']
+        # List all JSON files.
+        self.json_files: List[str] = glob.glob(os.path.join(self.data_path, "*.json"))
+        if num_samples is not None:
+            self.json_files = self.json_files[:num_samples]
+            
+        self.past_len = config['past_len']
+        self.future_len = config['future_len']
+        # Step size for sliding window segmentation (default: 1).
+        self.step_size = config.get('step_size', 1)
+        
+        # Build an index mapping from global segment index to a tuple (file_index, local_segment_index)
+        self.index_map: List[Tuple[int, int]] = []
+        for file_idx, file_path in enumerate(self.json_files):
+            # Open each file and count the timesteps.
+            with open(file_path, 'r') as f:
+                sim_data = json.load(f)
+            total_steps = len(sim_data)  # Assuming sim_data is a list of timesteps.
+            total_len = self.past_len + self.future_len
 
-        # batch_size = len(batch_list)
-        # key_to_list = {}
-        # for key in batch_list[0].keys():
-        #     key_to_list[key] = [batch_list[bs_idx][key]
-        #                         for bs_idx in range(batch_size)]
+            # Determine how many segments can be extracted.
+            # The segmentation loop will run from start_idx = total_len to (len(sim_data) - total_len)
+            #num_segments = max(0, (total_steps - 2 * total_len + self.step_size) // self.step_size)
+            num_segments = self.compute_num_segments(total_steps, total_len, self.step_size)
+            for local_seg_idx in range(num_segments):
+                self.index_map.append((file_idx, local_seg_idx))
+                
+        print(f"Initialized dataset with {len(self.index_map)} segments across {len(self.json_files)} files.")
 
-        # input_dict = {}
-        # for key, val_list in key_to_list.items():
-        #     # if val_list is str:
-        #     try:
-        #         input_dict[key] = torch.from_numpy(np.stack(val_list, axis=0))
-        #     except:
-        #         input_dict[key] = val_list
+    def __len__(self):
+        # The length is now the total number of segments.
+        return len(self.index_map)
+    
+    def __getitem__(self, global_index: int) -> Dict[str, Any]:
+        """
+        Maps the global segment index to the appropriate JSON file and local segment index.
+        Loads the file, processes its segments, and returns the requested segment.
+        """
+        if global_index >= len(self.index_map):
+            raise IndexError(f"Index {global_index} out of bounds.")
+        
+        file_idx, local_seg_idx = self.index_map[global_index]
+        file_path = self.json_files[file_idx]
+        # Load and process the file (all segments) on demand.
+        segments = self.load_and_process_file(file_path)
+        # Return the segment corresponding to the local index.
+         
+        return segments[local_seg_idx]
 
-        # input_dict['center_objects_type'] = input_dict['center_objects_type'].numpy()
+    def compute_num_segments(self, total_steps: int, total_len: int, step_size: int) -> int:
+        # This uses the same range logic as in load_and_process_file.
+        return len(range(total_len, total_steps - total_len + 1, step_size))
 
-        # batch_dict = {'batch_size': batch_size,
-        #               'input_dict': input_dict, 'batch_sample_count': batch_size}
+
+    def load_and_process_file(self, file_path: str) -> List[Dict[str, Any]]:
+        """
+        Loads one JSON file, converts the raw JSON into numpy arrays, segments the data into overlapping
+        chunks, and then processes each segment.
+        """
+        with open(file_path, 'r') as f:
+            sim_data: List[Dict[str, Any]] = json.load(f)
+        
+        # Build raw arrays from the JSON.
+        overall_ego_position: List[List[float]] = []
+        overall_controls: List[List[float]] = []
+        overall_timestamps: List[float] = []
+        num_other_vehicles: int = len(sim_data[0]['vehicles'])
+        overall_pursuer_positions: List[List[Any]] = [[] for _ in range(num_other_vehicles)]
+        
+        for current_info in sim_data:
+            overall_ego_position.append(current_info['ego'])
+            overall_controls.append(current_info['controls'])
+            overall_timestamps.append(current_info['time_step'])
+            for j, pursuer_info in enumerate(current_info['vehicles']):
+                overall_pursuer_positions[j].append(pursuer_info)
+                
+        overall_ego_position = np.array(overall_ego_position)
+        overall_controls = np.array(overall_controls)
+        for i, veh in enumerate(overall_pursuer_positions):
+            overall_pursuer_positions[i] = np.array(veh)
+        overall_pursuer_positions = np.stack(overall_pursuer_positions)
+        # Combine ego and pursuer trajectories into one array.
+        overall_traj: np.array = np.vstack([overall_ego_position[np.newaxis, ...], overall_pursuer_positions])
+        
+        # Segment the trajectory into overlapping chunks.
+        total_len = self.past_len + self.future_len
+        segments: List[Dict[str, Any]] = []
+        idx_counter = 0
+        # The segmentation loop should match the logic used when building the index_map.
+        # for start_idx in range(total_len, len(sim_data) - total_len, self.step_size):
+        for start_idx in range(total_len, len(sim_data) - total_len + 1, self.step_size):
+            segment = overall_traj[:, start_idx - total_len:start_idx, :]
+            processed_segment = self.process_segment(segment, overall_timestamps[start_idx:start_idx + total_len], idx_counter)
+            segments.append(processed_segment)
+            idx_counter += 1
+        return segments
+
+    def process_segment(self, segment: np.array, timestamps: List[float], idx: int) -> Dict[str, Any]:
+        """
+        Processes a single segment.
+        For instance, here we convert the heading angles from degrees to radians.
+        You can extend this method to perform additional processing as required.
+        """
+        # Convert heading (at HEADING_IDX) from degrees to radians.
+        # segment[:, :, HEADING_IDX] = np.deg2rad(segment[:, :, HEADING_IDX])
+        assert segment.ndim == 3
+        ego_idx:int = 0        
+        tracks_to_predict: Dict[str, Any] = {
+            'track_index': [],
+            'object_type': []
+        }
+        num_pursuers, total_steps, _ = segment.shape
+
+        # Create and return a dictionary for the processed segment.
+        processed = {
+            'object_type': [],
+            # 'idx': [],
+            'timestamp': timestamps,
+            'idx_to_track': ego_idx,
+            'segment_idx': idx,
+            'segment_data': segment,
+            # Add any additional keys for further processed outputs.
+        }
+        
+        num_ego: int = 1
+        total_agents:int = num_pursuers + num_ego
+        for i in range(total_agents):
+            tracks_to_predict['track_index'].append(i)
+            tracks_to_predict['object_type'].append(VEHICLE)
+            processed['object_type'].append(VEHICLE)            
+
+        processed['tracks_to_predict'] = tracks_to_predict
+                
+        return processed
+
+    def transform_trajs_to_center_coords(self, obj_trajs,
+                                         center_xyz, center_heading,
+                                         heading_index,
+                                         rot_vel_index=None):
+        """
+        Args:
+            obj_trajs (num_objects, num_timestamps, num_attrs):
+                first three values of num_attrs are [x, y, z] or [x, y]
+            center_xyz (num_center_objects, 3 or 2): [x, y, z] or [x, y]
+            center_heading (num_center_objects):
+            heading_index: the index of heading angle in the num_attr-axis of obj_trajs
+        """
+
+        num_objects, num_timestamps, num_attrs = obj_trajs.shape
+        num_center_objects = center_xyz.shape[0]
+        assert center_xyz.shape[0] == center_heading.shape[0]
+        assert center_xyz.shape[1] in [3, 2]
+
+        # TODO: ADD ROTATION correctly based on the heading
+        obj_trajs = np.tile(
+            obj_trajs[None, :, :, :], (num_center_objects, 1, 1, 1))
+        obj_trajs[:, :, :, 0:center_xyz.shape[1]
+                  ] -= center_xyz[:, None, None, :]
+        return obj_trajs
+
+    def get_agent_data(
+            self,
+            center_objects,
+            obj_trajs_past,
+            obj_trajs_future,
+            track_index_to_predict,
+            sdc_track_index,
+            timestamps,
+            obj_types):
+        """
+        Centers the location of all the agents 
+        """
+        center_objects = obj_trajs_past
+        num_center_objects = center_objects.shape[0]
+        num_objects, num_timestamps, num_attributes = obj_trajs_past.shape
+
+        obj_trajs = self.transform_trajs_to_center_coords(
+            obj_trajs=obj_trajs_past,
+            center_xyz=center_objects[:, 0, 0:3],
+            center_heading=center_objects[:, :, HEADING_IDX],
+            heading_index=HEADING_IDX, rot_vel_index=[7, 8]
+        )
+        obj_types = obj_types[0]
+        object_onehot_mask = np.zeros(
+            (num_center_objects, num_objects, num_timestamps, 5))
+        object_onehot_mask[:, obj_types == 1, :, 0] = 1
+        object_onehot_mask[:, obj_types == 2, :, 1] = 1
+        object_onehot_mask[:, obj_types == 3, :, 2] = 1
+        object_onehot_mask[np.arange(
+            num_center_objects), track_index_to_predict, :, 3] = 1
+        object_onehot_mask[:, sdc_track_index, :, 4] = 1
+
+        object_time_embedding = np.zeros(
+            (num_center_objects, num_objects, num_timestamps, num_timestamps))
+        for i in range(num_timestamps):
+            object_time_embedding[:, :, i, i] = 1
+        object_time_embedding[:, :, :, -1] = timestamps[:num_timestamps]
+
+        object_heading_embedding = np.zeros(
+            (num_center_objects, num_objects, num_timestamps, 2))
+        object_heading_embedding[:, :, :, 0] = np.sin(
+            obj_trajs[:, :, :, HEADING_IDX])
+        object_heading_embedding[:, :, :, 1] = np.cos(
+            obj_trajs[:, :, :, HEADING_IDX])
+
+        vel = obj_trajs[:, :, :, VELOCITY_IDX]
+        vel_pre = np.roll(vel, shift=1, axis=2)
+        acce = (vel - vel_pre) / 0.1
+        # add another dimension to acce
+        acce = np.expand_dims(acce, axis=-1)
+        acce[:, :, 0, :] = acce[:, :, 1, :]
+        expanded_velocity = np.expand_dims(
+            obj_trajs[:, :, :, VELOCITY_IDX], axis=-1)
+
+        obj_trajs_data = np.concatenate([
+            obj_trajs[:, :, :, 0:VELOCITY_IDX],
+            object_onehot_mask,
+            object_time_embedding,
+            object_heading_embedding,
+            expanded_velocity,
+            acce,
+        ], axis=-1)
+
+        obj_trajs_mask = obj_trajs[:, :, :, -1]
+        obj_trajs_data[obj_trajs_mask == 0] = 0
+
+        obj_trajs_future = obj_trajs_future.astype(np.float32)
+        center_objects = obj_trajs_future
+        obj_trajs_future = self.transform_trajs_to_center_coords(
+            obj_trajs=obj_trajs_future,
+            center_xyz=center_objects[:, 0, 0:3],
+            center_heading=center_objects[:, :, HEADING_IDX],
+            heading_index=HEADING_IDX, rot_vel_index=[7, 8]
+        )
+
+        # obj_trajs_future_state = obj_trajs_future[:, :, :, [
+        #     0, 1, 7, 8]]  # (x, y, vx, vy)
+        obj_trajs_future_state = obj_trajs_future[:, :, :, [
+            0, 1, 2, 3, VELOCITY_IDX]]  # (x, y, z, v)
+        obj_trajs_future_mask = obj_trajs_future[:, :, :, -1]
+        obj_trajs_future_state[obj_trajs_future_mask == 0] = 0
+
+        center_obj_idxs = np.arange(len(track_index_to_predict))
+        center_gt_trajs = obj_trajs_future_state[center_obj_idxs,
+                                                 track_index_to_predict]
+        center_gt_trajs_mask = obj_trajs_future_mask[center_obj_idxs,
+                                                     track_index_to_predict]
+        center_gt_trajs[center_gt_trajs_mask == 0] = 0
+
+        assert obj_trajs_past.__len__() == obj_trajs_data.shape[1]
+        valid_past_mask = np.logical_not(
+            obj_trajs_past[:, :, -1].sum(axis=-1) == 0)
+
+        obj_trajs_mask = obj_trajs_mask[:, valid_past_mask]
+        obj_trajs_data = obj_trajs_data[:, valid_past_mask]
+        obj_trajs_future_state = obj_trajs_future_state[:, valid_past_mask]
+        obj_trajs_future_mask = obj_trajs_future_mask[:, valid_past_mask]
+
+        obj_trajs_pos = obj_trajs_data[:, :, :, 0:3]
+        num_center_objects, num_objects, num_timestamps, _ = obj_trajs_pos.shape
+        obj_trajs_last_pos = np.zeros(
+            (num_center_objects, num_objects, 3), dtype=np.float32)
+        for k in range(num_timestamps):
+            cur_valid_mask = obj_trajs_mask[:, :, k] > 0
+            obj_trajs_last_pos[cur_valid_mask] = obj_trajs_pos[:,
+                                                               :, k, :][cur_valid_mask]
+
+        center_gt_final_valid_idx = np.zeros(
+            (num_center_objects), dtype=np.float32)
+        for k in range(center_gt_trajs_mask.shape[1]):
+            cur_valid_mask = center_gt_trajs_mask[:, k] > 0
+            center_gt_final_valid_idx[cur_valid_mask] = k
+
+        max_num_agents = self.config['max_num_agents']
+        object_dist_to_center = np.linalg.norm(
+            obj_trajs_data[:, :, -1, 0:2], axis=-1)
+
+        object_dist_to_center[obj_trajs_mask[..., -1] == 0] = 1e10
+        topk_idxs = np.argsort(object_dist_to_center,
+                               axis=-1)[:, :max_num_agents]
+
+        topk_idxs = np.expand_dims(topk_idxs, axis=-1)
+        topk_idxs = np.expand_dims(topk_idxs, axis=-1)
+
+        obj_trajs_data = np.take_along_axis(obj_trajs_data, topk_idxs, axis=1)
+        obj_trajs_mask = np.take_along_axis(
+            obj_trajs_mask, topk_idxs[..., 0], axis=1)
+        obj_trajs_pos = np.take_along_axis(obj_trajs_pos, topk_idxs, axis=1)
+        obj_trajs_last_pos = np.take_along_axis(
+            obj_trajs_last_pos, topk_idxs[..., 0], axis=1)
+        obj_trajs_future_state = np.take_along_axis(
+            obj_trajs_future_state, topk_idxs, axis=1)
+        obj_trajs_future_mask = np.take_along_axis(
+            obj_trajs_future_mask, topk_idxs[..., 0], axis=1)
+        track_index_to_predict_new = np.zeros(
+            len(track_index_to_predict), dtype=np.int64)
+
+        obj_trajs_data = np.pad(obj_trajs_data, ((
+            0, 0), (0, max_num_agents - obj_trajs_data.shape[1]), (0, 0), (0, 0)))
+        obj_trajs_mask = np.pad(
+            obj_trajs_mask, ((0, 0), (0, max_num_agents - obj_trajs_mask.shape[1]), (0, 0)))
+        obj_trajs_pos = np.pad(obj_trajs_pos, ((
+            0, 0), (0, max_num_agents - obj_trajs_pos.shape[1]), (0, 0), (0, 0)))
+        obj_trajs_last_pos = np.pad(obj_trajs_last_pos,
+                                    ((0, 0), (0, max_num_agents - obj_trajs_last_pos.shape[1]), (0, 0)))
+        obj_trajs_future_state = np.pad(obj_trajs_future_state,
+                                        ((0, 0), (0, max_num_agents - obj_trajs_future_state.shape[1]), (0, 0), (0, 0)))
+        obj_trajs_future_mask = np.pad(obj_trajs_future_mask,
+                                       ((0, 0), (0, max_num_agents - obj_trajs_future_mask.shape[1]), (0, 0)))
+
+        return (obj_trajs_data, obj_trajs_mask.astype(bool), obj_trajs_pos, obj_trajs_last_pos,
+                obj_trajs_future_state, obj_trajs_future_mask, center_gt_trajs, center_gt_trajs_mask,
+                center_gt_final_valid_idx,
+                track_index_to_predict_new)
+
+    def process(self, sim_data: Dict[str,Any]) -> Dict[str,Any]:
+        """
+        Process the data in internal format and return the processed data.
+        """
+        # Process the data here.
+        idx_to_track: int = sim_data['idx_to_track']
+
+        timestamp = sim_data['timestamp']
+        obj_trajs_full: np.array = sim_data['segment_data']
+        obj_trajs_full[:, :, HEADING_IDX] = np.deg2rad(
+            obj_trajs_full[:, :, HEADING_IDX])
+        obj_types: List[int] = sim_data['object_type']
+        obj_trajs_past: np.array = obj_trajs_full[:, :self.past_len, :]
+        obj_trajs_future: np.array = obj_trajs_full[:,
+                                                    self.past_len:, :]
+        
+        track_idx_to_predict = [i for i in range(len(obj_trajs_full))]
+        center_objects = obj_trajs_full
+        (obj_trajs_data, obj_trajs_mask, obj_trajs_pos, obj_trajs_last_pos, obj_trajs_future_state,
+            obj_trajs_future_mask, center_gt_trajs,
+            center_gt_trajs_mask, center_gt_final_valid_idx,
+            track_index_to_predict_new) = self.get_agent_data(
+            center_objects=center_objects,
+            obj_trajs_past=obj_trajs_past,
+            obj_trajs_future=obj_trajs_future,
+            track_index_to_predict=track_idx_to_predict,
+            sdc_track_index=idx_to_track,
+            timestamps=timestamp, obj_types=obj_types
+        )
+
+        ret: Dict[str, Any] = {
+            # 'scenario_id': np.array([scene_id] * len(track_index_to_predict)),
+            'obj_trajs': obj_trajs_data,
+            'obj_trajs_mask': obj_trajs_mask,
+            # used to select center-features
+            'track_index_to_predict': track_index_to_predict_new,
+            'obj_trajs_pos': obj_trajs_pos,
+            'obj_trajs_last_pos': obj_trajs_last_pos,
+
+            'center_objects_world': center_objects,
+            # 'center_objects_id': np.array(track_infos['object_id'])[track_index_to_predict],
+            'center_objects_type': np.array(obj_types),
+            # 'map_center': info['map_center'],
+
+            'obj_trajs_future_state': obj_trajs_future_state,
+            'obj_trajs_future_mask': obj_trajs_future_mask,
+            'center_gt_trajs': center_gt_trajs,
+            'center_gt_trajs_mask': center_gt_trajs_mask,
+            'center_gt_final_valid_idx': center_gt_final_valid_idx,
+            'center_gt_trajs_src': obj_trajs_full[track_idx_to_predict]
+        }
+        
+        return ret
+
+    def collate_fn(self, data_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Custom collate function (if using PyTorch DataLoader).
+        This example stacks the segment_data from each sample.
+        """
+        processed_data: List[Dict[str, Any]] = []
+        processed_data:List[Dict[str,Any]] = [self.process(sample) for sample in data_list]
+        input_dict = {}
+        for key in processed_data[0].keys():
+            input_dict[key] = torch.from_numpy(np.stack([sample[key] for sample in processed_data]))
+            
+        input_dict['center_objects_type'] = input_dict['center_objects_type'].numpy()
+        
+        batch_list = []
+        for batch in data_list:
+            batch_list += batch
+            
+        batch_size = len(batch_list)
+        
+        batch_dict = {
+            'batch_size': batch_size,
+            'input_dict': input_dict,
+            'batch_sample_count': batch_size
+        }
+        
+        # segment_data_list = [sample['segment_data'] for sample in data_list]
+        # input_dict = {'segment_data': torch.from_numpy(np.stack(segment_data_list))}
+        # return {'batch_size': len(data_list), 'input_dict': input_dict}
         return batch_dict

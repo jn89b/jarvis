@@ -25,8 +25,7 @@ from ray.rllib.core.rl_module import RLModule
 # from ray.rllib.examples.rl_modules.classes.action_masking_rlm import (
 #     ActionMaskingTorchRLModule,
 # )
-from jarvis.utils.mask import ActionMaskingRLModule
-from jarvis.utils.trainer import RayTrainerSimpleEnv
+
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 # A simple RL module that does not perform any action masking.
@@ -362,8 +361,4 @@ if __name__ == '__main__':
     # train_multi_agent()
     path: str = "/home/justin/ray_results/pursuer_evader_2/PPO_2025-02-24_13-25-45/PPO_pursuer_evader_env_24ee9_00000_0_2025-02-24_13-25-45/checkpoint_000224"
     # train_hrl(checkpoint_path=None)
-    ray_trainer = RayTrainerSimpleEnv()
-    ray_trainer.infer_pursuer_evader(
-        checkpoint_path=path, num_episodes=1, save=True,
-    )
     ray.shutdown()
