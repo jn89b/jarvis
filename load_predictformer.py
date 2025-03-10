@@ -22,6 +22,7 @@ with open(data_config, 'r') as f:
 
 dataset = BaseDataset(
     config=data_config,
+    is_test=True,
     num_samples=1)
 
 dataloader: DataLoader = DataLoader(
@@ -66,10 +67,14 @@ model.eval()
 
 # test a batch
 # During testing, move batch tensors to the same device
+import time 
 for i, batch in enumerate(dataloader):
     batch = {key: value.to(device) if isinstance(value, torch.Tensor) else value
              for key, value in batch.items()}
+    start_time = time.time()
     output, loss = model(batch)
+    end_time = time.time()
+    print(f"Time taken for inference: {end_time - start_time}")
     if i == 5:
         break
 
@@ -153,12 +158,8 @@ for i in range(num_agents):
             x, y, z, label=f"Mode {j} for agent {i} ")
 
     ax.scatter(x_start, y_start, z_start, label="Start " + str(i))
-    ax.set_zlim([0, 50])
     ax.legend()
 
 #%% 
-
-x= 6
-
 
 plt.show()

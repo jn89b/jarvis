@@ -20,11 +20,17 @@ from jarvis.datasets.base_dataset import UAVTDataset
 data_config = "config/data_config.yaml"
 with open(data_config, 'r') as f:
     data_config = yaml.safe_load(f)
+num_workers = 6
 dataset = UAVTDataset(config=data_config, is_validation=False)
 dataloader = DataLoader(dataset, batch_size=5,
-                        shuffle=True, collate_fn=dataset.collate_fn)
+                        shuffle=True, 
+                        num_workers=num_workers,
+                        pin_memory=True,
+                        collate_fn=dataset.collate_fn)
 valdataset = UAVTDataset(config=data_config, is_validation=True)
 valdataloader = DataLoader(valdataset, batch_size=5,
+                           num_workers=num_workers,
+                           pin_memory=True,
                            shuffle=True, collate_fn=dataset.collate_fn)
 
 model_config: Dict[str, Any] = {}

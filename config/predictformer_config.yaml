@@ -8,6 +8,7 @@ devices: [ 0 ] # gpu ids
 
 # data related
 train_data_path: "pursuer_evader_data" # data path
+test_data_path: "pursuer_evader_data_test" # data path
 max_num_agents: 3 
 num_agent_feature: 7
 val_data_path: "pursuer_evader_data/val"  # list of paths to the validation data

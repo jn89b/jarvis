@@ -72,14 +72,17 @@ def generate_mask(current_index: int, total_length: int, interval: int) -> np.ar
 class BaseDataset(Dataset):
 
     def __init__(self, config=None,
+                 is_test: bool = False,
                  is_validation=False,
                  num_samples=None):
 
         self.is_validation: bool = is_validation
-
-        if is_validation:
-            self.data_path: str = config['val_data_path']
-        else:
+        if is_test:
+            print("Loading test data")
+            self.data_path = config['test_data_path']
+        elif is_validation:
+            self.data_path = config['val_data_path']
+        else:             
             self.data_path: str = config['train_data_path']
 
         self.config = config
@@ -175,6 +178,7 @@ class BaseDataset(Dataset):
         Returns:
             preprocess_data: List[Dict[str, Any]]: a list of dictionaries containing the segmented data 
         """
+        print("file path: ", self.data_path)
         if self.is_validation:
             print("Loading validation data...")
         else:

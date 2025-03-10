@@ -733,8 +733,8 @@ if __name__ == '__main__':
     #     checkpoint_path=path, num_episodes=1, save=True,
     # )
     ray_trainer.infer_multiple_times(checkpoint_path=path, 
-                                     folder_name='pursuer_evader_data',
-                                     num_sims=500,
+                                     folder_name='pursuer_evader_data_test',
+                                     num_sims=5,
                                      use_random_seed=False, 
                                      type='pursuer_evader', 
                                      save=True)

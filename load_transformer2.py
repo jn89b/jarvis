@@ -217,7 +217,7 @@ with torch.no_grad():  # Disable gradient calculation for inference
         # normalize the scores
         normalized_scores = avg_relevance_scores / avg_relevance_scores.sum()
 
-        pursuer_indices = [0, 1, 2]
+        pursuer_indices = [0, 1]
         # Extract relevance scores for pursuers
         # Shape: (number of pursuers,)
         pursuer_relevance_scores = normalized_scores[pursuer_indices]
@@ -272,9 +272,6 @@ for i, s in enumerate(samples):
     batch: Dict[str, Any] = dataloader.dataset.collate_fn([s])
     """
     """
-
-    # if i == 5:
-    #     break
 
     # # pickle the batch
     # import pickle
@@ -404,7 +401,7 @@ pursuer_2_dr_corr = compute_correlation(
 pursuer_2_psi_corr = compute_correlation(
     attribute=pursuer_2.psi, attention_scores=pursuer_2.attention_scores)
 
-pursuer_list = [pursuer_1, pursuer_2, pursuer_3]
+pursuer_list = [pursuer_1, pursuer_2]
 
 # compute the diff of x,y,z to get velocity
 time_step: float = 0.1
@@ -786,8 +783,8 @@ pursuer_1_line, = ax_3d.plot(
     [], [], [], label='Pursuer 1', color=pursuer_colors[0])
 pursuer_2_line, = ax_3d.plot(
     [], [], [], label='Pursuer 2', color=pursuer_colors[1])
-pursuer_3_line, = ax_3d.plot(
-    [], [], [], label='Pursuer 3', color=pursuer_colors[2])
+# pursuer_3_line, = ax_3d.plot(
+#     [], [], [], label='Pursuer 3', color=pursuer_colors[2])
 
 # Instead of hard-coded axis limits, compute limits based on the data.
 # This assumes ego.x, pursuer_1.x, etc. have been filled with trajectory data.
@@ -821,11 +818,11 @@ def init():
     pursuer_1_line.set_3d_properties([])
     pursuer_2_line.set_data([], [])
     pursuer_2_line.set_3d_properties([])
-    pursuer_3_line.set_data([], [])
-    pursuer_3_line.set_3d_properties([])
+    # pursuer_3_line.set_data([], [])
+    # pursuer_3_line.set_3d_properties([])
     for bar in bars:
         bar.set_height(0)  # Initialize bar heights to zero
-    return ego_line, pursuer_1_line, pursuer_2_line, pursuer_3_line, *bars
+    return ego_line, pursuer_1_line, pursuer_2_line, *bars
 
 
 def update(frame):
@@ -844,29 +841,29 @@ def update(frame):
     pursuer_2_line.set_data(pursuer_2.x[frame_span], pursuer_2.y[frame_span])
     pursuer_2_line.set_3d_properties(pursuer_2.z[frame_span])
 
-    pursuer_3_line.set_data(pursuer_3.x[frame_span], pursuer_3.y[frame_span])
-    pursuer_3_line.set_3d_properties(pursuer_3.z[frame_span])
+    # pursuer_3_line.set_data(pursuer_3.x[frame_span], pursuer_3.y[frame_span])
+    # pursuer_3_line.set_3d_properties(pursuer_3.z[frame_span])
 
     # Ensure the pursuer line colors remain our variant red palette
     pursuer_1_line.set_color(pursuer_colors[0])
     pursuer_2_line.set_color(pursuer_colors[1])
-    pursuer_3_line.set_color(pursuer_colors[2])
+    # pursuer_3_line.set_color(pursuer_colors[2])
 
     # Update bar chart heights based on attention scores
     bar_heights = [
         pursuer_1.attention_scores[frame],
         pursuer_2.attention_scores[frame],
-        pursuer_3.attention_scores[frame],
+        # pursuer_3.attention_scores[frame],
     ]
     for bar, height in zip(bars, bar_heights):
         bar.set_height(height)
 
-    return ego_line, pursuer_1_line, pursuer_2_line, pursuer_3_line, *bars
+    return ego_line, pursuer_1_line, pursuer_2_line, *bars
 
 
 # Create the animation
 ani = FuncAnimation(fig, update, frames=len(ego.x),
-                    init_func=init, blit=True, interval=40)
+                    init_func=init, blit=True, interval=5)
 
 ax_3d.legend()
 plt.tight_layout()

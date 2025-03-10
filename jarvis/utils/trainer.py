@@ -446,7 +446,7 @@ class RayTrainerSimpleEnv():
                     #         folder_dir=folder_name)
 
         else:
-            np.random.seed(0)
+            np.random.seed(2)
             for i in range(num_sims):
                 if type == 'pursuer_evader':
                     self.infer_pursuer_evader(checkpoint_path=checkpoint_path, 
