@@ -1087,6 +1087,32 @@ class LazyBaseDataset(Dataset):
         
         track_idx_to_predict = [i for i in range(len(obj_trajs_full))]
         center_objects = obj_trajs_full
+        original_pos_past: np.array = obj_trajs_past.copy()
+        # ========================== NOISE INJECTION ==========================
+
+        ## 1. Measurement Noise (Sensor Errors)
+        # Gaussian position noise (simulating GPS or LIDAR errors)
+        position_noise:float = 5.0
+        obj_trajs_past[:, :, 0:2] += np.random.normal(0, position_noise, obj_trajs_past[:, :, 0:2].shape)  # (Mean 0, Std 0.1m)
+
+        # Multiplicative noise (simulating sensor drift)
+        obj_trajs_past[:, :, 0:2] *= np.random.normal(1, 
+                                                      0.02, 
+                                                      obj_trajs_past[:, :, 0:2].shape)  # 2% variation
+
+        # Heading noise (simulating IMU/Gyro errors)
+        obj_trajs_past[:, :, HEADING_IDX] += np.random.normal(0, np.deg2rad(5), obj_trajs_past[:, :, HEADING_IDX].shape)  # 2-degree noise
+
+        ## 2. Process Noise (Motion Model Uncertainty)
+        # Random walk noise (simulating object drift over time)
+        # drift = np.cumsum(np.random.normal(0, 0.05, obj_trajs_past[:, :, 0:2].shape), axis=1)  # Accumulate small movements
+        # obj_trajs_past[:, :, 0:2] += drift
+
+        # Velocity noise (simulating varying acceleration)
+        velocity_noise = np.random.normal(0, 0.2, obj_trajs_past[:, :, VELOCITY_IDX].shape)  # Velocity in (x, y)
+        obj_trajs_past[:, :, VELOCITY_IDX] += velocity_noise
+
+        
         (obj_trajs_data, obj_trajs_mask, obj_trajs_pos, obj_trajs_last_pos, obj_trajs_future_state,
             obj_trajs_future_mask, center_gt_trajs,
             center_gt_trajs_mask, center_gt_final_valid_idx,
@@ -1098,6 +1124,7 @@ class LazyBaseDataset(Dataset):
             sdc_track_index=idx_to_track,
             timestamps=timestamp, obj_types=obj_types
         )
+                    
 
         ret: Dict[str, Any] = {
             # 'scenario_id': np.array([scene_id] * len(track_index_to_predict)),
@@ -1118,7 +1145,8 @@ class LazyBaseDataset(Dataset):
             'center_gt_trajs': center_gt_trajs,
             'center_gt_trajs_mask': center_gt_trajs_mask,
             'center_gt_final_valid_idx': center_gt_final_valid_idx,
-            'center_gt_trajs_src': obj_trajs_full[track_idx_to_predict]
+            'center_gt_trajs_src': obj_trajs_full[track_idx_to_predict],
+            'original_pos_past': original_pos_past,
         }
         
         return ret

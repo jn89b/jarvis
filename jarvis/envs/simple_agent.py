@@ -554,7 +554,7 @@ class SimpleAgent():
                 self.state_vector.psi,
                 self.state_vector.v
             ])
-
+    
         state = self.simple_model.get_info(get_as_statevector=False)
         controls = self.actions
         wind = self.wind_vector

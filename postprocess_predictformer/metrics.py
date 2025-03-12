@@ -76,7 +76,9 @@ for i in range(num_agents):
 
 
 # Compute the mse of the predicted trajectory and the ground truth trajectory
-def compute_mse(predicted_trajectory: np.array, ground_truth_trajectory: np.array, mask: np.array) -> float:
+def compute_mse(predicted_trajectory: np.array, 
+                ground_truth_trajectory: np.array, 
+                mask: np.array) -> float:
     """
     Compute the mean squared error between the predicted trajectory and the ground truth trajectory
     Args:
@@ -126,7 +128,7 @@ for j, agent in enumerate(overall_agents):
         
         # Determine number of steps after start_idx
         num_steps = current_ground_truth_trajectory.shape[1]
-        # Loop over time slices in steps of 10
+        # Loop over time slices in steps of 10s
         mse_bins = []
         for step in range(0, num_steps, slice_size):
             pred_slice = best_predicted_trajectory[:, step:step + slice_size]

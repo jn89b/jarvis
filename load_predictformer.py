@@ -15,8 +15,8 @@ import os
 
 plt.close('all')    
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#device = "cpu"
+#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = "cpu"
 data_config = "config/predictformer_config.yaml"
 with open(data_config, 'r') as f:
     data_config = yaml.safe_load(f)
@@ -41,7 +41,7 @@ model_config: str = "config/predictformer_config.yaml"
 with open(model_config, 'r') as f:
     model_config = yaml.safe_load(f)
 
-start_idx: int = data_config['past_len']
+start_idx: int = data_config['past_len'] - 1
 name = "predictformer"
 # Check if there's an existing checkpoint to resume from
 checkpoint_dir = name+"_checkpoint/"
@@ -99,22 +99,22 @@ for i, batch in enumerate(dataloader):
             new_output[key] = value
     output_history.append(new_output)
     infer_time.append(end_time - start_time)
-    # if i == 100:
-    #     break
+    if i == 5:
+        break
     # if i == 1000:
     #     break
 
 
-#Pickkle the output and batch
-import pickle as pkl
-info = {"output": output_history,
-        "infer_time": infer_time,
-        "center_gt_trajs": center_gt_trajs,
-        "center_objects_world": center_objects_world}
-folder_dir = "postprocess_predictformer"
-if not os.path.exists(folder_dir):
-    os.makedirs(folder_dir)
-pkl.dump(info, open(os.path.join(folder_dir, "predictformer_output_1.pkl"), "wb"))
+# #Pickkle the output and batch
+# import pickle as pkl
+# info = {"output": output_history,
+#         "infer_time": infer_time,
+#         "center_gt_trajs": center_gt_trajs,
+#         "center_objects_world": center_objects_world}
+# folder_dir = "postprocess_predictformer"
+# if not os.path.exists(folder_dir):
+#     os.makedirs(folder_dir)
+# pkl.dump(info, open(os.path.join(folder_dir, "predictformer_output_1.pkl"), "wb"))
 
 
 # %%
@@ -131,7 +131,7 @@ ground_truth_trajectory: np.array = batch['input_dict']['center_gt_trajs'].squee
 
 ground_truth_world = batch['input_dict']['center_objects_world'].squeeze(
 ).detach().numpy()
-
+original_pos_past = batch['input_dict']['original_pos_past'].squeeze().detach().numpy()
 mask = batch['input_dict']['center_gt_trajs_mask'].unsqueeze(-1)
 
 num_agents: int = predicted_probability.shape[0]
@@ -143,7 +143,6 @@ for i in range(num_agents):
     agent_probability: np.array = predicted_probability[i]
     for j in range(num_modes):
         highest_probabilty_index = np.argmax(agent_probability)
-        print("Highest Probability Mode", highest_probabilty_index)
         x = agent_traj[j, :, 0]
         y = agent_traj[j, :, 1]
         ax.scatter(
@@ -159,8 +158,8 @@ fig, ax = plt.subplots(1, 1)
 # transpose this to ground truth trajectory [num_agents, num_timesteps, num_attributes]
 
 for i in range(num_agents):
-    x = ground_truth_world[i, :, 0]
-    y = ground_truth_world[i, :, 1]
+    x = original_pos_past[i, :, 0]
+    y = original_pos_past[i, :, 1]
     x_start = x[start_idx]
     y_start = y[start_idx]
     ax.plot(x, y, label="Ground Truth " + str(i))
@@ -175,14 +174,13 @@ for i in range(num_agents):
     ax.scatter(x_start, y_start, label="Start " + str(i))
     ax.legend()
 
-
 # Now plot this for 3d
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
 for i in range(num_agents):
-    x = ground_truth_world[i, :, 0]
-    y = ground_truth_world[i, :, 1]
-    z = ground_truth_world[i, :, 2]
+    x = original_pos_past[i, :, 0]
+    y = original_pos_past[i, :, 1]
+    z = original_pos_past[i, :, 2]
     x_start = x[start_idx]
     y_start = y[start_idx]
     z_start = z[start_idx]
