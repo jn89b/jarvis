@@ -3,7 +3,7 @@ import unittest
 import yaml
 import torch
 import matplotlib.pyplot as plt
-from jarvis.transformers.wayformer.dataset import BaseDataset
+from jarvis.transformers.wayformer.dataset import LazyBaseDataset as BaseDataset
 from jarvis.transformers.wayformer.predictformer import PredictFormer
 from torch.utils.data import DataLoader
 
@@ -12,10 +12,11 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import Trainer
 import os
 
+
 plt.close('all')    
 
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = "cpu"
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#device = "cpu"
 data_config = "config/predictformer_config.yaml"
 with open(data_config, 'r') as f:
     data_config = yaml.safe_load(f)
@@ -23,19 +24,24 @@ with open(data_config, 'r') as f:
 dataset = BaseDataset(
     config=data_config,
     is_test=True,
-    num_samples=1)
-
+    num_samples=100)
+print("Dataset Length", len(dataset))
+# set seed number
+# seed = 42
+# torch.manual_seed(seed)
 dataloader: DataLoader = DataLoader(
     dataset,
     batch_size=1,
-    shuffle=True,
+    shuffle=False,
     collate_fn=dataset.collate_fn
 )
+
 
 model_config: str = "config/predictformer_config.yaml"
 with open(model_config, 'r') as f:
     model_config = yaml.safe_load(f)
 
+start_idx: int = data_config['past_len']
 name = "predictformer"
 # Check if there's an existing checkpoint to resume from
 checkpoint_dir = name+"_checkpoint/"
@@ -68,6 +74,11 @@ model.eval()
 # test a batch
 # During testing, move batch tensors to the same device
 import time 
+batch_history = []
+output_history = []
+center_gt_trajs = []
+center_objects_world = []
+infer_time = []
 for i, batch in enumerate(dataloader):
     batch = {key: value.to(device) if isinstance(value, torch.Tensor) else value
              for key, value in batch.items()}
@@ -75,8 +86,36 @@ for i, batch in enumerate(dataloader):
     output, loss = model(batch)
     end_time = time.time()
     print(f"Time taken for inference: {end_time - start_time}")
-    if i == 5:
-        break
+    # if i == 2:
+    #     break
+    center_gt_trajs.append(batch['input_dict']['center_gt_trajs'].detach().numpy())
+    center_objects_world.append(batch['input_dict']['center_objects_world'].detach().numpy())
+    new_output = {}
+    # convert the output to numpy
+    for key, value in output.items():
+        if isinstance(value, torch.Tensor):
+            new_output[key] = value.detach().numpy()
+        else:
+            new_output[key] = value
+    output_history.append(new_output)
+    infer_time.append(end_time - start_time)
+    # if i == 100:
+    #     break
+    # if i == 1000:
+    #     break
+
+
+#Pickkle the output and batch
+import pickle as pkl
+info = {"output": output_history,
+        "infer_time": infer_time,
+        "center_gt_trajs": center_gt_trajs,
+        "center_objects_world": center_objects_world}
+folder_dir = "postprocess_predictformer"
+if not os.path.exists(folder_dir):
+    os.makedirs(folder_dir)
+pkl.dump(info, open(os.path.join(folder_dir, "predictformer_output_1.pkl"), "wb"))
+
 
 # %%
 # Predicited probability is an [num_agents, num_modes] num_modes is the gaussian mixture model
@@ -118,7 +157,7 @@ for i in range(num_agents):
 
 fig, ax = plt.subplots(1, 1)
 # transpose this to ground truth trajectory [num_agents, num_timesteps, num_attributes]
-start_idx: int = 21
+
 for i in range(num_agents):
     x = ground_truth_world[i, :, 0]
     y = ground_truth_world[i, :, 1]
@@ -160,6 +199,5 @@ for i in range(num_agents):
     ax.scatter(x_start, y_start, z_start, label="Start " + str(i))
     ax.legend()
 
-#%% 
-
+#%%
 plt.show()

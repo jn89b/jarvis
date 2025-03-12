@@ -730,6 +730,7 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
             pursuer_id: str = self.get_pursuer_agents()[0].agent_id
             num_actions: int = self.action_spaces[pursuer_id]["action"].nvec.sum(
             )
+            
             # processing the actions
             if self.use_pronav:
                 pronav: ProNavV2 = ProNavV2()
@@ -738,18 +739,22 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
                 relative_pos = target_pos - current_pos
                 relative_vel = self.target.speed - \
                     selected_agent.state_vector.speed
+                action_cmd: np.array = self.discrete_to_continuous_action(
+                    action[str(self.good_guy_offensive_key)]['action'])
+                # get the velocity of the agent
+                vel_cmd = action_cmd[-1]
+                if vel_cmd >= 30:
+                    vel_cmd = 30
                 action_cmd = pronav.predict(
                     current_pos=current_pos,
                     relative_pos=relative_pos,
                     current_heading=selected_agent.state_vector.yaw_rad,
                     current_speed=selected_agent.state_vector.speed,
                     relative_vel=relative_vel,
-                    dont_predict=True
+                    dont_predict=True,
+                    consider_yaw=False,
+                    max_vel=vel_cmd
                 )
-                # action_cmd = self.adjust_pitch(
-                #     selected_agent, self.get_evader_agents()[
-                #         0], action_cmd,
-                #     target_instead=True, target_statevector=self.target)
 
             else:
                 action_cmd: np.array = self.discrete_to_continuous_action(

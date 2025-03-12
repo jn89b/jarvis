@@ -733,7 +733,10 @@ class BaseDataset(Dataset):
 
 
 class LazyBaseDataset(Dataset):
-    def __init__(self, config: Dict[str, Any], is_validation: bool = False, num_samples: int = None):
+    def __init__(self, config: Dict[str, Any], 
+                 is_test:bool = False,
+                 is_validation: bool = False, 
+                 num_samples: int = None):
         """
         Initializes the dataset in lazy mode.
         Instead of loading all JSON files and processing every segment up front,
@@ -742,7 +745,16 @@ class LazyBaseDataset(Dataset):
         self.is_validation = is_validation
         self.config = config
         # Determine the data directory based on whether we're validating or training.
-        self.data_path = config['val_data_path'] if is_validation else config['train_data_path']
+        #self.data_path = config['val_data_path'] if is_validation else config['train_data_path']
+        if is_test:
+            print("Loading test data")
+            self.data_path = config['test_data_path']
+        elif is_validation:
+            self.data_path = config['val_data_path']
+        else:             
+            self.data_path: str = config['train_data_path']
+
+        
         # List all JSON files.
         self.json_files: List[str] = glob.glob(os.path.join(self.data_path, "*.json"))
         if num_samples is not None:
@@ -1140,3 +1152,49 @@ class LazyBaseDataset(Dataset):
         # input_dict = {'segment_data': torch.from_numpy(np.stack(segment_data_list))}
         # return {'batch_size': len(data_list), 'input_dict': input_dict}
         return batch_dict
+    
+    
+    def infer_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Process the data in internal format and return the processed data.
+        The data must be in the same format as how the JSON was configured
+            "time_step": 0.0,
+            "ego": [
+                -7.613882410665941,
+                -5.466825917862023,
+                60.80907589965785,
+                18.203423362399416,
+                -18.712367314401995,
+                122.46359980956773,
+                15.851284408700968
+            ],
+            "controls": [
+                0.0,
+                -18.712367314401995,
+                122.46359980956773,
+                15.851284408700968
+            ],
+            "vehicles": [
+                [
+                    -368.92067515595505,
+                    48.05627804498421,
+                    79.029477950206,
+                    -27.425694614590324,
+                    -9.060225535385854,
+                    0.3235721558229639,
+                    30.70281163597849
+                ],
+                [
+                    -242.1243925775696,
+                    -227.65438057680035,
+                    53.66965889643544,
+                    -19.838792625897646,
+                    4.513907270243771,
+                    26.216071025024867,
+                    25.34648769611909
+                ]
+            ]
+        }
+        """
+        
+        return self.process(data)

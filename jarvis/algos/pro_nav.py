@@ -59,6 +59,8 @@ class ProNavV2():
                 current_heading: float,
                 relative_vel: float,
                 dont_predict: bool = False,
+                max_vel:float = 35.0,
+                consider_yaw: bool = True,
                 dt=0.2) -> np.array:
         """
         Runs pure pursuit but predicts the next state of the target
@@ -94,10 +96,14 @@ class ProNavV2():
                                relative_evader_pos[0])
 
         yaw_error = self.angle_diff(current_heading, los_error)
-        if yaw_error > np.deg2rad(45):
-            velocity_cmd = 15.0
+        
+        if consider_yaw:
+            if yaw_error > np.deg2rad(45):
+                velocity_cmd = 15.0
+            else:
+                velocity_cmd = max_vel
         else:
-            velocity_cmd = 35.0
+            velocity_cmd = max_vel
 
         return np.array([-pitch, yaw_cmd, velocity_cmd], dtype=np.float32)
 

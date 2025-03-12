@@ -106,6 +106,80 @@ def load_state(checkpoint_path: str, num_episodes: int = 1):
 
     algo = Algorithm.from_checkpoint(checkpoint_path, env="pursuer_evader_env")
     ray.shutdown()
+    
+# Function to compute saliency for a given logit
+def compute_saliency(selected_logit, torch_obs_batch, policy):
+    # Zero gradients in the policy and observation tensors
+    policy.zero_grad()
+    for tensor in torch_obs_batch.values():
+        if tensor.grad is not None:
+            tensor.grad.zero_()
+    # Backpropagate from the selected logit.
+    # Use retain_graph=True if you plan to perform multiple backward passes on the same graph.
+    selected_logit.backward(retain_graph=True)
+    # Collect gradients for each feature (here, we take the absolute value)
+    saliency = {}
+    for key, tensor in torch_obs_batch.items():
+        # Assuming tensor shape [1, feature_dim]
+        grad = tensor.grad.data[0].detach().numpy()  # shape: [feature_dim]
+        saliency[key] = np.abs(grad)
+    return saliency
+
+
+def compute_saliency_map(env: PursuerEvaderEnv,
+                         policy: SimpleEnvMaskModule,
+                         observations: Dict[str, np.array]) -> None:
+    """
+    
+    """
+    import copy
+    #action_logits = action_logits.detach().numpy().squeeze()
+    torch_obs = {k: torch.tensor(np.array([v]), dtype=torch.float32, requires_grad=True)
+                 for k, v in observations.items()}
+
+    # Forward pass: obtain action logits
+    action_logits = policy.forward_inference({"obs": copy.deepcopy(torch_obs)})["action_dist_inputs"]  # shape: [1, total_actions]
+    
+    if not torch_obs:
+        raise ValueError("torch_obs is empty")
+    
+    # split the action logits into the roll, pitch, and yaw
+    n_roll, n_alt, n_vel = env.action_spaces["0"]["action"].nvec
+    
+    roll_logits = action_logits[:, :n_roll]
+    pitch_logits = action_logits[:, n_roll:n_roll+n_alt]
+    vel_logits = action_logits[:, n_roll+n_alt:]
+    
+    #chosen_action_idx = torch.argmax(action_logits, dim=1).item()
+    #selected_logit = action_logits[0, chosen_action_idx]
+    
+    best_roll = torch.argmax(roll_logits, dim=1).item()
+    best_pitch = torch.argmax(pitch_logits, dim=1).item()
+    best_vel = torch.argmax(vel_logits, dim=1).item()
+    
+    # get the logit of the best action
+    roll_logit = roll_logits[0, best_roll]
+    pitch_logit = pitch_logits[0, best_pitch]
+    vel_logit = vel_logits[0, best_vel]
+    
+    # Backward pass: compute the gradient of the action logit with respect to the observation
+    # to get the gradidents with respect to the observation
+    # check if torch_obs is empty
+
+
+    saliency_roll = compute_saliency(roll_logit, torch_obs, policy)
+    saliency_pitch = compute_saliency(pitch_logit, torch_obs, policy)
+    saliency_vel = compute_saliency(vel_logit, torch_obs, policy)
+
+    # action_logits = action_logits.squeeze()
+    # unwrapped_action: Dict[str, np.array] = env.unwrap_action_mask(
+    #     action_logits)
+
+    # discrete_actions = []
+    # for k, v in unwrapped_action.items():
+    #     best_action = torch.argmax(v)
+    #     discrete_actions.append(best_action)
+        
 
 
 def infer(checkpoint_path: str, num_episodes: int = 1,
@@ -155,6 +229,7 @@ def infer(checkpoint_path: str, num_episodes: int = 1,
                 np.array([v])) for k, v in obs.items()}
             action_logits = evader_policy.forward_inference({"obs": torch_obs_batch})[
                 "action_dist_inputs"]
+            
         elif key_value == '2':
             obs = observation['2']
             torch_obs_batch = {k: torch.from_numpy(
@@ -549,7 +624,9 @@ def load_good_guy(checkpoint_path: str, index_save: int = 0,
     print("max steps", env.max_steps)
     reward_list = []
     goal_history: List[StateVector] = []
+    high_level_action_history: List[int] = []
     while not terminated['__all__']:
+        current_action_history: List[int] = []
         # for i in range(n_steps):
         # compute the next action from a batch of observations
         # torch_obs_batch = torch.from_numpy(np.array([obs]))
@@ -605,6 +682,9 @@ def load_good_guy(checkpoint_path: str, index_save: int = 0,
         observation, reward, terminated, truncated, info = env.step(
             action_dict=action_dict)
 
+        if key_value == 'good_guy_hrl':
+            current_action_history.append(discrete_actions)
+
         # check if done
         if (terminated['__all__'] == True):
             print("reward: ", reward)
@@ -612,6 +692,8 @@ def load_good_guy(checkpoint_path: str, index_save: int = 0,
             print("target: ", target.x, target.y, target.z)
             goal_history.append(target)
             break
+        
+
 
     datas: List[DataHandler] = []
     agents = env.get_all_agents
@@ -643,6 +725,11 @@ def load_good_guy(checkpoint_path: str, index_save: int = 0,
     # tight axis
     fig.tight_layout()
     ax.legend()
+    
+    fig, ax = plt.subplots()
+    ax.plot(current_action_history, label='High Level Action')
+    ax.legend()
+    
 
     # save the datas and the rewards
     # pickle_info = {
@@ -693,8 +780,8 @@ def run_multiple_sims(checkpoint_path: str, num_sims: int = 10,
                         folder_dir=folder_name)
 
     else:
-        np.random.seed(0)
-        folder_dir = 'rl_pickle'
+        np.random.seed(5)
+        folder_dir = 'pursuer_evader_data_test'
         for i in range(num_sims):
             if type == 'pursuer_evader':
                 infer(checkpoint_path=checkpoint_path, num_episodes=1,
@@ -718,16 +805,17 @@ if __name__ == '__main__':
     # path: str = "/home/justin/ray_results/PPO_2025-02-19_11-13-19/PPO_pursuer_evader_env_d0af9_00000_0_2025-02-19_11-13-19/checkpoint_000071"
     # path: str = "/home/justin/ray_results/PPO_2025-02-19_22-19-31/PPO_pursuer_evader_env_e2123_00000_0_2025-02-19_22-19-31/checkpoint_000063"
     # path: str = "/home/justin/ray_results/PPO_2025-02-24_03-59-11/PPO_pursuer_evader_env_ff294_00000_0_2025-02-24_03-59-11/checkpoint_000006"
-    # path: str = "/home/justin/ray_results/PPO_2025-02-24_04-34-50/PPO_pursuer_evader_env_f9c3d_00000_0_2025-02-24_04-34-50/checkpoint_000002"
-    path:str = "/root/ray_results/pursuer_evader_2/PPO_2025-02-24_13-25-45/PPO_pursuer_evader_env_24ee9_00000_0_2025-02-24_13-25-45/checkpoint_000224"
+    path: str = "/home/justin/ray_results/PPO_2025-03-11_01-00-20/PPO_hrl_env_1d8d6_00000_0_2025-03-11_01-00-20/checkpoint_000131"
+    # path:str = "/home/justin/ray_results/PPO_2025-03-10_19-56-29/PPO_hrl_env_ab204_00000_0_2025-03-10_19-56-30/checkpoint_000018"
+    path:str = "/home/justin/ray_results/pursuer_evader_2/PPO_2025-02-24_13-25-45/PPO_pursuer_evader_env_24ee9_00000_0_2025-02-24_13-25-45/checkpoint_000224"
     # ---- Pursuer Evader----
 
     # ---- HRL ----
     # path: str = "/home/justin/ray_results/PPO_2025-02-28_02-55-49/PPO_hrl_env_cecd1_00000_0_2025-02-28_02-55-50/checkpoint_000000"
     # plt.show()
 
-    # run_multiple_sims(checkpoint_path=path, num_sims=5, type='pursuer_evader',
-    #                   use_random_seed=False)  
+    # run_multiple_sims(checkpoint_path=path, num_sims=10, type='pursuer_evader',
+    #                   use_random_seed=False)
     ray_trainer = RayTrainerSimpleEnv()
     # ray_trainer.infer_pursuer_evader(
     #     checkpoint_path=path, num_episodes=1, save=True,
@@ -737,5 +825,5 @@ if __name__ == '__main__':
                                      num_sims=5,
                                      use_random_seed=False, 
                                      type='pursuer_evader', 
-                                     save=True)
+                                     save=False)
     
