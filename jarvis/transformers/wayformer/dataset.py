@@ -24,38 +24,37 @@ HEADING_IDX = 5
 VELOCITY_IDX = 6
 
 
-def rotate_points_along_z(points, angle):
+def rotate_points_along_z(points, angles):
     """
-    Rotate points around the Z-axis using the given angle.
-
+    Rotate points along the Z-axis using a 2D rotation matrix for each center object and timestep.
+    
     Args:
-        points: ndarray of shape (B, N, 3 + C) - B batches, N points per batch, 3 coordinates (x, y, z) + C extra channels
-        angle: ndarray of shape (B,) - angles for each batch in radians
-
+        points (np.ndarray): Shape (B, N, T, 2), where
+            B = number of center objects,
+            N = number of objects,
+            T = number of timesteps.
+        angles (np.ndarray): Shape (B, T) containing rotation angles in radians 
+                             (e.g. -center_heading per center per timestep).
+                             
     Returns:
-        Rotated points as an ndarray.
+        np.ndarray: Rotated points with shape (B, N, T, 2).
     """
+    B, N, T, _ = points.shape
+    # Build a rotation matrix for each center and timestep:
+    # R has shape (B, T, 2, 2)
+    cos_vals = np.cos(angles)  # shape: (B, T)
+    sin_vals = np.sin(angles)  # shape: (B, T)
+    R = np.empty((B, T, 2, 2))
+    R[:, :, 0, 0] = cos_vals
+    R[:, :, 0, 1] = -sin_vals
+    R[:, :, 1, 0] = sin_vals
+    R[:, :, 1, 1] = cos_vals
 
-    # Checking if the input is 2D or 3D points
-    is_2d = points.shape[-1] == 2
-
-    # Cosine and sine of the angles
-    cosa = np.cos(angle)
-    sina = np.sin(angle)
-
-    # if is_2d:
-    # Rotation matrix for 2D
-    rot_matrix = np.stack((
-        cosa, sina,
-        -sina, cosa
-    ), axis=1).reshape(-1, 2, 2)
-
-    # Apply rotation
-    # points_rot = np.matmul(points, rot_matrix)
-    points_rot = np.einsum('bnj,nji->bni', points, rot_matrix)
-
-    return points_rot
-
+    # Use np.einsum to perform batch multiplication:
+    # For each center (B) and each timestep (T), rotate each object's 2D point.
+    rotated_points = np.einsum('b t i j, b n t j -> b n t i', R, points)
+    return rotated_points
+    
 
 def generate_mask(current_index: int, total_length: int, interval: int) -> np.array:
     mask = []
@@ -912,6 +911,22 @@ class LazyBaseDataset(Dataset):
             obj_trajs[None, :, :, :], (num_center_objects, 1, 1, 1))
         obj_trajs[:, :, :, 0:center_xyz.shape[1]
                   ] -= center_xyz[:, None, None, :]
+        
+        # For the x-y positions (first 2 coordinates), apply rotation using per-timestep heading.
+        # points_xy shape: (B, num_objects, T, 2)
+        points_xy = obj_trajs[:, :, :, 0:2]
+        # Rotate points using -center_heading (to align the center with zero heading).
+        rotated_xy = rotate_points_along_z(points_xy, -center_heading)
+        obj_trajs[:, :, :, 0:2] = rotated_xy
+        
+        # obj_trajs[:, :, :, 0:2] = rotate_points_along_z(
+        #     points=obj_trajs[:, :, :, 0:2].reshape(num_center_objects, -1, 2),
+        #     angle=-center_heading
+        # ).reshape(num_center_objects, num_objects, num_timestamps, 2)
+        
+        # # Assuming `heading_index` is the index of the heading feature.
+        obj_trajs[:, :, :, heading_index] -= center_heading[:, None, :]
+        
         return obj_trajs
 
     def get_agent_data(
@@ -1094,14 +1109,14 @@ class LazyBaseDataset(Dataset):
         # Gaussian position noise (simulating GPS or LIDAR errors)
         position_noise:float = 5.0
         obj_trajs_past[:, :, 0:2] += np.random.normal(0, position_noise, obj_trajs_past[:, :, 0:2].shape)  # (Mean 0, Std 0.1m)
-
+    
         # Multiplicative noise (simulating sensor drift)
         obj_trajs_past[:, :, 0:2] *= np.random.normal(1, 
                                                       0.02, 
                                                       obj_trajs_past[:, :, 0:2].shape)  # 2% variation
 
         # Heading noise (simulating IMU/Gyro errors)
-        obj_trajs_past[:, :, HEADING_IDX] += np.random.normal(0, np.deg2rad(5), obj_trajs_past[:, :, HEADING_IDX].shape)  # 2-degree noise
+        #obj_trajs_past[:, :, HEADING_IDX] += np.random.normal(0, np.deg2rad(1), obj_trajs_past[:, :, HEADING_IDX].shape)  # 2-degree noise
 
         ## 2. Process Noise (Motion Model Uncertainty)
         # Random walk noise (simulating object drift over time)

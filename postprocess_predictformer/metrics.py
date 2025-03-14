@@ -14,7 +14,7 @@ Script to animate the trajectories of all the vehicles with the predictions
 """
 
 #info = pkl.load(open(os.path.join("postprocess_predictformer", "predictformer_output.pkl"), "rb"))
-info = pkl.load(open("predictformer_output.pkl", "rb"))
+info = pkl.load(open("noisy_predictformer_output_1.pkl", "rb"))
 
 center_gt_trajs:List[np.array] = info["center_gt_trajs"]
 center_objects_world:List[np.array] = info["center_objects_world"]

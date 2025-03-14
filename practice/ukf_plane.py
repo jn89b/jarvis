@@ -120,7 +120,7 @@ ukf = UKF(dim_x=n_states, dim_z=n_measurements, fx=fx,
           hx=hx, dt=dt, points=points)
 
 #position variarance
-pos_var:float = 0.1
+pos_var:float = 5.0
 psi_var:float = np.deg2rad(3)
 vel_var:float = 0.1
 ukf.R = np.diag([pos_var, pos_var, pos_var, psi_var, vel_var])

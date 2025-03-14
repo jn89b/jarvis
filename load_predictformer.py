@@ -3,6 +3,7 @@ import unittest
 import yaml
 import torch
 import matplotlib.pyplot as plt
+import time 
 from jarvis.transformers.wayformer.dataset import LazyBaseDataset as BaseDataset
 from jarvis.transformers.wayformer.predictformer import PredictFormer
 from torch.utils.data import DataLoader
@@ -41,7 +42,7 @@ model_config: str = "config/predictformer_config.yaml"
 with open(model_config, 'r') as f:
     model_config = yaml.safe_load(f)
 
-start_idx: int = data_config['past_len'] - 1
+start_idx: int = data_config['past_len']
 name = "predictformer"
 # Check if there's an existing checkpoint to resume from
 checkpoint_dir = name+"_checkpoint/"
@@ -73,7 +74,7 @@ model.eval()
 
 # test a batch
 # During testing, move batch tensors to the same device
-import time 
+
 batch_history = []
 output_history = []
 center_gt_trajs = []
@@ -99,22 +100,22 @@ for i, batch in enumerate(dataloader):
             new_output[key] = value
     output_history.append(new_output)
     infer_time.append(end_time - start_time)
-    if i == 5:
+    if i == 200:
         break
     # if i == 1000:
     #     break
 
 
 # #Pickkle the output and batch
-# import pickle as pkl
-# info = {"output": output_history,
-#         "infer_time": infer_time,
-#         "center_gt_trajs": center_gt_trajs,
-#         "center_objects_world": center_objects_world}
-# folder_dir = "postprocess_predictformer"
-# if not os.path.exists(folder_dir):
-#     os.makedirs(folder_dir)
-# pkl.dump(info, open(os.path.join(folder_dir, "predictformer_output_1.pkl"), "wb"))
+import pickle as pkl
+info = {"output": output_history,
+        "infer_time": infer_time,
+        "center_gt_trajs": center_gt_trajs,
+        "center_objects_world": center_objects_world}
+folder_dir = "postprocess_predictformer"
+if not os.path.exists(folder_dir):
+    os.makedirs(folder_dir)
+pkl.dump(info, open(os.path.join(folder_dir, "noisy_predictformer_output_1.pkl"), "wb"))
 
 
 # %%
@@ -131,7 +132,7 @@ ground_truth_trajectory: np.array = batch['input_dict']['center_gt_trajs'].squee
 
 ground_truth_world = batch['input_dict']['center_objects_world'].squeeze(
 ).detach().numpy()
-original_pos_past = batch['input_dict']['original_pos_past'].squeeze().detach().numpy()
+original_pos_past = batch['input_dict']['center_objects_world'].squeeze().detach().numpy()
 mask = batch['input_dict']['center_gt_trajs_mask'].unsqueeze(-1)
 
 num_agents: int = predicted_probability.shape[0]
