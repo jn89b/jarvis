@@ -1116,7 +1116,7 @@ class LazyBaseDataset(Dataset):
                                                       obj_trajs_past[:, :, 0:2].shape)  # 2% variation
 
         # Heading noise (simulating IMU/Gyro errors)
-        #obj_trajs_past[:, :, HEADING_IDX] += np.random.normal(0, np.deg2rad(1), obj_trajs_past[:, :, HEADING_IDX].shape)  # 2-degree noise
+        # obj_trajs_past[:, :, HEADING_IDX] += np.random.normal(0, np.deg2rad(1), obj_trajs_past[:, :, HEADING_IDX].shape)  # 2-degree noise
 
         ## 2. Process Noise (Motion Model Uncertainty)
         # Random walk noise (simulating object drift over time)
