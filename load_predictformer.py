@@ -100,11 +100,8 @@ for i, batch in enumerate(dataloader):
             new_output[key] = value
     output_history.append(new_output)
     infer_time.append(end_time - start_time)
-    if i == 200:
+    if i == 50:
         break
-    # if i == 1000:
-    #     break
-
 
 # #Pickkle the output and batch
 import pickle as pkl
