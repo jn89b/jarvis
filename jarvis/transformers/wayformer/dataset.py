@@ -17,7 +17,7 @@ import json
 # from scenarionet.common_utils import read_scenario, read_dataset_summary
 from torch.utils.data import Dataset
 from tqdm import tqdm
-
+import matplotlib.pyplot as plt
 # TODO: Reclass as Enum
 VEHICLE = 1
 HEADING_IDX = 5
@@ -914,10 +914,12 @@ class LazyBaseDataset(Dataset):
         
         # For the x-y positions (first 2 coordinates), apply rotation using per-timestep heading.
         # points_xy shape: (B, num_objects, T, 2)
-        points_xy = obj_trajs[:, :, :, 0:2]
+        # points_xy = obj_trajs[:, :, :, 0:2]
         # Rotate points using -center_heading (to align the center with zero heading).
-        rotated_xy = rotate_points_along_z(points_xy, -center_heading)
-        obj_trajs[:, :, :, 0:2] = rotated_xy
+        # rotated_xy = rotate_points_along_z(points_xy, -center_heading)
+        # obj_trajs[:, :, :, 0:2] = rotated_xy
+        # plot the trajectories
+
         
         # obj_trajs[:, :, :, 0:2] = rotate_points_along_z(
         #     points=obj_trajs[:, :, :, 0:2].reshape(num_center_objects, -1, 2),
@@ -944,7 +946,7 @@ class LazyBaseDataset(Dataset):
         center_objects = obj_trajs_past
         num_center_objects = center_objects.shape[0]
         num_objects, num_timestamps, num_attributes = obj_trajs_past.shape
-
+        
         obj_trajs = self.transform_trajs_to_center_coords(
             obj_trajs=obj_trajs_past,
             center_xyz=center_objects[:, 0, 0:3],
@@ -996,6 +998,7 @@ class LazyBaseDataset(Dataset):
         obj_trajs_data[obj_trajs_mask == 0] = 0
 
         obj_trajs_future = obj_trajs_future.astype(np.float32)
+        copy_obj = obj_trajs_future.copy()
         center_objects = obj_trajs_future
         obj_trajs_future = self.transform_trajs_to_center_coords(
             obj_trajs=obj_trajs_future,
@@ -1003,6 +1006,14 @@ class LazyBaseDataset(Dataset):
             center_heading=center_objects[:, :, HEADING_IDX],
             heading_index=HEADING_IDX, rot_vel_index=[7, 8]
         )
+        obj_trajs_future_test = obj_trajs_future[0,:,:,:]
+        # fig, ax = plt.subplots()
+        # # plot the 2d trajectories
+        # for i in range(obj_trajs_future.shape[0]):
+        #     ax.plot(copy_obj[i,:,0], copy_obj[i,:,1], label=f"Agent {i}")
+        #     ax.plot(obj_trajs_future[i,i,:,0], obj_trajs_future_test[i,i,:,1], label=f"Agent {i} future")
+        # ax.legend()
+        # plt.show()
 
         # obj_trajs_future_state = obj_trajs_future[:, :, :, [
         #     0, 1, 7, 8]]  # (x, y, vx, vy)
@@ -1107,6 +1118,7 @@ class LazyBaseDataset(Dataset):
 
         ## 1. Measurement Noise (Sensor Errors)
         # Gaussian position noise (simulating GPS or LIDAR errors)
+        # position_noise:float = 5.0
         position_noise:float = 5.0
         obj_trajs_past[:, :, 0:2] += np.random.normal(0, position_noise, obj_trajs_past[:, :, 0:2].shape)  # (Mean 0, Std 0.1m)
     
@@ -1241,3 +1253,186 @@ class LazyBaseDataset(Dataset):
         """
         
         return self.process(data)
+
+
+    def transform_with_current_heading(self, 
+                                    pred_traj: np.array, 
+                                    current_heading: float, 
+                                    current_position: np.array, 
+                                    heading_index: int):
+        """
+        Transforms a predicted trajectory from the local frame back to the global frame 
+        using the current ground truth heading and position.
+
+        Args:
+            pred_traj (np.ndarray): Predicted trajectory of shape [num_modes, T, num_attrs].
+                                    It is assumed that the first two attributes (0:2) are x,y offsets,
+                                    and the attribute at heading_index is the heading (in radians).
+            current_heading (float): The current ground truth heading (in radians).
+            current_position (np.ndarray): The current ground truth position (e.g. [x, y]).
+            heading_index (int): The index of the heading feature in pred_traj.
+            
+        Returns:
+            np.ndarray: The transformed (global) trajectory with the same shape as pred_traj.
+        """
+        # Compute cosine and sine of the current heading.
+        c = np.cos(current_heading)
+        s = np.sin(current_heading)
+        
+        # Option 1: Standard rotation matrix for +current_heading.
+        R1 = np.array([[c, -s],
+                    [s,  c]])
+        # Option 2: Alternative rotation matrix to correct flipping.
+        R2 = np.array([[c,  s],
+                    [-s, c]])
+        
+        # Choose the matrix that gives correct orientation.
+        # If your trajectories appear flipped, try using R2.
+        R = R1
+
+        # Extract local x,y coordinates (assumed to be in the first two columns).
+        # pred_traj shape: [num_modes, T, num_attrs]
+        local_xy = pred_traj[:, :, 0:2]
+        
+        # Rotate the local x,y coordinates by +current_heading.
+        # Using np.einsum to multiply R with each [x, y] pair.
+        rotated_xy = np.einsum('ij,mti->mtj', R, local_xy)
+        
+        # Translate by adding the current global position.
+        global_xy = rotated_xy + current_position  # current_position should be shape [2]
+        
+        # Create a copy to avoid modifying the input.
+        global_traj = pred_traj.copy()
+        global_traj[:, :, 0:2] = global_xy
+        
+        # Adjust the heading feature: add the current heading back.
+        global_traj[:, :, heading_index] += current_heading
+        
+        # Wrap the heading into the interval [-pi, pi]
+        #global_traj[:, :, heading_index] = (global_traj[:, :, heading_index] + np.pi) % (2 * np.pi) - np.pi
+        
+        return global_traj
+
+    
+    def inverse_transform_trajs_from_center_coords(
+        self, obj_trajs_center, center_xyz, center_heading, heading_index, rot_vel_index=None):
+        """
+        Inverse transforms trajectories from center (ego-centric) coordinates back to global coordinates.
+        This reverses the transformation applied in transform_trajs_to_center_coords.
+
+        Args:
+            obj_trajs_center (np.ndarray): Trajectories in center coordinates with shape 
+                (B, num_objects, T, num_attrs), where B = number of centers (agents).
+            center_xyz (np.ndarray): Global center positions with shape (B, D), where D is 2 or 3.
+            center_heading (np.ndarray): Center heading angles.
+                Depending on your transform, this can be:
+                - shape (B,) if the same heading is applied for all timesteps, or
+                - shape (B, T) if per-timestep headings were used.
+            heading_index (int): The index of the heading feature in obj_trajs_center.
+            rot_vel_index (list, optional): List of indices for vector attributes (e.g. velocity) to rotate.
+
+        Returns:
+            np.ndarray: Global trajectories with shape (B, num_objects, T, num_attrs).
+        """
+        B, num_objects, T, num_attrs = obj_trajs_center.shape
+        D = center_xyz.shape[1]  # Typically 2 (for x,y)
+
+        # --- Inverse Rotation for x,y positions ---
+        # Extract the x,y coordinates.
+        points_xy = obj_trajs_center[:, :, :, 0:2]  # shape: (B, num_objects, T, 2)
+        # If center_heading is given per agent (shape (B,)), expand it to per-timestep:
+        if center_heading.ndim == 1:
+            # Create a (B, T) array where each row is the same heading.
+            center_heading = np.tile(center_heading[:, None], (1, T))
+        
+        # Build inverse rotation matrices for each center and timestep.
+        # Since the original transform rotated by -center_heading, we now rotate by +center_heading.
+        cos_vals = np.cos(center_heading)  # shape: (B, T)
+        sin_vals = np.sin(center_heading)  # shape: (B, T)
+        R_inv = np.empty((B, T, 2, 2))
+        R_inv[:, :, 0, 0] = cos_vals
+        R_inv[:, :, 0, 1] = -sin_vals
+        R_inv[:, :, 1, 0] = sin_vals
+        R_inv[:, :, 1, 1] = cos_vals
+
+        # Apply the inverse rotation using np.einsum:
+        rotated_xy = np.einsum('b t i j, b n t j -> b n t i', R_inv, points_xy)
+
+        # --- Inverse Translation for x,y positions ---
+        # Add back the center position.
+        # Expand center_xyz from (B, D) to (B, 1, 1, D) for broadcasting.
+        global_xy = rotated_xy #+ center_xyz[:, None, None, 0:2]
+
+        # Prepare output by copying the input trajectories.
+        global_trajs = obj_trajs_center.copy()
+        global_trajs[:, :, :, 0:2] = global_xy
+
+        # --- Inverse Heading Adjustment ---
+        # The original transform subtracted center_heading from the heading feature.
+        # Here, we add it back.
+        # If center_heading is (B, T), we need to match dimensions:
+        global_trajs[:, :, :, heading_index] += center_heading[:, None, :]
+
+        # Wrap the heading to the interval [-pi, pi]
+        # global_trajs[:, :, :, heading_index] = (global_trajs[:, :, :, heading_index] + np.pi) % (2 * np.pi) - np.pi
+        # --- Optional: Inverse Rotation for Other Vector Attributes ---
+        if rot_vel_index is not None:
+            vel = global_trajs[:, :, :, rot_vel_index]  # shape: (B, num_objects, T, len(rot_vel_index))
+            rotated_vel = np.einsum('b t i j, b n t j -> b n t i', R_inv, vel)
+            global_trajs[:, :, :, rot_vel_index] = rotated_vel
+
+        return global_trajs
+    
+
+    def rotate_predicted_trajs_by_heading(self, pred_trajs, heading_index, x_y_indices=(0,1)):
+        """
+        Rotates the (x,y) coordinates of predicted trajectories using their own predicted heading.
+        
+        This function is similar in structure to your inverse_transform_trajs_from_center_coords,
+        but here the rotation angle is taken from the predicted heading in the trajectories themselves.
+        
+        Args:
+            pred_trajs (np.ndarray): Predicted trajectories of shape (B, M, T, F)
+                where B = number of agents,
+                    M = number of modes,
+                    T = number of timesteps,
+                    F = number of features.
+            heading_index (int): Index of the predicted heading within the feature dimension.
+            x_y_indices (tuple): Tuple of indices for the x and y coordinates (default (0,1)).
+            
+        Returns:
+            np.ndarray: Predicted trajectories with rotated (x,y) coordinates.
+        """
+        B, M, T, F = pred_trajs.shape
+
+        # --- Extract x,y and predicted heading ---
+        # x,y coordinates shape: (B, M, T, 2)
+        points_xy = pred_trajs[..., x_y_indices[0]:x_y_indices[1]+1]
+        # Predicted heading for each agent, mode, and timestep: shape (B, M, T)
+        pred_heading = pred_trajs[..., heading_index]
+        
+        # --- Build rotation matrices for each agent, mode, and timestep ---
+        # Standard rotation matrix for an angle h (counterclockwise):
+        # R(h) = [ cos(h)  -sin(h) ]
+        #        [ sin(h)   cos(h) ]
+        cos_vals = np.cos(pred_heading)  # shape: (B, M, T)
+        sin_vals = np.sin(pred_heading)  # shape: (B, M, T)
+        
+        # Build a rotation matrix R for each (B, M, T)
+        R = np.empty((B, M, T, 2, 2), dtype=pred_trajs.dtype)
+        R[..., 0, 0] = cos_vals
+        R[..., 0, 1] = -sin_vals
+        R[..., 1, 0] = sin_vals
+        R[..., 1, 1] = cos_vals
+
+        # --- Apply the rotation ---
+        # Use np.einsum to multiply the rotation matrix with the (x,y) vectors:
+        # The result is rotated_xy with shape (B, M, T, 2).
+        rotated_xy = np.einsum('bmtij,bmtj->bmt i', R, points_xy)
+        
+        # --- Create the output ---
+        # Make a copy of the predicted trajectories and replace the (x,y) coordinates.
+        rotated_trajs = pred_trajs.copy()
+        rotated_trajs[..., x_y_indices[0]:x_y_indices[1]+1] = rotated_xy
+
+        return rotated_trajs
