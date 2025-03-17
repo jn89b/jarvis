@@ -104,7 +104,7 @@ first_output = output_history[0]
 #  - 'center_gt_trajs' under batch['input_dict'] is the ground truth trajectory
 batch_ground_truth = batch['input_dict']['center_gt_trajs'].squeeze().detach().cpu().numpy()
 predicted = first_output['predicted_trajectory']  # shape: [num_agents, num_timesteps, dims]
-
+probs = first_output['probs']  # shape: [num_agents, num_modes]
 num_agents = predicted.shape[0]
 
 for agent in range(num_agents):
@@ -115,7 +115,9 @@ for agent in range(num_agents):
     num_modes = first_output['probs'].shape[1]
     for mode in range(num_modes):
         pred_traj = predicted[agent, mode, :, 0:3]
-        ax.plot(pred_traj[:, 0], pred_traj[:, 1], 'o--', label=f"Predicted Mode {mode}")
+        prob = probs[agent, mode]
+        ax.plot(pred_traj[:, 0], pred_traj[:, 1], label=f"Predicted Mode {mode} (Prob: {prob:.2f})")
+        # ax.plot(pred_traj[:, 0], pred_traj[:, 1], 'o--', label=f"Predicted Mode {mode}")
     ax.set_title(f"Agent {agent} Trajectory")
     ax.legend()
     ax.set_xlabel("X")

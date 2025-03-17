@@ -91,27 +91,25 @@ class MultiAgentLSTMTrajectoryPredictor(LightningModule):
 
     def self_prediction_loss(self, pred_params, mode_probs, target):
         """
-        Computes a self-prediction loss.
-        For each mode, we compute the L2 error between its predicted trajectory and the ground truth.
-        Then, each mode's error is weighted by its predicted probability.
-        The loss is the sum of the weighted errors, averaged over agents and the batch.
+        Computes a self-prediction loss with even weighting over modes.
+        For each mode, we compute the L2 error between its predicted trajectory and the ground truth,
+        then average these errors across all modes, agents, and the batch.
         
         Args:
             pred_params (torch.Tensor): shape (batch, num_agents, num_modes, future_len, output_dim)
-            mode_probs (torch.Tensor): shape (batch, num_agents, num_modes)
+            mode_probs (torch.Tensor): shape (batch, num_agents, num_modes) -- not used in this version
             target (torch.Tensor): ground truth, shape (batch, num_agents, future_len, output_dim)
         Returns:
             torch.Tensor: scalar loss.
         """
-        # Expand target: (batch, num_agents, 1, future_len, output_dim)
+        # Expand target to add a mode dimension: (batch, num_agents, 1, future_len, output_dim)
         target_exp = target.unsqueeze(2)
-        # Compute L2 error for each mode over timesteps and dimensions.
+        # Compute squared errors for each mode over timesteps and output dimensions.
         errors = (pred_params - target_exp) ** 2  # shape: (batch, num_agents, num_modes, future_len, output_dim)
+        # Sum over output_dim and average over future timesteps.
         errors = errors.sum(dim=-1).mean(dim=-1)   # shape: (batch, num_agents, num_modes)
-        # Weight each mode's error by its corresponding predicted probability.
-        weighted_errors = mode_probs * errors
-        # Sum over modes and average over agents and batch.
-        loss = weighted_errors.sum(dim=-1).mean()
+        # Average error over modes, agents, and batch.
+        loss = errors.mean()
         return loss
 
     def training_step(self, batch, batch_idx):
