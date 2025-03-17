@@ -22,7 +22,7 @@ config_path = "config/lstm_config.yaml"  # adjust if needed
 with open(config_path, 'r') as f:
     config = yaml.safe_load(f)
 
-batch_size = 6
+batch_size = 12
 num_workers = 8
 # Create datasets for training and validation using your LazyBaseDataset
 train_dataset = LSTMDataset(config=config, is_validation=False)

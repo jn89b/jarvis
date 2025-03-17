@@ -120,7 +120,7 @@ class MultiAgentLSTMTrajectoryPredictor(LightningModule):
         future_traj = inputs['center_gt_trajs'].float()[:, :, :, 0:3]
         pred_params, mode_probs = self.forward(batch, teacher_forcing_ratio=0.1)
         loss = self.self_prediction_loss(pred_params, mode_probs, future_traj)
-        self.log('train_loss', loss)
+        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -128,7 +128,7 @@ class MultiAgentLSTMTrajectoryPredictor(LightningModule):
         future_traj = inputs['center_gt_trajs'].float()[:, :, :, 0:3]
         pred_params, mode_probs = self.forward(batch, teacher_forcing_ratio=0.0)
         loss = self.self_prediction_loss(pred_params, mode_probs, future_traj)
-        self.log('val_loss', loss)
+        self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         return loss
 
     def configure_optimizers(self):
