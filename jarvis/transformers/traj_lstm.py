@@ -91,13 +91,13 @@ class MultiAgentLSTMTrajectoryPredictor(LightningModule):
 
     def self_prediction_loss(self, pred_params, mode_probs, target):
         """
-        Computes a self-prediction loss with even weighting over modes.
-        For each mode, we compute the L2 error between its predicted trajectory and the ground truth,
-        then average these errors across all modes, agents, and the batch.
+        Computes a best-of-many self-prediction loss.
+        For each agent, we select the mode with the minimum L2 error compared to the ground truth trajectory,
+        then average these errors over all agents and the batch.
         
         Args:
             pred_params (torch.Tensor): shape (batch, num_agents, num_modes, future_len, output_dim)
-            mode_probs (torch.Tensor): shape (batch, num_agents, num_modes) -- not used in this version
+            mode_probs (torch.Tensor): shape (batch, num_agents, num_modes) -- not used in this loss
             target (torch.Tensor): ground truth, shape (batch, num_agents, future_len, output_dim)
         Returns:
             torch.Tensor: scalar loss.
@@ -108,8 +108,10 @@ class MultiAgentLSTMTrajectoryPredictor(LightningModule):
         errors = (pred_params - target_exp) ** 2  # shape: (batch, num_agents, num_modes, future_len, output_dim)
         # Sum over output_dim and average over future timesteps.
         errors = errors.sum(dim=-1).mean(dim=-1)   # shape: (batch, num_agents, num_modes)
-        # Average error over modes, agents, and batch.
-        loss = errors.mean()
+        # Select the best (i.e., minimum) error over the modes for each agent.
+        best_error, _ = torch.min(errors, dim=2)  # shape: (batch, num_agents)
+        # Average the best errors over agents and batch.
+        loss = best_error.mean()
         return loss
 
     def training_step(self, batch, batch_idx):

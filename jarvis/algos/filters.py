@@ -46,11 +46,21 @@ class UKFPlane():
                   dim_z=self.n_measurements, 
                   fx=self.fx,
                 hx=self.hx, dt=dt, points=self.points)
+        self.ukf.P *= 5  # initial uncertainty
+        pos_var:float = 5.0
+        psi_var:float = np.deg2rad(3)
+        vel_var:float = 0.1
+        self.ukf.R = np.diag([pos_var, pos_var, pos_var, psi_var, vel_var])
+        # ukf.Q = Q_discrete_white_noise(dim=2, dt=dt, var=0.02)
+        # remember smaller Q means I trust the model more
+        # ukf.Q = np.diag([0.02, 0.02, 0.02, 0.01, 0.01, 0.01, 0.02, 0.02])
+        Q_vals = 1e-5
+        self.ukf.Q = np.diag([Q_vals, Q_vals, Q_vals, Q_vals, Q_vals, Q_vals, Q_vals, Q_vals])
+
 
 
     def set_starting_state(self, x:np.array):
         self.ukf.x = x
-        self.ukf.P *= 5  # initial uncertainty
 
     def fx(self, 
            x: np.array, 

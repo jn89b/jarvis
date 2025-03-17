@@ -30,7 +30,7 @@ print("Test Dataset Length:", len(test_dataset))
 dataloader = DataLoader(
     test_dataset,
     batch_size=1,
-    shuffle=False,
+    shuffle=True,
     collate_fn=test_dataset.collate_fn
 )
 
@@ -88,7 +88,7 @@ for i, batch in enumerate(dataloader):
     output_history.append(output_np)
 
     print(f"Inference time for batch {i}: {end_time - start_time:.4f} seconds")
-    if i == 30:
+    if i == 5:
         break
 
 # -------------------------

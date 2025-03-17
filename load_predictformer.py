@@ -87,6 +87,8 @@ for i, batch in enumerate(dataloader):
     output, loss = model(batch)
     end_time = time.time()
     print(f"Time taken for inference: {end_time - start_time}")
+    # if i == 2:
+    #     break
     center_gt_trajs.append(batch['input_dict']['center_gt_trajs'].detach().numpy())
     center_objects_world.append(batch['input_dict']['center_objects_world'].detach().numpy())
     predicted_traj = output['predicted_trajectory'].detach().numpy()
@@ -101,11 +103,8 @@ for i, batch in enumerate(dataloader):
         heading_index=5
     )
 
-    # predicted_ground_traj = dataset.transform_with_current_heading(
-    #     pred_traj=predicted_traj,
-    #     current_heading
-    # )
-    output['predicted_ground_traj'] = predicted_ground_traj
+    output['input_obj_trajs'] = batch['input_dict']['obj_trajs'].detach().numpy().squeeze()
+    output['predicted_ground_traj'] = predicted_traj
     new_output = {}
     
     # convert the output to numpy
@@ -129,7 +128,7 @@ for i, batch in enumerate(dataloader):
 # folder_dir = "postprocess_predictformer"
 # if not os.path.exists(folder_dir):
 #     os.makedirs(folder_dir)
-# pkl.dump(info, open(os.path.join(folder_dir, "noisy_predictformer_output_2.pkl"), "wb"))
+# pkl.dump(info, open(os.path.join(folder_dir, "noisy_predictformer_output_1.pkl"), "wb"))
 
 
 # %%
@@ -156,7 +155,7 @@ num_agents: int = predicted_probability.shape[0]
 for i in range(num_agents):
     fig, ax = plt.subplots(1, 1)
     # this becomes [num_modes, num_timesteps, num_attributes]
-    agent_traj: np.array = predicted_traj[i]
+    agent_traj: np.array = predicted_trajectory[i]
     agent_probability: np.array = predicted_probability[i]
     for j in range(num_modes):
         highest_probabilty_index = np.argmax(agent_probability)
@@ -186,7 +185,7 @@ for i in range(num_agents):
     current_position = original_pos_past[i, start_idx, :2]
     transformed_traj = dataset.transform_with_current_heading(
         pred_traj=agent_traj,
-        current_heading=-current_heading,
+        current_heading=current_heading,
         current_position=current_position,
         heading_index=heading_idx
     )
@@ -223,28 +222,21 @@ for i in range(num_agents):
         heading_index=heading_idx
     )
     ax.plot(x, y, z, label="Ground Truth " + str(i))
-    agent_traj = predicted_traj[i]
+    agent_traj = predicted_trajectory[i]
     for j in range(num_modes):
         highest_probabilty_index = np.argmax(predicted_probability[i])
         x = x_start + agent_traj[j, :, 0]
         y = y_start + agent_traj[j, :, 1]
         z = z_start + agent_traj[j, :, 2]
-    
+        # x = transformed_traj[j, :, 0]
+        # y = transformed_traj[j, :, 1]
+        
+        
         ax.scatter(
             x, y, z, label=f"Mode {j} for agent {i} ")
 
     ax.scatter(x_start, y_start, z_start, label="Start " + str(i))
     ax.legend()
-
-# visualize the heading
-
-# for i in range(num_agents):
-#     agent_traj = predicted_trajectory[i]
-#     fig, ax = plt.subplots(1, 1)
-#     # ax.plot(agent_traj[0, :, 5], label=f"Predicted {i}")
-#     ax.plot(ground_truth_world[i, :, 5], label=f"Ground Truth {i}")
-#     ax.plot(original_pos_past[i, :, 5], label=f"Original {i}")
-#     ax.legend()
 
 #%%
 plt.show()
