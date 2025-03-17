@@ -87,8 +87,6 @@ for i, batch in enumerate(dataloader):
     output, loss = model(batch)
     end_time = time.time()
     print(f"Time taken for inference: {end_time - start_time}")
-    # if i == 2:
-    #     break
     center_gt_trajs.append(batch['input_dict']['center_gt_trajs'].detach().numpy())
     center_objects_world.append(batch['input_dict']['center_objects_world'].detach().numpy())
     predicted_traj = output['predicted_trajectory'].detach().numpy()
@@ -96,8 +94,6 @@ for i, batch in enumerate(dataloader):
     center_xy = center_xyz.squeeze()[:, start_idx, 0:2]
     center_heading = center_xyz.squeeze()[:, start_idx, 5]
     predicted_headings = predicted_traj[:, :, 5]
-    print("center heading", np.rad2deg(center_heading))
-    print("center xy" , center_xy)
     predicted_ground_traj = dataset.inverse_transform_trajs_from_center_coords(
         obj_trajs_center=predicted_traj,
         center_xyz=center_xy,
@@ -121,19 +117,19 @@ for i, batch in enumerate(dataloader):
     
     output_history.append(new_output)
     infer_time.append(end_time - start_time)
-    if i == 1:
+    if i == 5:
         break
 
 # #Pickkle the output and batch
-import pickle as pkl
-info = {"output": output_history,
-        "infer_time": infer_time,
-        "center_gt_trajs": center_gt_trajs,
-        "center_objects_world": center_objects_world}
-folder_dir = "postprocess_predictformer"
-if not os.path.exists(folder_dir):
-    os.makedirs(folder_dir)
-pkl.dump(info, open(os.path.join(folder_dir, "noisy_predictformer_output_1.pkl"), "wb"))
+# import pickle as pkl
+# info = {"output": output_history,
+#         "infer_time": infer_time,
+#         "center_gt_trajs": center_gt_trajs,
+#         "center_objects_world": center_objects_world}
+# folder_dir = "postprocess_predictformer"
+# if not os.path.exists(folder_dir):
+#     os.makedirs(folder_dir)
+# pkl.dump(info, open(os.path.join(folder_dir, "noisy_predictformer_output_2.pkl"), "wb"))
 
 
 # %%
@@ -160,7 +156,7 @@ num_agents: int = predicted_probability.shape[0]
 for i in range(num_agents):
     fig, ax = plt.subplots(1, 1)
     # this becomes [num_modes, num_timesteps, num_attributes]
-    agent_traj: np.array = predicted_trajectory[i]
+    agent_traj: np.array = predicted_traj[i]
     agent_probability: np.array = predicted_probability[i]
     for j in range(num_modes):
         highest_probabilty_index = np.argmax(agent_probability)
@@ -227,16 +223,13 @@ for i in range(num_agents):
         heading_index=heading_idx
     )
     ax.plot(x, y, z, label="Ground Truth " + str(i))
-    agent_traj = predicted_trajectory[i]
+    agent_traj = predicted_traj[i]
     for j in range(num_modes):
         highest_probabilty_index = np.argmax(predicted_probability[i])
         x = x_start + agent_traj[j, :, 0]
         y = y_start + agent_traj[j, :, 1]
         z = z_start + agent_traj[j, :, 2]
-        x = transformed_traj[j, :, 0]
-        y = transformed_traj[j, :, 1]
-        
-        
+    
         ax.scatter(
             x, y, z, label=f"Mode {j} for agent {i} ")
 
@@ -245,13 +238,13 @@ for i in range(num_agents):
 
 # visualize the heading
 
-for i in range(num_agents):
-    agent_traj = predicted_trajectory[i]
-    fig, ax = plt.subplots(1, 1)
-    # ax.plot(agent_traj[0, :, 5], label=f"Predicted {i}")
-    ax.plot(ground_truth_world[i, :, 5], label=f"Ground Truth {i}")
-    ax.plot(original_pos_past[i, :, 5], label=f"Original {i}")
-    ax.legend()
+# for i in range(num_agents):
+#     agent_traj = predicted_trajectory[i]
+#     fig, ax = plt.subplots(1, 1)
+#     # ax.plot(agent_traj[0, :, 5], label=f"Predicted {i}")
+#     ax.plot(ground_truth_world[i, :, 5], label=f"Ground Truth {i}")
+#     ax.plot(original_pos_past[i, :, 5], label=f"Original {i}")
+#     ax.legend()
 
 #%%
 plt.show()

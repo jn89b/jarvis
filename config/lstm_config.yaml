@@ -1,0 +1,41 @@
+# exp setting
+exp_name: 'test' # name that will be used in wandb
+ckpt_path: null # checkpoint path, used for evaluation
+seed: 42 # random seed
+debug: True # debug mode, will use cpu only
+devices: [ 0 ] # gpu ids
+
+
+# data related
+train_data_path: "pursuer_evader_data" # data path
+test_data_path: "pursuer_evader_data_test" # data path
+max_num_agents: 3
+num_agent_feature: 7
+val_data_path: "pursuer_evader_data/val"  # list of paths to the validation data
+load_num_workers: 0 # number of workers for loading data
+max_data_num: [ 1000 ] # maximum number of data for each training dataset
+starting_frame: [ 0 ] # history trajectory starts at this frame for each training dataset
+past_len: 21 # history trajectory length, 2.1s
+# past_len: 120 # history trajectory length, 2.1s
+# past_len: 240 # history trajectory length, 2.1s
+future_len: 60 # future trajectory length, 6s
+object_type: [ 'VEHICLE' ]
+line_type: [ 'lane','stop_sign','road_edge','road_line','crosswalk','speed_bump' ] # line type to be considered in the input
+masked_attributes: [ 'z_axis', 'size' ] # attributes to be masked in the input
+trajectory_sample_interval: 1 # sample interval for the trajectory
+only_train_on_ego: False # only train on AV
+center_offset_of_map: [ 30.0, 0.0 ] # center offset of the map
+use_cache: False # use cache for data loading
+overwrite_cache: True # overwrite existing cache
+store_data_in_memory: False # store data in memory
+
+#model
+input_size: 7
+hidden_size: 128
+num_layers: 2
+dropout: 0.1
+num_modes: 6
+output_dim: 3 # same as input size
+past_len: 21
+future_len: 60
+step_size: 1

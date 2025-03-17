@@ -14,12 +14,13 @@ Script to animate the trajectories of all the vehicles with the predictions
 """
 
 #info = pkl.load(open(os.path.join("postprocess_predictformer", "predictformer_output.pkl"), "rb"))
-info = pkl.load(open("noisy_predictformer_output_1.pkl", "rb"))
+info = pkl.load(open("noisy_predictformer_output_2.pkl", "rb"))
 
 center_gt_trajs:List[np.array] = info["center_gt_trajs"]
 center_objects_world:List[np.array] = info["center_objects_world"]
 predicted_probs: List[np.array] = [output['predicted_probability'] for output in info["output"]]
-predicted_trajectories: List[np.array] = [output['predicted_trajectory'] for output in info["output"]]
+predicted_trajectories: List[np.array] = [output['predicted_ground_traj'] for output in info["output"]]
+# predicted_trajectories: List[np.array] = [output['predicted_trajectory'] for output in info["output"]]
 infer_time: List[float] = info["infer_time"]
 
 total_steps = len(center_gt_trajs)
@@ -118,6 +119,7 @@ for j, agent in enumerate(overall_agents):
     }
     
     # Iterate over each trajectory for the agent
+    prev_mse: float = 0.0
     for i in range(len(predicted_trajectory)):
         best_mode = np.argmax(agent['predicted_probability'][i])
         current_predicted_trajectory = predicted_trajectory[i]
@@ -139,9 +141,10 @@ for j, agent in enumerate(overall_agents):
             mse_bins.append(slice_mse)
             print(f"Agent {j}, trajectory {i}, slice {step}:{step+slice_size} MSE = {slice_mse}")
             
-            mse_total += slice_mse
+            mse_total += slice_mse + prev_mse
             slice_count += 1
         
+        prev_mse = mse_bins[-1]
         mse_metrics['slice_mse'].append(mse_bins)
 
     # Compute overall average MSE across all slices for the agent

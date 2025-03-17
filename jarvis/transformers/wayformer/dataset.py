@@ -1118,7 +1118,6 @@ class LazyBaseDataset(Dataset):
 
         ## 1. Measurement Noise (Sensor Errors)
         # Gaussian position noise (simulating GPS or LIDAR errors)
-        # position_noise:float = 5.0
         position_noise:float = 5.0
         obj_trajs_past[:, :, 0:2] += np.random.normal(0, position_noise, obj_trajs_past[:, :, 0:2].shape)  # (Mean 0, Std 0.1m)
     
@@ -1140,9 +1139,11 @@ class LazyBaseDataset(Dataset):
         obj_trajs_past[:, :, VELOCITY_IDX] += velocity_noise
 
         
-        (obj_trajs_data, obj_trajs_mask, obj_trajs_pos, obj_trajs_last_pos, obj_trajs_future_state,
-            obj_trajs_future_mask, center_gt_trajs,
-            center_gt_trajs_mask, center_gt_final_valid_idx,
+        (obj_trajs_data, obj_trajs_mask, 
+        obj_trajs_pos, obj_trajs_last_pos, 
+        obj_trajs_future_state,
+        obj_trajs_future_mask, center_gt_trajs,
+        center_gt_trajs_mask, center_gt_final_valid_idx,
             track_index_to_predict_new) = self.get_agent_data(
             center_objects=center_objects,
             obj_trajs_past=obj_trajs_past,
@@ -1436,3 +1437,325 @@ class LazyBaseDataset(Dataset):
         rotated_trajs[..., x_y_indices[0]:x_y_indices[1]+1] = rotated_xy
 
         return rotated_trajs
+    
+    
+class LSTMDataset(Dataset):
+    def __init__(self, config: Dict[str, Any], 
+                 is_test:bool = False,
+                 is_validation: bool = False, 
+                 num_samples: int = None):
+        """
+        Initializes the dataset in lazy mode.
+        Instead of loading all JSON files and processing every segment up front,
+        we build an index mapping that treats each segment (slice) as a separate sample.
+        """
+        self.is_validation = is_validation
+        self.config = config
+        # Determine the data directory based on whether we're validating or training.
+        #self.data_path = config['val_data_path'] if is_validation else config['train_data_path']
+        if is_test:
+            print("Loading test data")
+            self.data_path = config['test_data_path']
+        elif is_validation:
+            self.data_path = config['val_data_path']
+        else:             
+            self.data_path: str = config['train_data_path']
+
+        
+        # List all JSON files.
+        self.json_files: List[str] = glob.glob(os.path.join(self.data_path, "*.json"))
+        if num_samples is not None:
+            self.json_files = self.json_files[:num_samples]
+            
+        self.past_len = config['past_len']
+        self.future_len = config['future_len']
+        # Step size for sliding window segmentation (default: 1).
+        self.step_size = config.get('step_size', 1)
+        
+        # Build an index mapping from global segment index to a tuple (file_index, local_segment_index)
+        self.index_map: List[Tuple[int, int]] = []
+        for file_idx, file_path in enumerate(self.json_files):
+            # Open each file and count the timesteps.
+            with open(file_path, 'r') as f:
+                sim_data = json.load(f)
+            total_steps = len(sim_data)  # Assuming sim_data is a list of timesteps.
+            total_len = self.past_len + self.future_len
+
+            # Determine how many segments can be extracted.
+            # The segmentation loop will run from start_idx = total_len to (len(sim_data) - total_len)
+            #num_segments = max(0, (total_steps - 2 * total_len + self.step_size) // self.step_size)
+            num_segments = self.compute_num_segments(total_steps, total_len, self.step_size)
+            for local_seg_idx in range(num_segments):
+                self.index_map.append((file_idx, local_seg_idx))
+                
+        print(f"Initialized dataset with {len(self.index_map)} segments across {len(self.json_files)} files.")
+
+    def __len__(self):
+        # The length is now the total number of segments.
+        return len(self.index_map)
+    
+    def __getitem__(self, global_index: int) -> Dict[str, Any]:
+        """
+        Maps the global segment index to the appropriate JSON file and local segment index.
+        Loads the file, processes its segments, and returns the requested segment.
+        """
+        if global_index >= len(self.index_map):
+            raise IndexError(f"Index {global_index} out of bounds.")
+        
+        file_idx, local_seg_idx = self.index_map[global_index]
+        file_path = self.json_files[file_idx]
+        # Load and process the file (all segments) on demand.
+        segments = self.load_and_process_file(file_path)
+        # Return the segment corresponding to the local index.
+         
+        return segments[local_seg_idx]
+
+    def compute_num_segments(self, total_steps: int, total_len: int, step_size: int) -> int:
+        # This uses the same range logic as in load_and_process_file.
+        return len(range(total_len, total_steps - total_len + 1, step_size))
+
+    def load_and_process_file(self, file_path: str) -> List[Dict[str, Any]]:
+        """
+        Loads one JSON file, converts the raw JSON into numpy arrays, segments the data into overlapping
+        chunks, and then processes each segment.
+        """
+        with open(file_path, 'r') as f:
+            sim_data: List[Dict[str, Any]] = json.load(f)
+        
+        # Build raw arrays from the JSON.
+        overall_ego_position: List[List[float]] = []
+        overall_controls: List[List[float]] = []
+        overall_timestamps: List[float] = []
+        num_other_vehicles: int = len(sim_data[0]['vehicles'])
+        overall_pursuer_positions: List[List[Any]] = [[] for _ in range(num_other_vehicles)]
+        
+        for current_info in sim_data:
+            overall_ego_position.append(current_info['ego'])
+            overall_controls.append(current_info['controls'])
+            overall_timestamps.append(current_info['time_step'])
+            for j, pursuer_info in enumerate(current_info['vehicles']):
+                overall_pursuer_positions[j].append(pursuer_info)
+                
+        overall_ego_position = np.array(overall_ego_position)
+        overall_controls = np.array(overall_controls)
+        for i, veh in enumerate(overall_pursuer_positions):
+            overall_pursuer_positions[i] = np.array(veh)
+        overall_pursuer_positions = np.stack(overall_pursuer_positions)
+        # Combine ego and pursuer trajectories into one array.
+        overall_traj: np.array = np.vstack([overall_ego_position[np.newaxis, ...], overall_pursuer_positions])
+        
+        # Segment the trajectory into overlapping chunks.
+        total_len = self.past_len + self.future_len
+        segments: List[Dict[str, Any]] = []
+        idx_counter = 0
+        # The segmentation loop should match the logic used when building the index_map.
+        # for start_idx in range(total_len, len(sim_data) - total_len, self.step_size):
+        for start_idx in range(total_len, len(sim_data) - total_len + 1, self.step_size):
+            segment = overall_traj[:, start_idx - total_len:start_idx, :]
+            processed_segment = self.process_segment(segment, overall_timestamps[start_idx:start_idx + total_len], idx_counter)
+            segments.append(processed_segment)
+            idx_counter += 1
+        return segments
+    
+    def process_segment(self, segment: np.array, timestamps: List[float], idx: int) -> Dict[str, Any]:
+        """
+        Processes a single segment.
+        For instance, here we convert the heading angles from degrees to radians.
+        You can extend this method to perform additional processing as required.
+        """
+        # Convert heading (at HEADING_IDX) from degrees to radians.
+        # segment[:, :, HEADING_IDX] = np.deg2rad(segment[:, :, HEADING_IDX])
+        assert segment.ndim == 3
+        ego_idx:int = 0        
+        tracks_to_predict: Dict[str, Any] = {
+            'track_index': [],
+            'object_type': []
+        }
+        num_pursuers, total_steps, _ = segment.shape
+
+        # Create and return a dictionary for the processed segment.
+        processed = {
+            'object_type': [],
+            # 'idx': [],
+            'timestamp': timestamps,
+            'idx_to_track': ego_idx,
+            'segment_idx': idx,
+            'segment_data': segment,
+            # Add any additional keys for further processed outputs.
+        }
+        
+        num_ego: int = 1
+        total_agents:int = num_pursuers + num_ego
+        for i in range(total_agents):
+            tracks_to_predict['track_index'].append(i)
+            tracks_to_predict['object_type'].append(VEHICLE)
+            processed['object_type'].append(VEHICLE)        
+
+        processed['tracks_to_predict'] = tracks_to_predict
+                
+        return processed
+    
+    def transform_trajs_to_center_coords(
+        self, obj_trajs: np.array, 
+        center_xyz: np.array, 
+        center_heading: np.array, 
+        heading_index: int, rot_vel_index=None):
+        """
+        Transforms trajectories from global coordinates to 
+        center (ego-centric) coordinates.
+        """
+        num_center_objects = center_xyz.shape[0]
+        num_objects, num_timestamps, num_attributes = obj_trajs.shape
+        
+        # subtract the position of the center object to zero out the position
+        obj_trajs[:,:, 0:3] -= center_xyz[:, None, :]
+        
+        # zero out the heading of the center object as well
+        obj_trajs[:,:, heading_index] -= center_heading
+
+        return obj_trajs
+    
+    def get_agent_data(
+        self, 
+        center_objects: np.array,
+        obj_trajs_past: np.array,
+        obj_trajs_future: np.array,
+        track_index_to_predict: List[int],
+        sdc_track_index: int,
+        timestamps: List[float],
+        obj_types: List[int]
+    ):
+        """
+        Centers the trajectories around the ego vehicle and returns the processed data.
+        """
+        center_objects = obj_trajs_past
+        num_center_objects = center_objects.shape[0]
+        num_objects, num_timestamps, num_attributes = obj_trajs_past.shape
+        
+        obj_trajs = self.transform_trajs_to_center_coords(
+            obj_trajs=obj_trajs_past,
+            center_xyz=center_objects[:, 0, 0:3],
+            center_heading=center_objects[:, :, HEADING_IDX],
+            heading_index=HEADING_IDX, rot_vel_index=[7, 8]
+        )
+        
+        obj_trajs_future = obj_trajs_future.astype(np.float32)
+        copy_obj = obj_trajs_future.copy()
+        center_objects = obj_trajs_future
+        
+        obj_trajs_future = self.transform_trajs_to_center_coords(
+            obj_trajs=obj_trajs_future,
+            center_xyz=center_objects[:, 0, 0:3],
+            center_heading=center_objects[:, :, HEADING_IDX],
+            heading_index=HEADING_IDX, rot_vel_index=[7, 8]
+        )
+        
+        return (
+            obj_trajs,
+            obj_trajs_future,
+            timestamps,
+            obj_types
+        )
+        
+    
+    def process(self, sim_data: Dict[str,Any]) -> Dict[str,Any]:
+        """
+        Need to return a dictionary
+        """
+        timestamp = sim_data['timestamp']
+        idx_to_track: int = sim_data['idx_to_track']
+        obj_trajs_full: np.array = sim_data['segment_data']
+        obj_trajs_full[:, :, HEADING_IDX] = np.deg2rad(
+            obj_trajs_full[:, :, HEADING_IDX])
+        obj_types: List[int] = sim_data['object_type']
+        obj_trajs_past: np.array = obj_trajs_full[:, :self.past_len, :]
+        obj_trajs_future: np.array = obj_trajs_full[:,
+                                                    self.past_len:, :]
+        
+        track_idx_to_predict = [i for i in range(len(obj_trajs_full))]
+        center_objects = obj_trajs_full.copy()
+        original_pos_past: np.array = obj_trajs_past.copy()
+        
+        # sanity check let's plot the trajectories
+        # fig, ax = plt.subplots()
+        # for i in range(obj_trajs_past.shape[0]):
+        #     ax.plot(obj_trajs_past[i, :, 0], obj_trajs_past[i, :, 1], label=f"Agent {i}")
+        # ax.legend()
+        # # title 
+        # ax.set_title("Trajectories Uncentered")
+    
+        # ========================== NOISE INJECTION ==========================
+
+        ## 1. Measurement Noise (Sensor Errors)
+        # Gaussian position noise (simulating GPS or LIDAR errors)
+        position_noise:float = 5.0
+        obj_trajs_past[:, :, 0:2] += np.random.normal(0, position_noise, obj_trajs_past[:, :, 0:2].shape)  # (Mean 0, Std 0.1m)
+    
+        # Multiplicative noise (simulating sensor drift)
+        obj_trajs_past[:, :, 0:2] *= np.random.normal(1, 
+                                                      0.02, 
+                                                      obj_trajs_past[:, :, 0:2].shape)  # 2% variation
+
+        # Heading noise (simulating IMU/Gyro errors)
+        # obj_trajs_past[:, :, HEADING_IDX] += np.random.normal(0, np.deg2rad(1), obj_trajs_past[:, :, HEADING_IDX].shape)  # 2-degree noise
+
+        ## 2. Process Noise (Motion Model Uncertainty)
+        # Random walk noise (simulating object drift over time)
+        # drift = np.cumsum(np.random.normal(0, 0.05, obj_trajs_past[:, :, 0:2].shape), axis=1)  # Accumulate small movements
+        # obj_trajs_past[:, :, 0:2] += drift
+
+        # Velocity noise (simulating varying acceleration)
+        velocity_noise = np.random.normal(0, 0.2, obj_trajs_past[:, :, VELOCITY_IDX].shape)  # Velocity in (x, y)
+        obj_trajs_past[:, :, VELOCITY_IDX] += velocity_noise
+        
+        (obj_trajs_data, obj_trajs_future, timestamps, obj_types) = self.get_agent_data(
+            center_objects=center_objects,
+            obj_trajs_past=obj_trajs_past,
+            obj_trajs_future=obj_trajs_future,
+            track_index_to_predict=track_idx_to_predict,
+            sdc_track_index=idx_to_track,
+            timestamps=timestamp, obj_types=obj_types
+        )
+        
+        ret: Dict[str, Any] = {
+            # 'scenario_id': np.array([scene_id] * len(track_index_to_predict)),
+            'obj_trajs': obj_trajs_data, # this is the past trajectory
+            'center_objects_world': center_objects,
+            'center_objects_type': np.array(obj_types),
+            'center_gt_trajs': obj_trajs_future,
+            'original_pos_past': original_pos_past,
+        }
+
+        return ret
+
+    def collate_fn(self, data_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Custom collate function (if using PyTorch DataLoader).
+        
+        Process will return past_len + future_len segments
+        
+        """
+        processed_data: List[Dict[str, Any]] = []
+        processed_data:List[Dict[str,Any]] = [self.process(sample) for sample in data_list]
+        input_dict = {}
+        for key in processed_data[0].keys():
+            input_dict[key] = torch.from_numpy(np.stack([sample[key] for sample in processed_data]))
+            
+        input_dict['center_objects_type'] = input_dict['center_objects_type'].numpy()
+        
+        batch_list = []
+        for batch in data_list:
+            batch_list += batch
+            
+        batch_size = len(batch_list)
+        
+        batch_dict = {
+            'batch_size': batch_size,
+            'input_dict': input_dict,
+            'batch_sample_count': batch_size
+        }
+        
+        # segment_data_list = [sample['segment_data'] for sample in data_list]
+        # input_dict = {'segment_data': torch.from_numpy(np.stack(segment_data_list))}
+        # return {'batch_size': len(data_list), 'input_dict': input_dict}
+        return batch_dict

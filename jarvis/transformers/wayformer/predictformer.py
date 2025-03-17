@@ -139,8 +139,6 @@ class PredictFormer(BaseModelV2):
         context = self.perceiver_encoder(
             mixed_input_features, mixed_input_masks)
 
-        # Wazformer-Ego Decoding
-
         out_seq = self.perceiver_decoder(context)
         # TODO: Access the standard deviations and correlation coefficients
         out_dists = self.output_model(

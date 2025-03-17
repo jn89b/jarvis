@@ -13,12 +13,13 @@ Script to animate the trajectories of all the vehicles with the predictions
 """
 
 #info = pkl.load(open(os.path.join("postprocess_predictformer", "predictformer_output.pkl"), "rb"))
-info = pkl.load(open("predictformer_output_1.pkl", "rb"))
+info = pkl.load(open("noisy_predictformer_output_1.pkl", "rb"))
 
 center_gt_trajs:List[np.array] = info["center_gt_trajs"]
 center_objects_world:List[np.array] = info["center_objects_world"]
 predicted_probs: List[np.array] = [output['predicted_probability'] for output in info["output"]]
-predicted_trajectories: List[np.array] = [output['predicted_trajectory'] for output in info["output"]]
+#predicted_trajectories: List[np.array] = [output['predicted_trajectory'] for output in info["output"]]
+predicted_trajectories: List[np.array] = [output['predicted_ground_traj'] for output in info["output"]]
 infer_time: List[float] = info["infer_time"]
 
 total_steps = len(center_gt_trajs)
