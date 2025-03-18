@@ -38,7 +38,7 @@ def get_z_measurement(state:np.array) -> np.array:
 # Script to animate the trajectories of all the vehicles with the prediction
 # """
 
-filename = "noisy_predictformer_output_3.pkl"
+filename = "noisy_predictformer_output_1.pkl"
 #info = pkl.load(open(os.path.join("postprocess_predictformer", "predictformer_output.pkl"), "rb"))
 metrics = Metrics(filename)
 overall_metrics = metrics.predictformer_mse()
@@ -58,7 +58,7 @@ num_modes = predicted_probs[0].shape[1]
 input_trajs = [output['input_obj_trajs'] for output in info["output"]]
 
 # Define prediction horizon in seconds (adjust if dt != 1 second)
-prediction_time = 2.0  # seconds
+prediction_time = 6.0  # seconds
 num_prediction_steps = int(prediction_time / 0.1)  # for dt=0.1, this equals 60
 
 overall_ukf_estimates = []
@@ -90,7 +90,7 @@ for i in range(num_agents):
             inner_ukf.predict()
             inner_ukf.update(z)
             predictions.append(inner_ukf.ukf.x)  # use get_estimate() instead of ukf.state
-            print("prediction", inner_ukf.ukf.x)
+            # print("prediction", inner_ukf.ukf.x)
             
         ukf_estimates.append(np.array(predictions))
         ukf_readings.append(current_state)
@@ -101,35 +101,68 @@ for i in range(num_agents):
 
 #%%
 # Let's plot each agent trajectory in a seperate plot and show the gaussian mixture model trajectory of the agent
-# for i in range(len(overall_ukf_estimates)):
-#     fig, ax = plt.subplots(1, 1)
-#     ukf_traj = np.array(overall_ukf_estimates[i])
-#     readings = np.array(overall_readings[i])
-#     ax.scatter(readings[:,0], readings[:,1], label=f"UKF Agent Readings {i}", color='red')
-#     ax.plot(ukf_traj[:,0], ukf_traj[:,1], label=f"UKF Agent {i}", color='blue')
-#     # ax.scatter(center_objects_world[0][i,:,0], center_objects_world[0][i,:,1], label=f"Ground Truth Agent {i}")
-#     ax.legend()
-
 # compute the mse for the ukf estimates against the ground truth for each agent
 start_idx = 21
 end_idx = start_idx + num_prediction_steps
-
+overall_metrics = []
 for i in range(num_agents):
+
+    mse_metrics = {
+        'overall_mse': [],
+        'slice_mse': []
+    }
+    mse_total = 0.0
+    slice_count = 0
     mse_total = 0.0
     ukf_traj = np.array(overall_ukf_estimates[i])
+    
     for j in range(len(ukf_traj)):
         current_ukf = ukf_traj[j]
         ground_truth = center_objects_world[j][i,:,:]
-        mse = np.mean((current_ukf[:,0:3] - ground_truth[start_idx:end_idx,0:3])**2)
-        mse_total += mse
-    print(f"Agent {i} MSE: {mse_total}")
+        ground_truth = ground_truth[21:, :]
+        # ground_truth_slice = ground_truth[start_idx:end_idx,0:3]
+        # compute the slices of the ground truth and ukf estimates
+        # num_steps = ground_truth_slice.shape[1]
+        #num_steps = ground_truth.shape[0]
+        num_steps = num_prediction_steps
+        mse_bins = []
+        slice_size:int = 1
+        print("num_steps", num_steps)
+        for step in range(0, num_steps, slice_size):
+            print("step", step)
+            pred_slice = current_ukf[step:step + slice_size, 0:3]
+            gt_slice = ground_truth[step:step + slice_size, 0:3]
+            slice_mse = np.mean((pred_slice - gt_slice) ** 2)
+            mse_bins.append(slice_mse)
+            mse_total += slice_mse
+            slice_count += 1
+            
+        prev_mse = mse_bins[-1]
+        mse_metrics['slice_mse'].append(mse_bins)
     
+    
+    ovearll_mse = mse_total / slice_count if slice_count > 0 else None
+    # if j == 0:
+    #     print(f"Agent {i} Overall MSE: {ovearll_mse}")
+        
+    mse_metrics['overall_mse'] = ovearll_mse
+    overall_metrics.append(mse_metrics)
+    
+metrics.plot_mse_metrics(overall_metrics, to_break=False,
+                         save_name="ukf_metrics", to_save=True)
+
 fig, ax = plt.subplots(1, 1)
-ax.plot(ukf_traj[:, 0], ukf_traj[:, 1], label='UKF')
+ax.plot(current_ukf[:, 0], current_ukf[:, 1], label='UKF')
 ax.plot(ground_truth[:, 0], ground_truth[:, 1], label='True')
 ax.legend()
-plt.show()
-    
+
+# plot the 3D
+fig, ax = plt.subplots(1, 1, subplot_kw={'projection': '3d'})
+ax.plot(current_ukf[:, 0], current_ukf[:, 1], current_ukf[:, 2], label='UKF')
+ax.plot(ground_truth[:end_idx, 0], ground_truth[:end_idx, 1], ground_truth[:end_idx, 2], label='True')
+ax.legend()
+
+
 # for i in range(len(overall_ukf_estimates)):
 #     ukf_traj = np.array(overall_ukf_estimates[i])
 #     ground_truth = center_objects_world[i][i,21:41,0:3]

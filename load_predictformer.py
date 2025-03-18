@@ -33,7 +33,7 @@ print("Dataset Length", len(dataset))
 dataloader: DataLoader = DataLoader(
     dataset,
     batch_size=1,
-    shuffle=False,
+    shuffle=True,
     collate_fn=dataset.collate_fn
 )
 

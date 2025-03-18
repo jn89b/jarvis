@@ -90,7 +90,6 @@ class Metrics():
                 'overall_mse': [],
                 'slice_mse': []
             }
-            
             prev_mse: float = 0.0
             for j in range(len(predicted_trajectory)):        
                 best_modes = np.argsort(agent['predicted_probability'][j])[-3:]
@@ -153,12 +152,15 @@ class Metrics():
             
     def plot_mse_metrics(self, overall_metrics,
                          to_save:bool=False,
-                         save_name:str="") -> None:
+                         save_name:str="",
+                         to_break:bool=True,
+                         x_min:float=1,
+                         x_max:float=6) -> None:
         # Determine the number of bins from the first agent's data
         num_bins = len(np.mean(np.array(overall_metrics[0]['slice_mse']), axis=0))
-
+        print(f"Number of bins: {num_bins}")
         # Create x positions linearly spaced from 1 to 6 seconds
-        x = np.linspace(1, 6, num=num_bins)
+        x = np.linspace(x_min, x_max, num=num_bins)
 
         # Determine the width for grouped bars
         num_agents = len(overall_metrics)
@@ -168,7 +170,7 @@ class Metrics():
         sns.set_palette("Set1")
         colors = ["blue", "orange", "green"]
         for i, agent in enumerate(overall_metrics):
-            if i == len(overall_metrics)-1:
+            if i == len(overall_metrics)-1 and to_break:
                 break
             mse_bins = np.array(agent['slice_mse'])  # shape: (num_runs, num_bins)
             mean_mse = np.mean(mse_bins, axis=0)

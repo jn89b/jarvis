@@ -24,7 +24,7 @@ with open(config_path, 'r') as f:
 # Create Test Dataset & DataLoader
 # -------------------------
 # Here, we assume is_validation=True creates a test/validation dataset.
-test_dataset = LSTMDataset(config=config, is_validation=False)
+test_dataset = LSTMDataset(config=config, is_validation=True)
 print("Test Dataset Length:", len(test_dataset))
 
 dataloader = DataLoader(
@@ -112,11 +112,12 @@ for agent in range(num_agents):
     fig, ax = plt.subplots()
     gt_traj = batch_ground_truth[agent, :, 0:3]
     ax.plot(gt_traj[:, 0], gt_traj[:, 1], label="Ground Truth", linewidth=2)
-    num_modes = first_output['probs'].shape[1]
-    for mode in range(num_modes):
-        pred_traj = predicted[agent, mode, :, 0:3]
-        prob = probs[agent, mode]
-        ax.plot(pred_traj[:, 0], pred_traj[:, 1], label=f"Predicted Mode {mode} (Prob: {prob:.2f})")
+    ax.plot(predicted[agent, :, 0], predicted[agent, :, 1], 'o--', label="Predicted")
+    # num_modes = first_output['probs'].shape[0]
+    # for mode in range(num_modes):
+    #     pred_traj = predicted[agent, mode, :, 0:3]
+    #     prob = probs[agent, mode]
+    #     ax.plot(pred_traj[:, 0], pred_traj[:, 1], label=f"Predicted Mode {mode} (Prob: {prob:.2f})")
         # ax.plot(pred_traj[:, 0], pred_traj[:, 1], 'o--', label=f"Predicted Mode {mode}")
     ax.set_title(f"Agent {agent} Trajectory")
     ax.legend()

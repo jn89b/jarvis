@@ -93,7 +93,7 @@ class UKFPlane():
         # Update positions
         x_new = x_pos + disp * np.cos(theta) * np.cos(psi)
         y_new = y_pos + disp * np.cos(theta) * np.sin(psi)
-        z_new = z_pos + disp * np.sin(theta)
+        z_new = z_pos + disp * -np.sin(theta)
        
         # Attitude remains constant
         phi_new = phi

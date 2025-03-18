@@ -64,15 +64,15 @@ class MultiAgentLSTMTrajectoryPredictor(LightningModule):
             pred_t = self.fc(out)
             outputs.append(pred_t)
             # Teacher forcing: use ground truth with some probability.
-            if future_traj is not None and torch.rand(1).item() < teacher_forcing_ratio:
-                # Extract ground truth for the current timestep.
-                teacher_input = future_traj[:, :, t:t+1, 0:3]  # adjust if output_dim differs
-                teacher_input = teacher_input.view(batch_size * num_agents, 1, self.output_dim)
-                decoder_input = teacher_input
-            else:
+            # if future_traj is not None and torch.rand(1).item() < teacher_forcing_ratio:
+            #     # Extract ground truth for the current timestep.
+            #     teacher_input = future_traj[:, :, t:t+1, 0:3]  # adjust if output_dim differs
+            #     teacher_input = teacher_input.view(batch_size * num_agents, 1, self.output_dim)
+            #     decoder_input = teacher_input
+            # else:
                 # Use the predicted mean of the first mode.
-                pred_t_reshaped = pred_t.view(batch_size * num_agents, self.num_modes, self.output_dim)
-                decoder_input = pred_t_reshaped[:, 0, :].unsqueeze(1)
+            pred_t_reshaped = pred_t.view(batch_size * num_agents, self.num_modes, self.output_dim)
+            decoder_input = pred_t_reshaped[:, 0, :].unsqueeze(1)
         # Concatenate outputs along the time dimension.
         outputs = torch.cat(outputs, dim=1)  # shape: (batch*num_agents, future_len, num_modes * output_dim)
         outputs = outputs.view(batch_size * num_agents, self.future_len, self.num_modes, self.output_dim)
@@ -91,27 +91,29 @@ class MultiAgentLSTMTrajectoryPredictor(LightningModule):
 
     def self_prediction_loss(self, pred_params, mode_probs, target):
         """
-        Computes a best-of-many self-prediction loss.
-        For each agent, we select the mode with the minimum L2 error compared to the ground truth trajectory,
-        then average these errors over all agents and the batch.
+        Computes the L2 loss over a trajectory.
+        
+        This loss function computes the L2 (Euclidean) distance between the predicted 
+        trajectories and the ground truth for every mode, then averages these distances 
+        over all timesteps, agents, modes, and the batch.
         
         Args:
             pred_params (torch.Tensor): shape (batch, num_agents, num_modes, future_len, output_dim)
             mode_probs (torch.Tensor): shape (batch, num_agents, num_modes) -- not used in this loss
             target (torch.Tensor): ground truth, shape (batch, num_agents, future_len, output_dim)
+            
         Returns:
             torch.Tensor: scalar loss.
         """
-        # Expand target to add a mode dimension: (batch, num_agents, 1, future_len, output_dim)
         target_exp = target.unsqueeze(2)
-        # Compute squared errors for each mode over timesteps and output dimensions.
-        errors = (pred_params - target_exp) ** 2  # shape: (batch, num_agents, num_modes, future_len, output_dim)
-        # Sum over output_dim and average over future timesteps.
-        errors = errors.sum(dim=-1).mean(dim=-1)   # shape: (batch, num_agents, num_modes)
-        # Select the best (i.e., minimum) error over the modes for each agent.
-        best_error, _ = torch.min(errors, dim=2)  # shape: (batch, num_agents)
-        # Average the best errors over agents and batch.
-        loss = best_error.mean()
+        # Compute differences between predictions and target.
+        # The resulting shape is (batch, num_agents, num_modes, future_len, output_dim)
+        # Compute the squared differences
+        sq_diff = (pred_params - target_exp) ** 2
+        
+        # Sum across ALL dimensions, giving a single scalar
+        loss = sq_diff.sum()
+
         return loss
 
     def training_step(self, batch, batch_idx):
