@@ -6,8 +6,8 @@ import torch
 import matplotlib.pyplot as plt
 
 from torch.utils.data import DataLoader
-from jarvis.transformers.wayformer.dataset import LSTMDataset
-from jarvis.transformers.traj_lstm import MultiAgentLSTMTrajectoryPredictor
+from jarvis.transformers.wayformer.dataset import SingleLSTMDataset
+from jarvis.transformers.traj_lstm import SingleAgentLSTMTrajectoryPredictor
 
 plt.close('all')
 
@@ -24,20 +24,20 @@ with open(config_path, 'r') as f:
 # Create Test Dataset & DataLoader
 # -------------------------
 # Here, we assume is_validation=True creates a test/validation dataset.
-test_dataset = LSTMDataset(config=config, is_validation=False)
+test_dataset = SingleLSTMDataset(config=config, is_test=True)
 print("Test Dataset Length:", len(test_dataset))
 
 dataloader = DataLoader(
     test_dataset,
     batch_size=1,
-    shuffle=True,
+    shuffle=False,
     collate_fn=test_dataset.collate_fn
 )
 
 # -------------------------
 # Locate Latest Checkpoint
 # -------------------------
-checkpoint_dir = "lstm_multi_trajectory_checkpoint/"
+checkpoint_dir = "lstm_singletrajectory_checkpoint/"
 latest_checkpoint = None
 if os.path.exists(checkpoint_dir):
     ckpt_files = sorted(
@@ -53,7 +53,7 @@ else:
 # -------------------------
 # Load the Trained LSTM Model
 # -------------------------
-model = MultiAgentLSTMTrajectoryPredictor.load_from_checkpoint(latest_checkpoint, config=config)
+model = SingleAgentLSTMTrajectoryPredictor.load_from_checkpoint(latest_checkpoint, config=config)
 model.to(device)
 model.eval()
 
@@ -73,13 +73,29 @@ for i, batch in enumerate(dataloader):
     output, probs = model(batch)  # assume model returns (output, loss)
     end_time = time.time()
     infer_times.append(end_time - start_time)
+    validation_loss = model.validation_step(batch, i)
+    print(f"Validation Loss for batch {i}: {validation_loss}")
     # output is originally size (batch_size, num_agents, num_modes, future_len, dims)
-    output = output.squeeze().detach().cpu().numpy()
+    #output = output.squeeze().detach().cpu().numpy()
     probs = probs.squeeze().detach().cpu().numpy()
     output_np = {
         "predicted_trajectory": output,
         "probs": probs
     }
+    
+    # TODO: Figure out your life here     
+    # desired = target[0,0,:,0:3].detach().cpu().numpy()
+    # predicted = pred_params[0,0,:,0:3].detach().cpu().numpy()
+    
+    # ax.plot(predicted[:, 0], predicted[:, 1], 'o--', label="Predicted",
+    #         alpha=1.0)
+    # ax.plot(desired[:, 0], desired[:, 1], label="Ground Truth", linewidth=5)
+    # ax.legend()
+    # # save the figure
+    # plt.savefig(f"trajectory_{self.fig_num}.png")
+    # self.fig_num += 1
+    
+    
     # for key, value in output.items():
     #     if isinstance(value, torch.Tensor):
     #         output_np[key] = value.detach().cpu().numpy()
@@ -88,43 +104,49 @@ for i, batch in enumerate(dataloader):
     output_history.append(output_np)
 
     print(f"Inference time for batch {i}: {end_time - start_time:.4f} seconds")
-    if i == 5:
+    if i == 10:
         break
 
-# -------------------------
-# Plot Predicted vs. Ground Truth Trajectories
-# -------------------------
-# For demonstration, we plot the trajectories for the first batch.
-first_output = output_history[0]
 
-# Assume the batch dictionary has an 'input_dict' key with ground truth trajectories.
-# These keys may need adjustment based on your dataset/model.
-# Here we assume:
-#  - 'predicted_trajectory' is shaped [num_agents, num_timesteps, dims]
-#  - 'center_gt_trajs' under batch['input_dict'] is the ground truth trajectory
-batch_ground_truth = batch['input_dict']['center_gt_trajs'].squeeze().detach().cpu().numpy()
-predicted = first_output['predicted_trajectory']  # shape: [num_agents, num_timesteps, dims]
-probs = first_output['probs']  # shape: [num_agents, num_modes]
-num_agents = predicted.shape[0]
 
-for agent in range(num_agents):
-    # plot the predicted trajectory
-    fig, ax = plt.subplots()
-    gt_traj = batch_ground_truth[agent, :, 0:3]
-    ax.plot(gt_traj[:, 0], gt_traj[:, 1], label="Ground Truth", linewidth=2)
-    ax.plot(predicted[agent, :, 0], predicted[agent, :, 1], 'o--', label="Predicted")
-    # num_modes = first_output['probs'].shape[0]
-    # for mode in range(num_modes):
-    #     pred_traj = predicted[agent, mode, :, 0:3]
-    #     prob = probs[agent, mode]
-    #     ax.plot(pred_traj[:, 0], pred_traj[:, 1], label=f"Predicted Mode {mode} (Prob: {prob:.2f})")
-        # ax.plot(pred_traj[:, 0], pred_traj[:, 1], 'o--', label=f"Predicted Mode {mode}")
-    ax.set_title(f"Agent {agent} Trajectory")
-    ax.legend()
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
+    # -------------------------
+    # Plot Predicted vs. Ground Truth Trajectories
+    # -------------------------
+    # For demonstration, we plot the trajectories for the first batch.
+    first_output = output_history[0]
     
-plt.show()
+    # Assume the batch dictionary has an 'input_dict' key with ground truth trajectories.
+    # These keys may need adjustment based on your dataset/model.
+    # Here we assume:
+    #  - 'predicted_trajectory' is shaped [num_agents, num_timesteps, dims]
+    #  - 'center_gt_trajs' under batch['input_dict'] is the ground truth trajectory
+    batch_ground_truth = batch['input_dict']['center_gt_trajs'].squeeze().detach().cpu().numpy()
+    predicted = first_output['predicted_trajectory'].detach().cpu().numpy()  # shape: [num_agents, num_timesteps, dims]
+    predicted = predicted[0,0,:,:]
+    probs = first_output['probs']  # shape: [num_agents, num_modes]
+    num_agents = predicted.shape[0]
+    
+    #%%
+    for j in range(1):
+        if i <= 10:
+            break
+        # plot the predicted trajectory
+        fig, ax = plt.subplots()
+        gt_traj = batch_ground_truth[:, 0:3]
+        ax.plot(gt_traj[:, 0], gt_traj[:, 1], label="Ground Truth", linewidth=2)
+        ax.plot(predicted[ :, 0], predicted[ :, 1], 'o--', label="Predicted")
+        # num_modes = first_output['probs'].shape[0]
+        # for mode in range(num_modes):
+        #     pred_traj = predicted[agent, mode, :, 0:3]
+        #     prob = probs[agent, mode]
+        #     ax.plot(pred_traj[:, 0], pred_traj[:, 1], label=f"Predicted Mode {mode} (Prob: {prob:.2f})")
+            # ax.plot(pred_traj[:, 0], pred_traj[:, 1], 'o--', label=f"Predicted Mode {mode}")
+        ax.set_title(f"Agent {i} Trajectory")
+        ax.legend()
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        
+    plt.show()
 
 # for agent in range(num_agents):
 #     fig, ax = plt.subplots()

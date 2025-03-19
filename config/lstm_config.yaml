@@ -31,11 +31,11 @@ store_data_in_memory: False # store data in memory
 
 #model
 input_size: 7
-hidden_size: 128
-num_layers: 2
+hidden_size: 256
+num_layers: 3
 dropout: 0.1
 num_modes: 1
 output_dim: 3 # same as input size
 past_len: 121
 future_len: 60
-step_size: 1
+step_size: 12

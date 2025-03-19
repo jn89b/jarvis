@@ -116,7 +116,7 @@ for i, batch in enumerate(dataloader):
     
     output_history.append(new_output)
     infer_time.append(end_time - start_time)
-    if i == 5:
+    if i == 10:
         break
 
 # #Pickkle the output and batch

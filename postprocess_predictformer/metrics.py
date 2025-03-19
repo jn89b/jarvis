@@ -38,7 +38,7 @@ def get_z_measurement(state:np.array) -> np.array:
 # Script to animate the trajectories of all the vehicles with the prediction
 # """
 
-filename = "noisy_predictformer_output_1.pkl"
+filename = "noisy_predictformer_output_3.pkl"
 #info = pkl.load(open(os.path.join("postprocess_predictformer", "predictformer_output.pkl"), "rb"))
 metrics = Metrics(filename)
 overall_metrics = metrics.predictformer_mse()
@@ -68,7 +68,7 @@ for i in range(num_agents):
     ukf = UKFPlane()  # instantiate a new filter for each agent
     ukf_estimates = []
     ukf_readings = []
-    for j in range(len(input_trajs)-1900):
+    for j in range(len(input_trajs)-1915):
         center_objects_world[j] = center_objects_world[j].squeeze()
         current_state = center_objects_world[j][i, 21, :]
         # Append an acceleration estimate (here assumed to be zero)
@@ -123,8 +123,8 @@ for i in range(num_agents):
         # ground_truth_slice = ground_truth[start_idx:end_idx,0:3]
         # compute the slices of the ground truth and ukf estimates
         # num_steps = ground_truth_slice.shape[1]
-        #num_steps = ground_truth.shape[0]
-        num_steps = num_prediction_steps
+        num_steps = ground_truth.shape[0]
+        #num_steps = num_prediction_steps
         mse_bins = []
         slice_size:int = 1
         print("num_steps", num_steps)

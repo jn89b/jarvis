@@ -10,8 +10,8 @@ from pytorch_lightning import Trainer, LightningModule
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.utils.data import DataLoader
-from jarvis.transformers.wayformer.dataset import LSTMDataset
-from jarvis.transformers.traj_lstm import MultiAgentLSTMTrajectoryPredictor
+from jarvis.transformers.wayformer.dataset import SingleLSTMDataset
+from jarvis.transformers.traj_lstm import SingleAgentLSTMTrajectoryPredictor
 
 # -------------------------
 # Create Dummy DataLoaders
@@ -22,11 +22,11 @@ config_path = "config/lstm_config.yaml"  # adjust if needed
 with open(config_path, 'r') as f:
     config = yaml.safe_load(f)
 
-batch_size = 6
+batch_size = 8
 num_workers = 6
 # Create datasets for training and validation using your LazyBaseDataset
-train_dataset = LSTMDataset(config=config, is_validation=False)
-val_dataset = LSTMDataset(config=config, is_validation=False)
+train_dataset = SingleLSTMDataset(config=config, is_validation=False)
+val_dataset = SingleLSTMDataset(config=config, is_validation=True)
 
 train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                               num_workers=num_workers, pin_memory=True, 
@@ -38,13 +38,13 @@ val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
 # -------------------------
 # Set up Logging & Checkpointing
 # -------------------------
-name = "lstm_multi_trajectory"
+name = "lstm_singletrajectory"
 logger = TensorBoardLogger("tb_logs", name=name)
 checkpoint_dir = name + "_checkpoint/"
 checkpoint_callback = ModelCheckpoint(
     monitor="val_loss",
     dirpath=checkpoint_dir,
-    filename="lstm_multi_trajectory-{epoch:02d}-{val_loss:.2f}",
+    filename="lstm_singletrajectory-{epoch:02d}-{val_loss:.2f}",
     save_top_k=5,
     mode="min"
 )
@@ -69,7 +69,7 @@ trainer = Trainer(
     precision=16
 )
 
-model = MultiAgentLSTMTrajectoryPredictor(config)
+model = SingleAgentLSTMTrajectoryPredictor(config)
 model = model.to("cuda" if torch.cuda.is_available() else "cpu")
 
 trainer.fit(model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader, ckpt_path=latest_checkpoint)

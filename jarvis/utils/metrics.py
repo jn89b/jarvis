@@ -118,7 +118,9 @@ class Metrics():
                     gt_slice = current_ground_truth_trajectory[:, step:step + slice_size]
                     
                     # Compute the MSE for the slice
-                    slice_mse = np.mean((pred_slice - gt_slice) ** 2)
+                    #slice_mse = np.mean((pred_slice - gt_slice) ** 2)
+                    # compute mean absolute error
+                    slice_mse = np.mean(np.abs(pred_slice - gt_slice))
                     mse_bins.append(slice_mse)
                     # print(f"Agent {j}, trajectory {i}, slice {step}:{step+slice_size} MSE = {slice_mse}")
                     
