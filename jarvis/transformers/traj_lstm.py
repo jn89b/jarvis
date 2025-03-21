@@ -236,7 +236,7 @@ class SingleAgentLSTMTrajectoryPredictor(LightningModule):
         # sq_diff = (pred_params - target[:,:,:,0:3]) ** 2
         # loss = sq_diff.sum()
         mae_loss = nn.MSELoss()(pred_params, target[:,:,:,0:3])
-        # plot one trajectory
+        # # plot one trajectory
         fig, ax = plt.subplots()
         desired = target[0,0,:,0:3].detach().cpu().numpy()
         predicted = pred_params[0,0,:,0:3].detach().cpu().numpy()

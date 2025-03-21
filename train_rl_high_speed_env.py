@@ -20,7 +20,6 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.examples.rl_modules.classes.action_masking_rlm import (
     ActionMaskingTorchRLModule,
 )
-
 from ray.rllib.core.rl_module import RLModule
 # from ray.rllib.examples.rl_modules.classes.action_masking_rlm import (
 #     ActionMaskingTorchRLModule,
@@ -31,7 +30,6 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 # A simple RL module that does not perform any action masking.
 
 import torch.nn as nn
-
 
 class SimpleTorchRLModule(TorchModelV2, nn.Module):
     def __init__(self, obs_space, action_space, num_outputs, model_config, name):
@@ -74,7 +72,7 @@ gc.collect()
 # Used to clean up the Ray processes after training
 ray.shutdown()
 # For debugging purposes
-# ray.init(local_mode=True)
+#ray.init(local_mode=True)
 ray.init()
 
 
@@ -103,19 +101,14 @@ def create_hrl_agent_env(config: Dict[str, Any],
 def train_rllib() -> None:
     """
     """
-    # tune.register_env("env", HierarchicalEnv)
+    env_config = load_yaml_config(
+        "config/simple_env_high_speed_config.yaml")['battlespace_environment']
 
     env_config = load_yaml_config(
-        "config/simple_env_config.yaml")['battlespace_environment']
-
-    env_config = load_yaml_config(
-        "config/simple_env_config.yaml")['battlespace_environment']
-
-
+        "config/simple_env_high_speed_config.yaml")['battlespace_environment']
     tune.register_env("engage_env", lambda config:
                       create_env(config=config,
                                  env_config=env_config))
-
     example_env = create_env(config=None, env_config=env_config)
 
     if example_env.simulation_config is None:
@@ -134,7 +127,7 @@ def train_rllib() -> None:
             # checkpoint_score_order="max",
         ),
     )
-
+    
     # Define the multi-agent RL training setup
     config = (
         PPOConfig()
@@ -157,8 +150,7 @@ def train_rllib() -> None:
     tuner = tune.Tuner("PPO", param_space=config, run_config=run_config)
     tuner.fit()
     ray.shutdown()
-
-
+    
 def train_multi_agent() -> None:
 
     def policy_mapping_fn(agent_id, episode, **kwargs):
@@ -167,11 +159,11 @@ def train_multi_agent() -> None:
             return "evader_policy"
         else:
             return "pursuer_policy"
-
+        
     env_config = load_yaml_config(
-        "config/simple_env_config.yaml")['battlespace_environment']
+        "config/simple_env_high_speed_config.yaml")['battlespace_environment']
 
-    tune.register_env("pursuer_evader_env", lambda config:
+    tune.register_env("high_speed_pursuer_evader", lambda config:
                       create_multi_agent_env(config=config,
                                              env_config=env_config))
 
@@ -201,7 +193,7 @@ def train_multi_agent() -> None:
     config = (
         PPOConfig()
         # Use the registered normalized env.
-        .environment(env="pursuer_evader_env")
+        .environment(env="high_speed_pursuer_evader")
         .framework("torch")
         .rl_module(
             rl_module_spec=MultiRLModuleSpec(
@@ -228,7 +220,7 @@ def train_multi_agent() -> None:
             },
             policy_mapping_fn=policy_mapping_fn,
         )
-        .resources(num_gpus=1)
+        .resources(num_gpus=0.05)
         .env_runners(observation_filter="MeanStdFilter",
                      num_env_runners=6)
     )
@@ -253,7 +245,7 @@ def train_hrl(checkpoint_path=None) -> None:
             return "pursuer"
 
     env_config = load_yaml_config(
-        "config/simple_env_config.yaml")['battlespace_environment']
+        "config/simple_env_high_speed_config.yaml")['battlespace_environment']
 
     tune.register_env("hrl_env", lambda config:
                       create_hrl_agent_env(config=config,
@@ -351,18 +343,17 @@ def train_hrl(checkpoint_path=None) -> None:
         )
         .resources(num_gpus=1)
         .env_runners(observation_filter="MeanStdFilter",
-                     num_env_runners=12)
+                     num_env_runners=3)
     )
     # Initialize and run the training using Ray Tune.
     tuner = tune.Tuner("PPO", param_space=config, run_config=run_config)
     tuner.fit()
     ray.shutdown()
 
-
 if __name__ == '__main__':
     # main()
     # train_rllib()
     train_multi_agent()
     #path: str = "/home/justin/ray_results/pursuer_evader_2/PPO_2025-02-24_13-25-45/PPO_pursuer_evader_env_24ee9_00000_0_2025-02-24_13-25-45/checkpoint_000224"
-    #train_hrl(checkpoint_path=path)
+    # train_hrl(checkpoint_path=path)
     ray.shutdown()

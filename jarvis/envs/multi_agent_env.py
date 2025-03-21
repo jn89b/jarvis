@@ -1146,7 +1146,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         if update:
             pursuer.old_distance_from_evader = distance
 
-        return reward
+        return dot_product - delta_distance
 
     def compute_evader_reward(self, pursuer: Pursuer, evader: Evader) -> float:
         """
@@ -1272,9 +1272,9 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         action: np.array = self.discrete_to_continuous_action(
             action_dict[str(selected_agent_id)]['action'])
 
-        if selected_agent.is_pursuer:
-            action = self.adjust_pitch(
-                selected_agent, self.get_evader_agents()[0], action)
+        # if selected_agent.is_pursuer:
+        #     action = self.adjust_pitch(
+        #         selected_agent, self.get_evader_agents()[0], action)
 
         if selected_agent.is_pursuer:
             if self.use_pronav:
@@ -1285,12 +1285,15 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
                 relative_pos = target_pos - current_pos
                 relative_vel = evader.state_vector.speed - \
                     selected_agent.state_vector.speed
+                vel_cmd = action[-1]
                 action = pronav.predict(
                     current_pos=current_pos,
                     relative_pos=relative_pos,
                     current_heading=selected_agent.state_vector.yaw_rad,
                     current_speed=selected_agent.state_vector.speed,
-                    relative_vel=relative_vel
+                    relative_vel=relative_vel,
+                    consider_yaw=False,
+                    max_vel=vel_cmd
                 )
 
         command_action: Dict[str, np.array] = {selected_agent.agent_id: action}
@@ -1308,10 +1311,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
             # rewards for the pursuers
             if agent.is_pursuer:
                 if self.is_caught(pursuer=agent, evader=evader) or evader.crashed:
-                    if evader.crashed:
-                        print("Evader Crashed")
-
-                    print("Evader Caught")
+                    print("Evader,   Caught")
                     terminateds['__all__'] = True
                     rewards[evader.agent_id] = -self.terminal_reward
                     for pursuer in self.get_pursuer_agents():
@@ -1366,14 +1366,13 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
 
         next_observations: Dict[str, np.ndarray] = {}
         next_observations[self.current_agent] = self.observe(
-            agent=self.get_specific_agent(self.current_agent), num_actions=num_actions)
-
+            agent=self.get_specific_agent(self.current_agent), 
+            num_actions=num_actions)
         self.all_done_step += 1
         # this is a simple step counter to make sure all agents have taken a step
         if self.all_done_step >= len(self.agents):
             self.all_done_step = 0
             self.current_step += 1
-
         return next_observations, rewards, terminateds, truncateds, infos
 
     def reset(self, *, seed=None, options=None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -1390,7 +1389,6 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         observations: Dict[str, np.ndarray] = {}
         observations[self.current_agent] = self.observe(
             agent=agent, num_actions=num_actions)
-        print("returned observations ", observations)
         infos = {}
 
         return observations, infos

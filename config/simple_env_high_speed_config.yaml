@@ -1,0 +1,158 @@
+# Configurations for battlespace environment
+battlespace_environment:
+  bounds:
+    x: [-4500, 4500]
+    y: [-4500, 4500]
+    z: [30, 1000]
+
+  spawning:
+    distance_from_other_agents:
+      min: 500
+      max: 1000
+    target:
+      randomize: true
+      position:
+        x: 300
+        y: -450
+        z: 50
+      spawn_radius_from_agent:
+        min: 450
+        max: 650
+
+  # Used to define resolution of sim 
+  simulation:
+    dt: 0.05
+    frequency: 100  # Hz
+    end_time: 35.0 # end time for each episode
+  
+  agents:
+    num_evaders: 1
+    num_pursuers: 2
+    use_pursuer_heuristics: false
+    ai_pursuers: false
+
+    interaction:
+      bubble_radius: 5 # wing span of aircraft
+      capture_radius: 20.0 # capture target radius
+
+    relative_state_observations:
+      position:
+        x:
+          low: -4500
+          high: 4500
+        y:
+          low: -4500
+          high: 4500
+        z:
+          low: -100
+          high: 100
+
+      velocity:
+        low: -75.0
+        high: 75.0
+
+      heading:
+        low: -3.14159
+        high: 3.14159
+
+    evaders:
+      # observation 
+      is_controlled: true
+      state_limits:
+        x:                # obs_low = np.concatenate([obs_low, [x_low, y_low, z_low]])
+                # obs_high = np.concatenate([obs_high, [x_high, y_high, z_high]])
+          min: -inf
+          max: inf
+        y:
+          min: -inf
+          max: inf
+        z:
+          min: 30.0
+          max: 100.0
+        phi:
+          min: !!float -0.7853981633974483   # -np.deg2rad(45)
+          max: !!float 0.7853981633974483    # np.deg2rad(45)
+        theta:
+          min: !!float -0.4363323129985824   # -np.deg2rad(25)
+          max: !!float 0.3490658503988659    # np.deg2rad(20)
+        psi:
+          min: !!float -3.14159   # -np.deg2rad(360)
+          max: !!float 3.14159     # np.deg2rad(360)
+        v:
+          min: 40.0
+          max: 85.0
+        vx:
+          min: -85.0
+          max: 85.0
+        vy:
+          min: -85.0
+          max: 85.0
+        vz:
+          min: -85.0
+          max: 85.0
+
+      control_limits:
+        u_phi:
+          min: !!float -0.7853981633974483   # -np.deg2rad(45)
+          max: !!float 0.7853981633974483    # np.deg2rad(45)
+        u_theta:
+          min: !!float -0.4363323129985824   # -np.deg2rad(25)
+          max: !!float 0.3490658503988659    # np.deg2rad(20)
+        u_psi:
+          min: !!float -3.14159 #radians
+          max: !!float 3.14159  #radians
+        v_cmd:
+          min: 40.0
+          max: 85.0
+
+    pursuers:
+      # observation 
+      is_controlled: true
+      state_limits:
+        x:
+          min: -inf
+          max: inf
+        y:
+          min: -inf
+          max: inf
+        z:
+          min: 30.0
+          max: 100.0
+        phi:
+          min: !!float -0.7853981633974483   # -np.deg2rad(45)
+          max: !!float 0.7853981633974483    # np.deg2rad(45)
+        theta:
+          min: !!float -0.4363323129985824   # -np.deg2rad(25)
+          max: !!float 0.3490658503988659    # np.deg2rad(20)
+        psi:
+          min: !!float -3.14159    # -np.deg2rad(180)
+          max: !!float 3.14159     # np.deg2rad(180)
+        v:
+          min: 40.0
+          max: 85.0
+        vx:
+          min: -85.0
+          max: 85.0
+        vy:
+          min: -85.0
+          max: 85.0
+        vz:
+          min: -85.0
+          max: 85.0
+
+      control_limits:
+        u_phi:
+          min: !!float -0.7853981633974483   # -np.deg2rad(45)
+          max: !!float 0.7853981633974483    # np.deg2rad(45)
+        u_theta:
+          min: !!float -0.4363323129985824   # -np.deg2rad(25)
+          max: !!float 0.3490658503988659    # np.deg2rad(20)
+        u_psi:
+          min: !!float -3.14159 #radians
+          max: !!float 3.14159  #radians
+        v_cmd:
+          min: 40.0
+          max: 85.0
+
+
+
