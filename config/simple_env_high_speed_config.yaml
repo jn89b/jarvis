@@ -1,8 +1,8 @@
 # Configurations for battlespace environment
 battlespace_environment:
   bounds:
-    x: [-4500, 4500]
-    y: [-4500, 4500]
+    x: [-5000, 5000]
+    y: [-5000, 5000]
     z: [30, 1000]
 
   spawning:
@@ -38,11 +38,11 @@ battlespace_environment:
     relative_state_observations:
       position:
         x:
-          low: -4500
-          high: 4500
+          low: -5000
+          high: 5000
         y:
-          low: -4500
-          high: 4500
+          low: -5000
+          high: 5000
         z:
           low: -100
           high: 100
