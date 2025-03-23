@@ -262,7 +262,7 @@ def infer(checkpoint_path: str, num_episodes: int = 1,
 
         # check if done
         if (terminated['__all__'] == True):
-            print("reward: ", reward)
+            # print("reward: ", reward)
             break
 
     datas: List[DataHandler] = []
@@ -276,7 +276,7 @@ def infer(checkpoint_path: str, num_episodes: int = 1,
     ax = fig.add_subplot(111, projection='3d')
 
     for i, data in enumerate(datas):
-        print("data: ", i)
+        # print("data: ", i)
         print(data.phi)
         ax.scatter(data.x[0], data.y[1], data.z[2], label=f"Agent Start {i}")
         ax.plot(data.x, data.y, data.z, label=f"Agent {i}")
@@ -808,23 +808,29 @@ if __name__ == '__main__':
     path: str = "/home/justin/ray_results/PPO_2025-03-11_01-00-20/PPO_hrl_env_1d8d6_00000_0_2025-03-11_01-00-20/checkpoint_000131"
     # path:str = "/home/justin/ray_results/PPO_2025-03-10_19-56-29/PPO_hrl_env_ab204_00000_0_2025-03-10_19-56-30/checkpoint_000018"
     path:str = "/home/justin/ray_results/pursuer_evader_2/PPO_2025-02-24_13-25-45/PPO_pursuer_evader_env_24ee9_00000_0_2025-02-24_13-25-45/checkpoint_000224"
-    path:str = "/root/ray_results/PPO_2025-03-20_17-11-07/PPO_high_speed_pursuer_evader_3902d_00000_0_2025-03-20_17-11-07/checkpoint_000224"
+    #path:str = "/root/ray_results/PPO_2025-03-20_17-11-07/PPO_high_speed_pursuer_evader_3902d_00000_0_2025-03-20_17-11-07/checkpoint_000224"
+    path:str = "/root/ray_results/PPO_2025-03-21_11-49-49/PPO_high_speed_pursuer_evader_80f0c_00000_0_2025-03-21_11-49-49/checkpoint_000061"
+    path:str = "/root/ray_results/PPO_2025-03-21_11-49-49/PPO_high_speed_pursuer_evader_80f0c_00000_0_2025-03-21_11-49-49/checkpoint_000224"
     # ---- Pursuer Evader----
 
     # ---- HRL ----
     # path: str = "/home/justin/ray_results/PPO_2025-02-28_02-55-49/PPO_hrl_env_cecd1_00000_0_2025-02-28_02-55-50/checkpoint_000000"
     # plt.show()
 
-    run_multiple_sims(checkpoint_path=path, num_sims=15, type='pursuer_evader',
+    run_multiple_sims(checkpoint_path=path, num_sims=10, type='pursuer_evader',
                       use_random_seed=False)
-    ray_trainer = RayTrainerSimpleEnv()
-    # # ray_trainer.infer_pursuer_evader(
-    # #     checkpoint_path=path, num_episodes=1, save=True,
-    # # )
-    ray_trainer.infer_multiple_times(checkpoint_path=path, 
-                                     folder_name='pursuer_evader_data_test',
-                                     num_sims=5,
-                                     use_random_seed=False, 
-                                     type='pursuer_evader', 
-                                     save=False)
+    # ray_trainer = RayTrainerSimpleEnv(
+    #     config_file="config/simple_env_high_speed_config.yaml"
+    # )
+    # # # ray_trainer.infer_pursuer_evader(
+    # # #     checkpoint_path=path, num_episodes=1, save=True,
+    # # # )
+    # ray_trainer.infer_multiple_times(checkpoint_path=path, 
+    #                                  folder_name='pursuer_evader_high_speed_data',
+    #                                  num_sims=350,
+    #                                  use_random_seed=False, 
+    #                                  type='pursuer_evader', 
+    #                                  use_pronav = True ,
+    #                                  save=True,
+    #                                  start_count=150)
     

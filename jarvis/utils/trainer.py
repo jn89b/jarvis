@@ -400,13 +400,14 @@ class Trainer():
 
 class RayTrainerSimpleEnv():
     def __init__(self,
-                 convert_json: bool = True) -> None:
+                 convert_json: bool = True,
+                 config_file:str="config/simple_env_config.yaml") -> None:
         # self.model_config: dict = model_config
         # self.env_config: dict = env_config
         # self.training_config: dict = training_config
         # Load your environment configuration (same as used in training).
         self.env_config = load_yaml_config(
-            "config/simple_env_config.yaml")['battlespace_environment']
+            config_file)['battlespace_environment']
         self.convert_json = convert_json
 
     def train(self) -> None:
@@ -423,7 +424,8 @@ class RayTrainerSimpleEnv():
             save: bool = False,
             use_random_seed: bool = True,
             num_random_seeds: int = 10,
-            ) -> None:
+            use_pronav:bool = True,
+            start_count:int=0) -> None:
         
         if use_random_seed:
             for j in range(num_random_seeds):
@@ -432,9 +434,10 @@ class RayTrainerSimpleEnv():
                 folder_name: str = 'hrl_data/'+'seed_'+str(seed_num)
                 for i in range(num_sims):
                     if type == 'pursuer_evader':
+                        index_save: int = int(i + start_count)
                         self.infer_pursuer_evader(checkpoint_path=checkpoint_path, 
                             num_episodes=1,
-                            use_pronav=True, save=save, index_save=i,
+                            use_pronav=use_pronav, save=save, index_save=index_save,
                             folder_dir=folder_name)
                     # if type == 'pursuer':
                     #     load_and_infer_pursuer(checkpoint_path=checkpoint_path)
@@ -448,10 +451,12 @@ class RayTrainerSimpleEnv():
         else:
             np.random.seed(2)
             for i in range(num_sims):
+                index_save: int = int(i + start_count)
                 if type == 'pursuer_evader':
                     self.infer_pursuer_evader(checkpoint_path=checkpoint_path, 
                         num_episodes=1,
-                        use_pronav=True, save=save, index_save=i,
+                        use_pronav=use_pronav, save=save, 
+                        index_save=index_save,
                         folder_dir=folder_name)
                 # if type == 'pursuer':
                 #     load_and_infer_pursuer(checkpoint_path=checkpoint_path)
