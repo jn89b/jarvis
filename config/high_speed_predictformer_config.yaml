@@ -42,7 +42,7 @@ kl_weight: 20.0
 use_FDEADE_aux_loss: True
 num_queries_dec: 64
 num_queries_enc: 192
-step_size: 5
+step_size: 2
 
 # train
 modelmax_epochs: 150 #150 #40
