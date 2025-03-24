@@ -7,11 +7,11 @@ devices: [ 0 ] # gpu ids
 
 
 # data related
-train_data_path: "pursuer_evader_high_speed_data" # data path
-test_data_path: "pursuer_evader_high_speed_data_test" # data path
+train_data_path: "pursuer_evader_high_speed_small_sample" # data path
+test_data_path: "pursuer_evader_high_speed_small_sample" # data path
 max_num_agents: 3 
 num_agent_feature: 7
-val_data_path: "pursuer_evader_high_speed_data/val"  # list of paths to the validation data
+val_data_path: "pursuer_evader_high_speed_small_sample/val"  # list of paths to the validation data
 load_num_workers: 0 # number of workers for loading data
 max_data_num: [ 1000 ] # maximum number of data for each training dataset
 starting_frame: [ 0 ] # history trajectory starts at this frame for each training dataset

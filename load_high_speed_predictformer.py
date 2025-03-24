@@ -24,10 +24,10 @@ with open(data_config, 'r') as f:
 
 dataset = BaseDataset(
     config=data_config,
-    is_test=False,
+    is_validation=True,
     num_samples=100)
 print("Dataset Length", len(dataset))
-# set seed number
+# set seed numberEW
 # seed = 42
 # torch.manual_seed(seed)
 dataloader: DataLoader = DataLoader(

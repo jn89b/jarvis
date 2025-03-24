@@ -817,20 +817,20 @@ if __name__ == '__main__':
     # path: str = "/home/justin/ray_results/PPO_2025-02-28_02-55-49/PPO_hrl_env_cecd1_00000_0_2025-02-28_02-55-50/checkpoint_000000"
     # plt.show()
 
-    run_multiple_sims(checkpoint_path=path, num_sims=10, type='pursuer_evader',
-                      use_random_seed=False)
-    # ray_trainer = RayTrainerSimpleEnv(
-    #     config_file="config/simple_env_high_speed_config.yaml"
-    # )
-    # # # ray_trainer.infer_pursuer_evader(
-    # # #     checkpoint_path=path, num_episodes=1, save=True,
-    # # # )
-    # ray_trainer.infer_multiple_times(checkpoint_path=path, 
-    #                                  folder_name='pursuer_evader_high_speed_data',
-    #                                  num_sims=350,
-    #                                  use_random_seed=False, 
-    #                                  type='pursuer_evader', 
-    #                                  use_pronav = True ,
-    #                                  save=True,
-    #                                  start_count=150)
+    # run_multiple_sims(checkpoint_path=path, num_sims=10, type='pursuer_evader',
+    #                   use_random_seed=False)
+    ray_trainer = RayTrainerSimpleEnv(
+        config_file="config/simple_env_high_speed_config.yaml"
+    )
+    # # ray_trainer.infer_pursuer_evader(
+    # #     checkpoint_path=path, num_episodes=1, save=True,
+    # # )
+    ray_trainer.infer_multiple_times(checkpoint_path=path, 
+                                     folder_name='pursuer_evader_high_speed_data_test',
+                                     num_sims=5,
+                                     use_random_seed=False, 
+                                     type='pursuer_evader', 
+                                     use_pronav = True ,
+                                     save=True,
+                                     start_count=0)
     

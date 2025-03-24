@@ -1121,7 +1121,7 @@ class LazyBaseDataset(Dataset):
     
         # Multiplicative noise (simulating sensor drift)
         obj_trajs_past[:, :, 0:2] *= np.random.normal(1, 
-                                                      0.02, 
+                                                      0.01, 
                                                       obj_trajs_past[:, :, 0:2].shape)  # 2% variation
 
         # Heading noise (simulating IMU/Gyro errors)

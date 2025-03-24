@@ -12,7 +12,7 @@ import os
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Load configuration
-config_path = "config/high_speed_predictformer_config.yaml"
+config_path = "config/high_speed_predictformer_config_small.yaml"
 with open(config_path, 'r') as f:
     config = yaml.safe_load(f)
 
@@ -21,7 +21,7 @@ train_dataset = LazyBaseDataset(config=config, is_validation=False)
 print("Train dataset length: ", len(train_dataset))
 val_dataset = LazyBaseDataset(config=config, is_validation=True)
 
-num_workers:int = 24
+num_workers:int = 6
 batch_size:int = 12
 # Create DataLoaders for each dataset
 train_dataloader = DataLoader(
@@ -47,7 +47,7 @@ with open(config_path, 'r') as f:
     model_config = yaml.safe_load(f)
 
 model = PredictFormer(model_config)
-name = "high_speed_predictformer"
+name = "high_speed_predictformer_small"
 logger = TensorBoardLogger("tb_logs", name=name)
 
 # Set up checkpointing
