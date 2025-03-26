@@ -120,7 +120,9 @@ class Metrics():
                     # Compute the MSE for the slice
                     #slice_mse = np.mean((pred_slice - gt_slice) ** 2)
                     # compute mean absolute error
-                    slice_mse = np.mean(np.abs(pred_slice - gt_slice))
+                    slice_mse = np.abs(pred_slice - gt_slice)
+                    slice_mse = np.sum(slice_mse)/gt_slice.shape[1]
+                    # slice_mse = (slice_mse)
                     mse_bins.append(slice_mse)
                     # print(f"Agent {j}, trajectory {i}, slice {step}:{step+slice_size} MSE = {slice_mse}")
                     
@@ -175,6 +177,7 @@ class Metrics():
             if i == len(overall_metrics)-1 and to_break:
                 break
             mse_bins = np.array(agent['slice_mse'])  # shape: (num_runs, num_bins)
+            print(len(mse_bins))
             mean_mse = np.mean(mse_bins, axis=0)
             std_mse = np.std(mse_bins, axis=0)
             n = mse_bins.shape[0]

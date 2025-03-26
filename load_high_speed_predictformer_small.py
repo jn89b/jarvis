@@ -18,13 +18,13 @@ plt.close('all')
 
 #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device = "cpu"
-data_config = "config/high_speed_predictformer_config.yaml"
+data_config = "config/high_speed_predictformer_config_small.yaml"
 with open(data_config, 'r') as f:
     data_config = yaml.safe_load(f)
 
 dataset = BaseDataset(
     config=data_config,
-    is_test=True,
+    is_validation=False,
     num_samples=100)
 print("Dataset Length", len(dataset))
 # set seed numberEW
@@ -33,17 +33,17 @@ print("Dataset Length", len(dataset))
 dataloader: DataLoader = DataLoader(
     dataset,
     batch_size=1,
-    shuffle=False,
+    shuffle=True,
     collate_fn=dataset.collate_fn
 )
 
 
-model_config: str = "config/high_speed_predictformer_config.yaml"
+model_config: str = "config/high_speed_predictformer_config_small.yaml"
 with open(model_config, 'r') as f:
     model_config = yaml.safe_load(f)
 
 start_idx: int = data_config['past_len']
-name = "high_speed_predictformer"
+name = "high_speed_predictformer_small"
 # Check if there's an existing checkpoint to resume from
 checkpoint_dir = name+"_checkpoint/"
 checkpoint_callback = ModelCheckpoint(
@@ -128,7 +128,7 @@ info = {"output": output_history,
 folder_dir = "postprocess_predictformer"
 if not os.path.exists(folder_dir):
     os.makedirs(folder_dir)
-pkl.dump(info, open(os.path.join(folder_dir, "highspeed_predictformer_output_1.pkl"), "wb"))
+pkl.dump(info, open(os.path.join(folder_dir, "small_model.pkl"), "wb"))
 
 
 # %%

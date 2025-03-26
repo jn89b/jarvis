@@ -38,14 +38,17 @@ def get_z_measurement(state:np.array) -> np.array:
 # Script to animate the trajectories of all the vehicles with the prediction
 # """
 
-filename = "noisy_predictformer_output_3.pkl"
+filename = "small_model"
+fullname = filename+".pkl"
 #info = pkl.load(open(os.path.join("postprocess_predictformer", "predictformer_output.pkl"), "rb"))
-metrics = Metrics(filename)
-overall_metrics = metrics.predictformer_mse()
+metrics = Metrics(fullname)
+overall_metrics = metrics.predictformer_mse(
+    slice_size=5)   
 metrics.plot_mse_metrics(overall_metrics)
-#plt.show()
-# 
-info = pkl.load(open(filename, "rb"))
+# save the metrics as a pickle file
+pkl.dump(overall_metrics, open("ukf_metrics.pkl", "wb"))
+ 
+info = pkl.load(open(fullname, "rb"))
 center_gt_trajs:List[np.array] = info["center_gt_trajs"]
 center_objects_world:List[np.array] = info["center_objects_world"]
 predicted_probs: List[np.array] = [output['predicted_probability'] for output in info["output"]]
@@ -63,6 +66,7 @@ num_prediction_steps = int(prediction_time / 0.1)  # for dt=0.1, this equals 60
 
 overall_ukf_estimates = []
 overall_readings = []
+
 
 for i in range(num_agents):
     ukf = UKFPlane()  # instantiate a new filter for each agent

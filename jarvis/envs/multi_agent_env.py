@@ -1187,7 +1187,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         evader.old_distance_from_pursuer = distance
 
         # Return the negative reward for the evader without causing any state updates.
-        return -dot_product - delta_distance + 0.01
+        return -dot_product - delta_distance
 
     def sigmoid(self, x: float) -> float:
         x = np.clip(x, -500, 500)

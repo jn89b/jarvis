@@ -67,7 +67,7 @@ def create_multi_agent_env(config: Dict[str, Any],
 
 # Load your environment configuration (same as used in training).
 env_config = load_yaml_config(
-    "config/simple_env_high_speed_config.yaml")['battlespace_environment']
+    "config/simple_env_config.yaml")['battlespace_environment']
 
 # Define your policy mapping function as in training.
 
@@ -811,26 +811,27 @@ if __name__ == '__main__':
     #path:str = "/root/ray_results/PPO_2025-03-20_17-11-07/PPO_high_speed_pursuer_evader_3902d_00000_0_2025-03-20_17-11-07/checkpoint_000224"
     path:str = "/root/ray_results/PPO_2025-03-21_11-49-49/PPO_high_speed_pursuer_evader_80f0c_00000_0_2025-03-21_11-49-49/checkpoint_000061"
     path:str = "/root/ray_results/PPO_2025-03-21_11-49-49/PPO_high_speed_pursuer_evader_80f0c_00000_0_2025-03-21_11-49-49/checkpoint_000224"
+    path:str = "/home/justin/ray_results/PPO_2025-03-26_01-05-00/PPO_pursuer_evader_env_40a11_00000_0_2025-03-26_01-05-00/checkpoint_000139"
     # ---- Pursuer Evader----
 
     # ---- HRL ----
     # path: str = "/home/justin/ray_results/PPO_2025-02-28_02-55-49/PPO_hrl_env_cecd1_00000_0_2025-02-28_02-55-50/checkpoint_000000"
     # plt.show()
 
-    # run_multiple_sims(checkpoint_path=path, num_sims=10, type='pursuer_evader',
-    #                   use_random_seed=False)
-    ray_trainer = RayTrainerSimpleEnv(
-        config_file="config/simple_env_high_speed_config.yaml"
-    )
-    # # ray_trainer.infer_pursuer_evader(
-    # #     checkpoint_path=path, num_episodes=1, save=True,
-    # # )
-    ray_trainer.infer_multiple_times(checkpoint_path=path, 
-                                     folder_name='pursuer_evader_high_speed_data_test',
-                                     num_sims=5,
-                                     use_random_seed=False, 
-                                     type='pursuer_evader', 
-                                     use_pronav = True ,
-                                     save=True,
-                                     start_count=0)
+    run_multiple_sims(checkpoint_path=path, num_sims=10, type='pursuer_evader',
+                      use_random_seed=False)
+    # ray_trainer = RayTrainerSimpleEnv(
+    #     config_file="config/simple_env_config.yaml"
+    # )
+    # ray_trainer.infer_pursuer_evader(
+    #     checkpoint_path=path, num_episodes=1, save=True,
+    # )
+    # ray_trainer.infer_multiple_times(checkpoint_path=path, 
+    #                                  folder_name='pursuer_evader_high_speed_data_test',
+    #                                  num_sims=5,
+    #                                  use_random_seed=False, 
+    #                                  type='pursuer_evader', 
+    #                                  use_pronav = True ,
+    #                                  save=True,
+    #                                  start_count=0)
     
