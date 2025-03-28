@@ -922,13 +922,6 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         """
         Returns the action space for the pursuers and evaders
         """
-        # self.action_spaces: Dict[str, gym.spaces.Dict] = {}
-        # for agent in self.get_controlled_agents:
-        #     action_space: gym.spaces.Dict = self.get_discrete_action_space(
-        #         is_pursuer=agent.is_pursuer
-        #     )
-        #     self.action_spaces[agent.agent_id] = action_space
-
         self.action_spaces: Dict[str, gym.spaces.Dict] = {}
         for agent in self.get_controlled_agents:
             # Get the original MultiDiscrete action space.
@@ -1180,7 +1173,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         if update:
             pursuer.old_distance_from_evader = distance
 
-        return dot_product + delta_distance
+        return delta_distance
 
     def compute_evader_reward(self, pursuer: Pursuer, evader: Evader) -> float:
         """
@@ -1221,7 +1214,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         evader.old_distance_from_pursuer = distance
 
         # Return the negative reward for the evader without causing any state updates.
-        return -dot_product - delta_distance
+        return - delta_distance
 
     def sigmoid(self, x: float) -> float:
         x = np.clip(x, -500, 500)
