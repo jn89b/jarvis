@@ -1074,34 +1074,26 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
             if agent.is_pursuer and not self.use_pronav:
                 unpacked_actions: Dict[str, np.ndarray] = self.unwrap_action_mask(
                     action_mask)
-                # the only thing that will change is the yaw mask
-                state_vector: StateVector = agent.state_vector
-                current_pos: np.array = np.array([
-                    state_vector.x,
-                    state_vector.y,
-                    state_vector.z,
-
-                ])
-                evader: Evader = self.get_evader_agents()[0]
-                relative_pos: np.array = np.array([
-                    state_vector.x - evader.state_vector.x,
-                    state_vector.y - evader.state_vector.y,
-                    state_vector.z - evader.state_vector.z
-                ])
-                relative_vel = state_vector.speed - evader.state_vector.speed
                 pronav: ProNavV2 = ProNavV2()
+                current_pos = agent.state_vector.array[0:3]
+                evader: Evader = self.get_evader_agents()[0]
+                target_pos = evader.state_vector.array[0:3]
+                relative_pos = target_pos - current_pos
+                relative_vel = evader.state_vector.speed - \
+                    agent.state_vector.speed
                 action = pronav.predict(
                     current_pos=current_pos,
-                    current_heading=state_vector.yaw_rad,
                     relative_pos=relative_pos,
-                    relative_vel=relative_vel,
-                    current_speed=state_vector.speed)
+                    current_heading=agent.state_vector.yaw_rad,
+                    current_speed=agent.state_vector.speed,
+                    relative_vel=relative_vel
+                )
                 yaw_idx:int = 1
                 yaw_cmd:float = action[yaw_idx]
                 #yaw_cmd_index:int = np.abs(self.yaw_commands - yaw_cmd).argmin()
                 yaw_cmd_index:int = np.abs(self.yaw_commands - yaw_cmd).argmin()
                 # TODO: Make the FOV a parameter use can update
-                fov_half:int = 25
+                fov_half:int = 10
                 indices = np.arange(yaw_cmd_index - fov_half, yaw_cmd_index + fov_half + 1) \
                     % len(self.yaw_commands)
                 #clip the indices to min and max values
@@ -1188,7 +1180,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         if update:
             pursuer.old_distance_from_evader = distance
 
-        return dot_product - delta_distance
+        return dot_product + delta_distance
 
     def compute_evader_reward(self, pursuer: Pursuer, evader: Evader) -> float:
         """
