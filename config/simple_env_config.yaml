@@ -30,9 +30,10 @@ battlespace_environment:
     num_pursuers: 2
     use_pursuer_heuristics: false
     ai_pursuers: false
+    use_pronav: false
 
     interaction:
-      bubble_radius: 5 # wing span of aircraft
+      bubble_radius: 5 # wing span o  f aircraft
       capture_radius: 20.0 # capture target radius
 
     relative_state_observations:

@@ -817,7 +817,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         self.current_agent: str = next(self.agent_cycle)
         self.terminal_reward: float = 1000.0
         self.all_done_step: int = 0
-        self.use_pronav: bool = True
+        self.use_pronav: bool = self.agent_config['use_pronav']
 
         # self.__init_battlespace()
         assert self.battlespace is not None
@@ -1066,8 +1066,51 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
             if agent.agent_id == other_agent.agent_id:
                 continue
 
+            # we don't want to include the other pursuer in the observation
             if agent.is_pursuer == other_agent.is_pursuer:
                 continue
+
+            #TODO: clean this up? abstract to a method?
+            if agent.is_pursuer and not self.use_pronav:
+                unpacked_actions: Dict[str, np.ndarray] = self.unwrap_action_mask(
+                    action_mask)
+                # the only thing that will change is the yaw mask
+                state_vector: StateVector = agent.state_vector
+                current_pos: np.array = np.array([
+                    state_vector.x,
+                    state_vector.y,
+                    state_vector.z,
+
+                ])
+                evader: Evader = self.get_evader_agents()[0]
+                relative_pos: np.array = np.array([
+                    state_vector.x - evader.state_vector.x,
+                    state_vector.y - evader.state_vector.y,
+                    state_vector.z - evader.state_vector.z
+                ])
+                relative_vel = state_vector.speed - evader.state_vector.speed
+                pronav: ProNavV2 = ProNavV2()
+                action = pronav.predict(
+                    current_pos=current_pos,
+                    current_heading=state_vector.yaw_rad,
+                    relative_pos=relative_pos,
+                    relative_vel=relative_vel,
+                    current_speed=state_vector.speed)
+                yaw_idx:int = 1
+                yaw_cmd:float = action[yaw_idx]
+                #yaw_cmd_index:int = np.abs(self.yaw_commands - yaw_cmd).argmin()
+                yaw_cmd_index:int = np.abs(self.yaw_commands - yaw_cmd).argmin()
+                # TODO: Make the FOV a parameter use can update
+                fov_half:int = 25
+                indices = np.arange(yaw_cmd_index - fov_half, yaw_cmd_index + fov_half + 1) \
+                    % len(self.yaw_commands)
+                #clip the indices to min and max values
+                yaw_mask:np.array = np.zeros_like(self.yaw_commands)
+                yaw_mask[indices] = 1
+                unpacked_actions['yaw'] = yaw_mask
+                # sanity check
+                assert(yaw_mask[yaw_cmd_index] == 1)
+                action_mask = self.wrap_action_mask(unpacked_actions)
 
             relative_pos: np.ndarray = agent.state_vector.array - \
                 other_agent.state_vector.array
@@ -1087,9 +1130,8 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
 
         obs = np.concatenate([obs, overall_relative_pos]).astype(np.float32)
         observation['observations'] = obs
-
+        observation['action_mask'] = action_mask
         # check to make sure
-
         return observation
 
     def is_caught(self, pursuer: SimpleAgent, evader: SimpleAgent) -> bool:

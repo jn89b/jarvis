@@ -945,6 +945,13 @@ class EngageEnv(AbstracKinematicEnv):
         return yaw_mask
 
     def observe(self, agent) -> Dict[str, np.ndarray]:
+        """
+        Args:
+            agent (SimpleAgent): The agent to observe
+        Returns:
+            Dict[str, np.ndarray]: A dictionary containing the observations for the agent
+        
+        """
         observation: Dict[str, np.ndarray] = super().observe(agent)
         obs: np.ndarray = observation['observations']
 
@@ -1078,11 +1085,6 @@ class EngageEnv(AbstracKinematicEnv):
         observation = self.observe(agent=self.get_controlled_agents[0])
         info = {}
         return observation, info
-
-
-class AvoidEnv(AbstracKinematicEnv):
-    def __init__agents(self):
-        return super().__init__agents()
 
 
 class PursuerEvaderEnv(MultiAgentEnv, AbstracKinematicEnv):
@@ -1243,13 +1245,50 @@ class PursuerEvaderEnv(MultiAgentEnv, AbstracKinematicEnv):
         action_mask: np.ndarray = observation['action_mask']
 
         overall_relative_pos: List[float] = []
+        
         for other_agent in self.get_controlled_agents:
             if agent.agent_id == other_agent.agent_id:
                 continue
 
-            if agent.is_pursuer == other_agent.is_pursuer:
-                continue
+            # if our agent is a pursuer we will mask 
+            # actions that are not within fov of the agent
+            #TODO: clean this up? abstract to a method?
+            if agent.is_pursuer and not self.use_pn:
+                unpacked_actions: Dict[str, np.ndarray] = self.unwrap_action_mask(
+                    action_mask)
+                # the only thing that will change is the yaw mask
+                state_vector: StateVector = agent.state_vector
+                current_pos: np.array = np.array([
+                    state_vector.x,
+                    state_vector.y,
+                    state_vector.z,
 
+                ])
+                evader: Evader = self.get_evader_agents()[0]
+                relative_pos: np.array = np.array([
+                    state_vector.x - evader.state_vector.x,
+                    state_vector.y - evader.state_vector.y,
+                    state_vector.z - evader.state_vector.z
+                ])
+                relative_vel = state_vector.speed - evader.state_vector.speed
+                action = self.pro_nav.predict(
+                    current_pos=current_pos,
+                    current_heading=state_vector.yaw_rad,
+                    relative_pos=relative_pos,
+                    relative_vel=relative_vel,
+                    current_speed=state_vector.speed)
+                yaw_idx:int = 1
+                yaw_cmd:float = action[yaw_idx]
+                yaw_index:int = np.abs(self.yaw_commands - yaw_cmd).argmin()
+                # TODO: Make the FOV a parameter use can update
+                fov_half:int = 15
+                indices:np.array = np.arange(yaw_index - fov_half, 
+                                             yaw_index + fov_half)
+                yaw_mask:np.array = np.zeros_like(self.yaw_commands)
+                yaw_mask[indices] = 1
+                unpacked_actions['yaw'] = yaw_mask
+                action_mask = self.wrap_action_mask(unpacked_actions)
+                
             relative_pos: np.ndarray = agent.state_vector.array - \
                 other_agent.state_vector.array
             relative_pos = relative_pos[:3]
@@ -1257,6 +1296,7 @@ class PursuerEvaderEnv(MultiAgentEnv, AbstracKinematicEnv):
 
         obs = np.concatenate([obs, overall_relative_pos])
         observation['observations'] = obs
+        observation['action_mask'] = action_mask
 
         return observation
 
@@ -1324,6 +1364,9 @@ class PursuerEvaderEnv(MultiAgentEnv, AbstracKinematicEnv):
         action: np.array = self.discrete_to_continuous_action(
             action_dict[agent.agent_id]['action'])
 
+        # TWo options:
+        # If we don't use PN we will update mask actoins that are 
+        # not within the range from PN 
         if agent.is_pursuer and self.use_pn:
             state_vector: StateVector = agent.state_vector
             current_pos: np.array = np.array([
@@ -1341,6 +1384,7 @@ class PursuerEvaderEnv(MultiAgentEnv, AbstracKinematicEnv):
             relative_vel = state_vector.speed - evader.state_vector.speed
             action = self.pro_nav.predict(
                 current_pos=current_pos,
+                current_heading=state_vector.yaw_rad,
                 relative_pos=relative_pos,
                 relative_vel=relative_vel,
                 current_speed=state_vector.speed)
