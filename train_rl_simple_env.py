@@ -230,7 +230,7 @@ def train_multi_agent() -> None:
         )
         .resources(num_gpus=1)
         .env_runners(observation_filter="MeanStdFilter",
-                     num_env_runners=6)
+                     num_env_runners=12)
     )
 
     # Initialize and run the training using Ray Tune.
