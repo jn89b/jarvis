@@ -183,7 +183,7 @@ def compute_saliency_map(env: PursuerEvaderEnv,
 
 
 def infer(checkpoint_path: str, num_episodes: int = 1,
-          use_pronav: bool = True, save: bool = False,
+          use_pronav: bool = False, save: bool = False,
           index_save: int = 0, folder_dir: str = 'rl_pickle'):
     ray.init(ignore_reinit_error=True)
     env = create_multi_agent_env(config=None, env_config=env_config)
@@ -213,6 +213,8 @@ def infer(checkpoint_path: str, num_episodes: int = 1,
     print("max steps", env.max_steps)
     reward_list = []
     while not terminated['__all__']:
+        import time
+        start_time = time.time()
         # for i in range(n_steps):
         # compute the next action from a batch of observations
         # torch_obs_batch = torch.from_numpy(np.array([obs]))
@@ -240,6 +242,8 @@ def infer(checkpoint_path: str, num_episodes: int = 1,
         # For my action space I have a multidscrete environment
         # Since my action logits are a [1 x total_actions] tensor
         # I need to get the argmax of the tensor
+        end_time = time.time()
+        print("time: ", end_time - start_time)
         action_logits = action_logits.detach().numpy().squeeze()
         unwrapped_action: Dict[str, np.array] = env.unwrap_action_mask(
             action_logits)
@@ -249,7 +253,7 @@ def infer(checkpoint_path: str, num_episodes: int = 1,
             v = torch.from_numpy(v)
             best_action = torch.argmax(v).numpy()
             discrete_actions.append(best_action)
-
+        
         # action = torch.argmax(action_logits).numpy()
         action_dict = {}
         action_dict[key_value] = {'action': discrete_actions}
@@ -631,7 +635,7 @@ def load_good_guy(checkpoint_path: str, index_save: int = 0,
         # compute the next action from a batch of observations
         # torch_obs_batch = torch.from_numpy(np.array([obs]))
         key_value = list(observation.keys())[0]
-        # print("key value: ", key_value)
+
         if key_value == 'good_guy_hrl':
             obs = observation['good_guy_hrl']
             torch_obs_batch = {k: torch.from_numpy(
@@ -656,7 +660,7 @@ def load_good_guy(checkpoint_path: str, index_save: int = 0,
                 np.array([v])) for k, v in obs.items()}
             action_logits = pursuer.forward_inference(
                 {"obs": torch_obs_batch})["action_dist_inputs"]
-
+        end_time = time.time()
         # For my action space I have a multidscrete environment
         # Since my action logits are a [1 x total_actions] tensor
         # I need to get the argmax of the tensor
@@ -768,7 +772,7 @@ def run_multiple_sims(checkpoint_path: str, num_sims: int = 10,
             for i in range(num_sims):
                 if type == 'pursuer_evader':
                     infer(checkpoint_path=checkpoint_path, num_episodes=1,
-                          use_pronav=True, save=save, index_save=i,
+                          use_pronav=False, save=save, index_save=i,
                           folder_dir=folder_name)
                 if type == 'pursuer':
                     load_and_infer_pursuer(checkpoint_path=checkpoint_path)
@@ -785,7 +789,7 @@ def run_multiple_sims(checkpoint_path: str, num_sims: int = 10,
         for i in range(num_sims):
             if type == 'pursuer_evader':
                 infer(checkpoint_path=checkpoint_path, num_episodes=1,
-                      use_pronav=True, save=save, index_save=i)
+                      use_pronav=False, save=save, index_save=i)
             if type == 'pursuer':
                 load_and_infer_pursuer(checkpoint_path=checkpoint_path)
             if type == "evader":
@@ -815,11 +819,12 @@ if __name__ == '__main__':
     # ---- Pursuer Evader----
     path:str = "/root/ray_results/PPO_2025-03-28_10-46-27/PPO_pursuer_evader_env_cf49e_00000_0_2025-03-28_10-46-27/checkpoint_000015"
     path:str = "/root/ray_results/PPO_2025-03-28_10-46-27/PPO_pursuer_evader_env_cf49e_00000_0_2025-03-28_10-46-27/checkpoint_000055"
+    path:str = "/home/justin/ray_results/PPO_2025-03-29_01-03-41/PPO_pursuer_evader_env_9075a_00000_0_2025-03-29_01-03-41/checkpoint_000007"
     # ---- HRL ----
     # path: str = "/home/justin/ray_results/PPO_2025-02-28_02-55-49/PPO_hrl_env_cecd1_00000_0_2025-02-28_02-55-50/checkpoint_000000"
     # plt.show()
 
-    run_multiple_sims(checkpoint_path=path, num_sims=10, type='pursuer_evader',
+    run_multiple_sims(checkpoint_path=path, num_sims=2, type='pursuer_evader',
                       use_random_seed=False)
     # ray_trainer = RayTrainerSimpleEnv(
     #     config_file="config/simple_env_config.yaml"

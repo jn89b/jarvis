@@ -53,7 +53,7 @@ class BaseDataset(Dataset):
             data_usage_this_dataset = self.config['max_data_num'][cnt]
             data_usage_this_dataset = int(
                 data_usage_this_dataset / self.data_chunk_size)
-            self.starting_frame = self.config['starting_frame'][cnt]
+            self.starting_frame  = self.config['starting_frame'][cnt]
             if self.config['use_cache'] or is_ddp():
                 file_list = self.get_data_list(data_usage_this_dataset)
             else:

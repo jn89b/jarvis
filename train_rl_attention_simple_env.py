@@ -11,7 +11,7 @@ from jarvis.envs.simple_multi_env import EngageEnv
 from jarvis.envs.multi_agent_env import PursuerEvaderEnv
 from jarvis.envs.multi_agent_hrl import HRLMultiAgentEnv
 from jarvis.utils.trainer import load_yaml_config
-from jarvis.utils.mask import SimpleEnvMaskModule
+from jarvis.utils.mask import SimpleEnvMaskModule, AttentionMasking
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 
@@ -20,7 +20,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.examples.rl_modules.classes.action_masking_rlm import (
     ActionMaskingTorchRLModule,
 )
-
+from torch.profiler import profile, record_function, ProfilerActivity
 from ray.rllib.core.rl_module import RLModule
 # from ray.rllib.examples.rl_modules.classes.action_masking_rlm import (
 #     ActionMaskingTorchRLModule,
@@ -32,6 +32,18 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 
 import torch.nn as nn
 
+# TODO: Set this as a yaml config
+model_config={
+    "use_attention": False,
+    "attention_num_transformer_units": 1,
+    "attention_use_n_prev_actions": 5,
+    "attention_use_n_prev_rewards": 5,
+    "attention_dim": 32,
+    "attention_memory_inference": 10,
+    "attention_memory_training": 10,
+    "token_dim": 5, # x,y,z,psi,v of other agents
+    "self_state_dim": 10, #x,y,z,phi,theta,psi,v, vx, vy, vz
+}
 
 class SimpleTorchRLModule(TorchModelV2, nn.Module):
     def __init__(self, obs_space, action_space, num_outputs, model_config, name):
@@ -74,8 +86,8 @@ gc.collect()
 # Used to clean up the Ray processes after training
 ray.shutdown()
 # For debugging purposes
-# ray.init(local_mode=True)
-ray.init()
+ray.init(local_mode=True)
+# ray.init()
 
 
 def create_env(config: Dict[str, Any],
@@ -185,7 +197,7 @@ def train_multi_agent() -> None:
     run_config = tune.RunConfig(
         stop={"training_iteration": 4500},
         checkpoint_config=tune.CheckpointConfig(
-            checkpoint_frequency=20,
+            checkpoint_frequency=3,
             checkpoint_at_end=True,
             num_to_keep=5,
             checkpoint_score_attribute="episode_reward_mean",
@@ -207,32 +219,16 @@ def train_multi_agent() -> None:
             rl_module_spec=MultiRLModuleSpec(
                 rl_module_specs={
                     "evader_policy": RLModuleSpec(
-                        module_class=SimpleEnvMaskModule,
+                        module_class=AttentionMasking,
                         observation_space=evader_obs_space,
                         action_space=evader_action_space,
-                        model_config={
-                            "use_attention": True,
-                            "attention_num_transformer_units": 1,
-                            "attention_use_n_prev_actions": 5,
-                            "attention_use_n_prev_rewards": 5,
-                            "attention_dim": 32,
-                            "attention_memory_inference": 10,
-                            "attention_memory_training": 10,
-                        }
+                        model_config=model_config
                     ),
                     "pursuer_policy": RLModuleSpec(
-                        module_class=SimpleEnvMaskModule,
+                        module_class=AttentionMasking,
                         observation_space=pursuer_obs_space,
                         action_space=pursuer_action_space,
-                        model_config={
-                            "use_attention": True,
-                            "attention_num_transformer_units": 1,
-                            "attention_use_n_prev_actions": 5,
-                            "attention_use_n_prev_rewards": 5,
-                            "attention_dim": 32,
-                            "attention_memory_inference": 10,
-                            "attention_memory_training": 10,
-                        }
+                        model_config=model_config
                     )
                 }
             )

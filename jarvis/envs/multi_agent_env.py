@@ -1173,7 +1173,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         if update:
             pursuer.old_distance_from_evader = distance
 
-        return delta_distance
+        return delta_distance + (0.5 *dot_product)
 
     def compute_evader_reward(self, pursuer: Pursuer, evader: Evader) -> float:
         """
@@ -1214,7 +1214,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         evader.old_distance_from_pursuer = distance
 
         # Return the negative reward for the evader without causing any state updates.
-        return - delta_distance
+        return - delta_distance - (0.5 *dot_product)
 
     def sigmoid(self, x: float) -> float:
         x = np.clip(x, -500, 500)
@@ -1393,7 +1393,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
 
         next_observations: Dict[str, np.ndarray] = {}
         next_observations[self.current_agent] = self.observe(
-            agent=self.get_specific_agent(self.current_agent), 
+            agent=self.get_specific_agent(self.current_agent),
             num_actions=num_actions)
         self.all_done_step += 1
         # this is a simple step counter to make sure all agents have taken a step
