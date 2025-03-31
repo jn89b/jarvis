@@ -820,7 +820,7 @@ if __name__ == '__main__':
     # ---- Pursuer Evader----
     path:str = "/root/ray_results/PPO_2025-03-28_10-46-27/PPO_pursuer_evader_env_cf49e_00000_0_2025-03-28_10-46-27/checkpoint_000015"
     path:str = "/root/ray_results/PPO_2025-03-28_10-46-27/PPO_pursuer_evader_env_cf49e_00000_0_2025-03-28_10-46-27/checkpoint_000055"
-    path:str = "/home/justin/ray_results/PPO_2025-03-31_00-51-33/PPO_pursuer_evader_env_3360d_00000_0_2025-03-31_00-51-33/checkpoint_000001"
+    path:str = "/home/justin/ray_results/PPO_2025-03-31_00-51-33/PPO_pursuer_evader_env_3360d_00000_0_2025-03-31_00-51-33/checkpoint_000002"
     # ---- HRL ----
     # path: str = "/home/justin/ray_results/PPO_2025-02-28_02-55-49/PPO_hrl_env_cecd1_00000_0_2025-02-28_02-55-50/checkpoint_000000"
     # plt.show()

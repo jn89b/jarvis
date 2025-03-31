@@ -1089,19 +1089,18 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
                     selected_agent=agent,
                     evader=evader
                 )
-                fov_half:int = 2
+                fov_half:int = 3
                 pitch_mask: np.array = unpacked_actions['pitch']
                 pitch_cmd_index = np.abs(self.pitch_commands - pitch_desired).argmin()
                 pitch_indices = np.arange(pitch_cmd_index - fov_half, pitch_cmd_index + fov_half + 1) \
                     % len(self.pitch_commands)
                 # get all indicies that are 0 currently
+                new_mask = np.zeros_like(pitch_mask)
                 indices = np.where(pitch_mask == 0)[0]
                 updated_indices = np.setdiff1d(pitch_indices, indices)
-                # check if pitch_indicies is in the indices
-                # if it is then we need to remove it
-                # if it is not then we need to add it
-                pitch_mask[updated_indices] = 1
-                unpacked_actions['pitch'] = pitch_mask
+                new_mask[updated_indices] = 1
+                # everything else is 0
+                unpacked_actions['pitch'] = new_mask
                 
                 action_mask = self.wrap_action_mask(unpacked_actions)
 
