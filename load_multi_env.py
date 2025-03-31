@@ -253,8 +253,16 @@ def infer(checkpoint_path: str, num_episodes: int = 1,
         # action = torch.argmax(action_logits).numpy()
         action_dict = {}
         action_dict[key_value] = {'action': discrete_actions}
-        # print("action dict: ", action_dict)
 
+        # print("action dict: ", action_dict)
+        if key_value == '0':
+            print("evader")
+            action = action_dict[key_value]['action']
+            continuous_actions = env.discrete_to_continuous_action(action)
+        if key_value == '1' or key_value == '2':
+            action = action_dict[key_value]['action']
+            continuous_actions = env.discrete_to_continuous_action(action)
+            print("continuous actions: ", continuous_actions)
         observation, reward, terminated, truncated, info = env.step(
             action_dict=action_dict)
 
@@ -271,13 +279,12 @@ def infer(checkpoint_path: str, num_episodes: int = 1,
         data: DataHandler = agent.simple_model.data_handler
         datas.append(data)
 
-    # plot a 3D plot of the agents
+    # plot a 3D plot of the agents  
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
 
     for i, data in enumerate(datas):
         # print("data: ", i)
-        print(data.phi)
         ax.scatter(data.x[0], data.y[1], data.z[2], label=f"Agent Start {i}")
         ax.plot(data.x, data.y, data.z, label=f"Agent {i}")
 
@@ -814,7 +821,7 @@ if __name__ == '__main__':
     path:str = "/home/justin/ray_results/PPO_2025-03-26_01-05-00/PPO_pursuer_evader_env_40a11_00000_0_2025-03-26_01-05-00/checkpoint_000139"
     # ---- Pursuer Evader----
     path:str = "/root/ray_results/PPO_2025-03-28_10-46-27/PPO_pursuer_evader_env_cf49e_00000_0_2025-03-28_10-46-27/checkpoint_000015"
-    path:str = "/root/ray_results/PPO_2025-03-28_10-46-27/PPO_pursuer_evader_env_cf49e_00000_0_2025-03-28_10-46-27/checkpoint_000055"
+    path:str = "/root/ray_results/PPO_2025-03-28_14-35-35/PPO_pursuer_evader_env_d2029_00000_0_2025-03-28_14-35-35/checkpoint_000224"
     # ---- HRL ----
     # path: str = "/home/justin/ray_results/PPO_2025-02-28_02-55-49/PPO_hrl_env_cecd1_00000_0_2025-02-28_02-55-50/checkpoint_000000"
     # plt.show()

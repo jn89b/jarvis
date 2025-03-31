@@ -152,7 +152,7 @@ battlespace_environment:
           min: !!float -3.14159 #radians
           max: !!float 3.14159  #radians
         v_cmd:
-          min: 15.0
+          min: 20.0
           max: 35.0
 
 
