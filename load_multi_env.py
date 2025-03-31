@@ -243,7 +243,7 @@ def infer(checkpoint_path: str, num_episodes: int = 1,
         # Since my action logits are a [1 x total_actions] tensor
         # I need to get the argmax of the tensor
         end_time = time.time()
-        print("time: ", end_time - start_time)
+        # print("time: ", end_time - start_time)
         action_logits = action_logits.detach().numpy().squeeze()
         unwrapped_action: Dict[str, np.array] = env.unwrap_action_mask(
             action_logits)
@@ -820,12 +820,12 @@ if __name__ == '__main__':
     # ---- Pursuer Evader----
     path:str = "/root/ray_results/PPO_2025-03-28_10-46-27/PPO_pursuer_evader_env_cf49e_00000_0_2025-03-28_10-46-27/checkpoint_000015"
     path:str = "/root/ray_results/PPO_2025-03-28_10-46-27/PPO_pursuer_evader_env_cf49e_00000_0_2025-03-28_10-46-27/checkpoint_000055"
-    path:str = "/home/justin/ray_results/PPO_2025-03-31_00-32-01/PPO_pursuer_evader_env_78d18_00000_0_2025-03-31_00-32-01/checkpoint_000001"
+    path:str = "/home/justin/ray_results/PPO_2025-03-31_00-51-33/PPO_pursuer_evader_env_3360d_00000_0_2025-03-31_00-51-33/checkpoint_000001"
     # ---- HRL ----
     # path: str = "/home/justin/ray_results/PPO_2025-02-28_02-55-49/PPO_hrl_env_cecd1_00000_0_2025-02-28_02-55-50/checkpoint_000000"
     # plt.show()
 
-    run_multiple_sims(checkpoint_path=path, num_sims=5, type='pursuer_evader',
+    run_multiple_sims(checkpoint_path=path, num_sims=15, type='pursuer_evader',
                       use_random_seed=False)
     # ray_trainer = RayTrainerSimpleEnv(
     #     config_file="config/simple_env_config.yaml"

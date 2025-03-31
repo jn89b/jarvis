@@ -1277,7 +1277,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         pitch_cmd = np.clip(pitch_cmd, min_pitch, max_pitch)
         # action[pitch_idx] = -pitch_cmd
 
-        return pitch_cmd
+        return -pitch_cmd
 
     def step(self, action_dict: Dict[str, Any],
              specific_agent_id: int = None,
