@@ -1089,7 +1089,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
                     selected_agent=agent,
                     evader=evader
                 )
-                fov_half:int = 5
+                fov_half:int = 2
                 pitch_mask: np.array = unpacked_actions['pitch']
                 pitch_cmd_index = np.abs(self.pitch_commands - pitch_desired).argmin()
                 pitch_indices = np.arange(pitch_cmd_index - fov_half, pitch_cmd_index + fov_half + 1) \

@@ -281,7 +281,6 @@ def infer(checkpoint_path: str, num_episodes: int = 1,
 
     for i, data in enumerate(datas):
         # print("data: ", i)
-        print(data.phi)
         ax.scatter(data.x[0], data.y[1], data.z[2], label=f"Agent Start {i}")
         ax.plot(data.x, data.y, data.z, label=f"Agent {i}")
 
@@ -784,7 +783,9 @@ def run_multiple_sims(checkpoint_path: str, num_sims: int = 10,
                         folder_dir=folder_name)
 
     else:
-        np.random.seed(5)
+        #random seed
+        random_num = np.random.randint(0, 100)
+        np.random.seed(random_num)
         folder_dir = 'pursuer_evader_data_test'
         for i in range(num_sims):
             if type == 'pursuer_evader':
@@ -819,12 +820,12 @@ if __name__ == '__main__':
     # ---- Pursuer Evader----
     path:str = "/root/ray_results/PPO_2025-03-28_10-46-27/PPO_pursuer_evader_env_cf49e_00000_0_2025-03-28_10-46-27/checkpoint_000015"
     path:str = "/root/ray_results/PPO_2025-03-28_10-46-27/PPO_pursuer_evader_env_cf49e_00000_0_2025-03-28_10-46-27/checkpoint_000055"
-    path:str = "/home/justin/ray_results/PPO_2025-03-29_01-03-41/PPO_pursuer_evader_env_9075a_00000_0_2025-03-29_01-03-41/checkpoint_000007"
+    path:str = "/home/justin/ray_results/PPO_2025-03-31_00-32-01/PPO_pursuer_evader_env_78d18_00000_0_2025-03-31_00-32-01/checkpoint_000001"
     # ---- HRL ----
     # path: str = "/home/justin/ray_results/PPO_2025-02-28_02-55-49/PPO_hrl_env_cecd1_00000_0_2025-02-28_02-55-50/checkpoint_000000"
     # plt.show()
 
-    run_multiple_sims(checkpoint_path=path, num_sims=2, type='pursuer_evader',
+    run_multiple_sims(checkpoint_path=path, num_sims=5, type='pursuer_evader',
                       use_random_seed=False)
     # ray_trainer = RayTrainerSimpleEnv(
     #     config_file="config/simple_env_config.yaml"
