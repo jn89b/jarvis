@@ -775,19 +775,6 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
                agent.state_vector.vz]
 
         obs = np.array(obs, dtype=np.float32)
-        # obs_space: Dict[str, gym.spaces.Box] = self.build_observation_space(
-        #     is_pursuer=agent.is_pursuer)
-        # low = obs_space['observations'].low
-        # high = obs_space['observations'].high        # check for collisions
-
-        # clip the psi
-        # obs[KinematicIndex.YAW] = np.clip(obs[KinematicIndex.YAW.])
-        # if np.any(obs < low) or np.any(obs > high):
-        #     # print the one out of bounds
-        #     for i, (obs_val, low_val, high_val) in enumerate(zip(obs, low, high)):
-        #         if obs_val < low_val or obs_val > high_val:
-        #             raise ValueError("Observation out of bounds",
-        #                              f"Observation {i} out of bounds: {obs_val} not in [{low_val}, {high_val}]")
 
         # make sure obs is np.float32t("e")
         obs = np.array(obs, dtype=np.float32)
@@ -1102,11 +1089,18 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
                     selected_agent=agent,
                     evader=evader
                 )
+                fov_half:int = 5
                 pitch_mask: np.array = unpacked_actions['pitch']
                 pitch_cmd_index = np.abs(self.pitch_commands - pitch_desired).argmin()
-                indices = np.arange(pitch_cmd_index - fov_half, pitch_cmd_index + fov_half + 1) \
+                pitch_indices = np.arange(pitch_cmd_index - fov_half, pitch_cmd_index + fov_half + 1) \
                     % len(self.pitch_commands)
-                pitch_mask[indices] = 1
+                # get all indicies that are 0 currently
+                indices = np.where(pitch_mask == 0)[0]
+                updated_indices = np.setdiff1d(pitch_indices, indices)
+                # check if pitch_indicies is in the indices
+                # if it is then we need to remove it
+                # if it is not then we need to add it
+                pitch_mask[updated_indices] = 1
                 unpacked_actions['pitch'] = pitch_mask
                 
                 action_mask = self.wrap_action_mask(unpacked_actions)
@@ -1283,7 +1277,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         pitch_cmd = np.clip(pitch_cmd, min_pitch, max_pitch)
         # action[pitch_idx] = -pitch_cmd
 
-        return -pitch_cmd
+        return pitch_cmd
 
     def step(self, action_dict: Dict[str, Any],
              specific_agent_id: int = None,
