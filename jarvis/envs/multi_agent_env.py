@@ -1095,6 +1095,20 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
                 unpacked_actions['yaw'] = yaw_mask
                 # sanity check
                 assert(yaw_mask[yaw_cmd_index] == 1)
+                # we're going to update the pitch masks with the consideration
+                # of where the evader is, we want to null out pitch commands outside
+                # the FOV in the pitch 
+                pitch_desired:float = self.adjust_pitch(
+                    selected_agent=agent,
+                    evader=evader
+                )
+                pitch_mask: np.array = unpacked_actions['pitch']
+                pitch_cmd_index = np.abs(self.pitch_commands - pitch_desired).argmin()
+                indices = np.arange(pitch_cmd_index - fov_half, pitch_cmd_index + fov_half + 1) \
+                    % len(self.pitch_commands)
+                pitch_mask[indices] = 1
+                unpacked_actions['pitch'] = pitch_mask
+                
                 action_mask = self.wrap_action_mask(unpacked_actions)
 
             relative_pos: np.ndarray = agent.state_vector.array - \
@@ -1246,9 +1260,8 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
 
     def adjust_pitch(self, selected_agent: Pursuer,
                      evader: SimpleAgent,
-                     action: Dict[str, Any],
                      target_instead: bool = False,
-                     target_statevector: StateVector = None) -> Dict[str, np.ndarray]:
+                     target_statevector: StateVector = None) -> float:
         """
 
         Args: 
@@ -1268,9 +1281,9 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         max_pitch: float = self.pursuer_control_limits['u_theta']['max']
         min_pitch: float = self.pursuer_control_limits['u_theta']['min']
         pitch_cmd = np.clip(pitch_cmd, min_pitch, max_pitch)
-        action[pitch_idx] = -pitch_cmd
+        # action[pitch_idx] = -pitch_cmd
 
-        return action
+        return -pitch_cmd
 
     def step(self, action_dict: Dict[str, Any],
              specific_agent_id: int = None,
