@@ -70,83 +70,64 @@ for i, batch in enumerate(dataloader):
              for key, value in batch.items()}
 
     start_time = time.time()
-    output, probs = model(batch)  # assume model returns (output, loss)
+    
+    output_traj, probs = model(batch)  # assume model returns (output, loss)
     end_time = time.time()
+    print("inference time ", end_time - start_time)
     infer_times.append(end_time - start_time)
     validation_loss = model.validation_step(batch, i)
-    print(f"Validation Loss for batch {i}: {validation_loss}")
+    output = {}
+    output["predicted_trajectory"] = output_traj.detach().numpy().squeeze()
+    #output['input_obj_trajs'] = batch['input_dict']['obj_trajs'].detach().numpy().squeeze()
+    output['input_obj_trajs'] = batch['input_dict']['center_gt_trajs'].detach().numpy().squeeze()
+
+    # print(f"Validation Loss for batch {i}: {validation_loss}")
     # output is originally size (batch_size, num_agents, num_modes, future_len, dims)
     #output = output.squeeze().detach().cpu().numpy()
     probs = probs.squeeze().detach().cpu().numpy()
-    output_np = {
-        "predicted_trajectory": output,
-        "probs": probs
-    }
+    output_history.append(output)
     
-    # TODO: Figure out your life here     
-    # desired = target[0,0,:,0:3].detach().cpu().numpy()
-    # predicted = pred_params[0,0,:,0:3].detach().cpu().numpy()
+    # if i == 10:
+    #     break
     
-    # ax.plot(predicted[:, 0], predicted[:, 1], 'o--', label="Predicted",
-    #         alpha=1.0)
-    # ax.plot(desired[:, 0], desired[:, 1], label="Ground Truth", linewidth=5)
-    # ax.legend()
-    # # save the figure
-    # plt.savefig(f"trajectory_{self.fig_num}.png")
-    # self.fig_num += 1
+    # # -------------------------
+    # # Plot Predicted vs. Ground Truth Trajectories
+    # # -------------------------
+    # # For demonstration, we plot the trajectories for the first batch.
+    # first_output = output_history[0]
     
+    # # Assume the batch dictionary has an 'input_dict' key with ground truth trajectories.
+    # # These keys may need adjustment based on your dataset/model.
+    # # Here we assume:
+    # #  - 'predicted_trajectory' is shaped [num_agents, num_timesteps, dims]
+    # #  - 'center_gt_trajs' under batch['input_dict'] is the ground truth trajectory
+    # batch_ground_truth = batch['input_dict']['center_gt_trajs'].squeeze().detach().cpu().numpy()
+    # predicted = first_output['predicted_trajectory'].detach().cpu().numpy()  # shape: [num_agents, num_timesteps, dims]
+    # predicted = predicted[0,0,:,:]
+    # probs = first_output['probs']  # shape: [num_agents, num_modes]
+    # num_agents = predicted.shape[0]
     
-    # for key, value in output.items():
-    #     if isinstance(value, torch.Tensor):
-    #         output_np[key] = value.detach().cpu().numpy()
-    #     else:
-    #         output_np[key] = value
-    output_history.append(output_np)
-
-    print(f"Inference time for batch {i}: {end_time - start_time:.4f} seconds")
-    if i == 10:
-        break
-
-
-
-    # -------------------------
-    # Plot Predicted vs. Ground Truth Trajectories
-    # -------------------------
-    # For demonstration, we plot the trajectories for the first batch.
-    first_output = output_history[0]
-    
-    # Assume the batch dictionary has an 'input_dict' key with ground truth trajectories.
-    # These keys may need adjustment based on your dataset/model.
-    # Here we assume:
-    #  - 'predicted_trajectory' is shaped [num_agents, num_timesteps, dims]
-    #  - 'center_gt_trajs' under batch['input_dict'] is the ground truth trajectory
-    batch_ground_truth = batch['input_dict']['center_gt_trajs'].squeeze().detach().cpu().numpy()
-    predicted = first_output['predicted_trajectory'].detach().cpu().numpy()  # shape: [num_agents, num_timesteps, dims]
-    predicted = predicted[0,0,:,:]
-    probs = first_output['probs']  # shape: [num_agents, num_modes]
-    num_agents = predicted.shape[0]
-    
-    #%%
-    for j in range(1):
-        if i <= 10:
-            break
-        # plot the predicted trajectory
-        fig, ax = plt.subplots()
-        gt_traj = batch_ground_truth[:, 0:3]
-        ax.plot(gt_traj[:, 0], gt_traj[:, 1], label="Ground Truth", linewidth=2)
-        ax.plot(predicted[ :, 0], predicted[ :, 1], 'o--', label="Predicted")
-        # num_modes = first_output['probs'].shape[0]
-        # for mode in range(num_modes):
-        #     pred_traj = predicted[agent, mode, :, 0:3]
-        #     prob = probs[agent, mode]
-        #     ax.plot(pred_traj[:, 0], pred_traj[:, 1], label=f"Predicted Mode {mode} (Prob: {prob:.2f})")
-            # ax.plot(pred_traj[:, 0], pred_traj[:, 1], 'o--', label=f"Predicted Mode {mode}")
-        ax.set_title(f"Agent {i} Trajectory")
-        ax.legend()
-        ax.set_xlabel("X")
-        ax.set_ylabel("Y")
+    # #%%
+    # for j in range(1):
+    #     if i <= 10:
+    #         break
+    #     # plot the predicted trajectory
+    #     fig, ax = plt.subplots()
+    #     gt_traj = batch_ground_truth[:, 0:3]
+    #     ax.plot(gt_traj[:, 0], gt_traj[:, 1], label="Ground Truth", linewidth=2)
+    #     ax.plot(predicted[ :, 0], predicted[ :, 1], 'o--', label="Predicted")
+    #     # num_modes = first_output['probs'].shape[0]
+    #     # for mode in range(num_modes):
+    #     #     pred_traj = predicted[agent, mode, :, 0:3]
+    #     #     prob = probs[agent, mode]
+    #     #     ax.plot(pred_traj[:, 0], pred_traj[:, 1], label=f"Predicted Mode {mode} (Prob: {prob:.2f})")
+    #         # ax.plot(pred_traj[:, 0], pred_traj[:, 1], 'o--', label=f"Predicted Mode {mode}")
+    #     ax.set_title(f"Agent {i} Trajectory")
+    #     ax.legend()
+    #     ax.set_xlabel("X")
+    #     ax.set_ylabel("Y")
         
-    plt.show()
+    # plt.show()
 
 # for agent in range(num_agents):
 #     fig, ax = plt.subplots()
@@ -164,3 +145,11 @@ for i, batch in enumerate(dataloader):
 #     ax.set_ylabel("Y")
 
 # plt.show()
+
+import pickle as pkl
+info = {"output": output_history,
+        "infer_time": infer_times}
+folder_dir = "postprocess_predictformer"
+if not os.path.exists(folder_dir):
+    os.makedirs(folder_dir)
+pkl.dump(info, open(os.path.join(folder_dir, "lstm_small_model.pkl"), "wb"))

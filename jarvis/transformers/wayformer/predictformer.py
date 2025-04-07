@@ -55,7 +55,7 @@ class PredictFormer(BaseModelV2):
         output_query_provider = TrainableQueryProvider(
             num_queries=config['num_queries_dec'],
             num_query_channels=self.d_k,
-            init_scale=0.1,
+            init_scale=0.1, 
         )
 
         self.agents_positional_embedding = nn.parameter.Parameter(

@@ -15,7 +15,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 config_path = "config/high_speed_predictformer_config_small.yaml"
 with open(config_path, 'r') as f:
     config = yaml.safe_load(f)
-
+past_len: int = config["past_len"]
 # Create separate datasets for training and validation
 train_dataset = LazyBaseDataset(config=config, is_validation=False)
 print("Train dataset length: ", len(train_dataset))
@@ -47,7 +47,7 @@ with open(config_path, 'r') as f:
     model_config = yaml.safe_load(f)
 
 model = PredictFormer(model_config)
-name = "high_speed_predictformer_small"
+name = "high_speed_predictformer_small_" + str(past_len)
 logger = TensorBoardLogger("tb_logs", name=name)
 
 # Set up checkpointing
@@ -74,7 +74,7 @@ if os.path.exists(checkpoint_dir):
 trainer = Trainer(
     accelerator='gpu',  # Use 'gpu' if available
     devices=1,
-    max_epochs=100,       # Specify a finite number of epochs
+    max_epochs=200,       # Specify a finite number of epochs
     logger=logger,
     callbacks=[checkpoint_callback],
     gradient_clip_val=1.0,

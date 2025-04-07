@@ -38,7 +38,7 @@ def get_z_measurement(state:np.array) -> np.array:
 # Script to animate the trajectories of all the vehicles with the prediction
 # """
 
-filename = "small_model"
+filename = "highspeed_predictformer_output_1"
 fullname = filename+".pkl"
 #info = pkl.load(open(os.path.join("postprocess_predictformer", "predictformer_output.pkl"), "rb"))
 metrics = Metrics(fullname)

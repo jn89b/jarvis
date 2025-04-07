@@ -16,8 +16,8 @@ import os
 
 plt.close('all')    
 
-#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = "cpu"
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#device = "cpu"
 data_config = "config/predictformer_config.yaml"
 with open(data_config, 'r') as f:
     data_config = yaml.safe_load(f)
@@ -36,7 +36,6 @@ dataloader: DataLoader = DataLoader(
     shuffle=True,
     collate_fn=dataset.collate_fn
 )
-
 
 model_config: str = "config/predictformer_config.yaml"
 with open(model_config, 'r') as f:
@@ -130,7 +129,6 @@ for i, batch in enumerate(dataloader):
 #     os.makedirs(folder_dir)
 # pkl.dump(info, open(os.path.join(folder_dir, "noisy_predictformer_output_1.pkl"), "wb"))
 
-
 # %%
 # Predicited probability is an [num_agents, num_modes] num_modes is the gaussian mixture model
 predicted_probability: np.array = output['predicted_probability'].detach(
@@ -153,12 +151,14 @@ mask = batch['input_dict']['center_gt_trajs_mask'].unsqueeze(-1)
 num_agents: int = predicted_probability.shape[0]
 # Let's plot each agent trajectory in a seperate plot and show the gaussian mixture model trajectory of the agent
 for i in range(num_agents):
-    fig, ax = plt.subplots(1, 1)
+    fig, ax = plt.subplots(1, 1, figsize=(10,10))
     # this becomes [num_modes, num_timesteps, num_attributes]
     agent_traj: np.array = predicted_trajectory[i]
     agent_probability: np.array = predicted_probability[i]
     for j in range(num_modes):
         highest_probabilty_index = np.argmax(agent_probability)
+        # if j != highest_probabilty_index:
+        #     continue
         x = agent_traj[j, :, 0]
         y = agent_traj[j, :, 1]
         ax.scatter(
@@ -169,8 +169,8 @@ for i in range(num_agents):
     ax.set_title(
         f"Agent {i} Trajectory Highest Probability Mode {highest_probabilty_index}")
     ax.legend()
-
-fig, ax = plt.subplots(1, 1)
+    
+fig, ax = plt.subplots(1, 1, figsize=(10,10))
 heading_idx:int = 5
 # transpose this to ground truth trajectory [num_agents, num_timesteps, num_attributes]
 for i in range(num_agents):

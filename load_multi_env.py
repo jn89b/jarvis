@@ -818,14 +818,13 @@ if __name__ == '__main__':
     path:str = "/root/ray_results/PPO_2025-03-21_11-49-49/PPO_high_speed_pursuer_evader_80f0c_00000_0_2025-03-21_11-49-49/checkpoint_000224"
     path:str = "/home/justin/ray_results/PPO_2025-03-26_01-05-00/PPO_pursuer_evader_env_40a11_00000_0_2025-03-26_01-05-00/checkpoint_000139"
     # ---- Pursuer Evader----
-    path:str = "/root/ray_results/PPO_2025-03-28_10-46-27/PPO_pursuer_evader_env_cf49e_00000_0_2025-03-28_10-46-27/checkpoint_000015"
-    path:str = "/root/ray_results/PPO_2025-03-28_10-46-27/PPO_pursuer_evader_env_cf49e_00000_0_2025-03-28_10-46-27/checkpoint_000055"
-    path:str = "/home/justin/ray_results/PPO_2025-03-31_00-51-33/PPO_pursuer_evader_env_3360d_00000_0_2025-03-31_00-51-33/checkpoint_000002"
+    path:str = "/home/justin/ray_results/PPO_2025-03-31_12-45-23_attention/PPO_pursuer_evader_env_ec13d_00000_0_2025-03-31_12-45-23/checkpoint_000152"
+    # path:str = "/home/justin/ray_results/PPO_2025-03-31_01-10-24/PPO_pursuer_evader_env_d58f4_00000_0_2025-03-31_01-10-24/checkpoint_000149"
     # ---- HRL ----
     # path: str = "/home/justin/ray_results/PPO_2025-02-28_02-55-49/PPO_hrl_env_cecd1_00000_0_2025-02-28_02-55-50/checkpoint_000000"
     # plt.show()
 
-    run_multiple_sims(checkpoint_path=path, num_sims=15, type='pursuer_evader',
+    run_multiple_sims(checkpoint_path=path, num_sims=10, type='pursuer_evader',
                       use_random_seed=False)
     # ray_trainer = RayTrainerSimpleEnv(
     #     config_file="config/simple_env_config.yaml"

@@ -16,6 +16,8 @@ config_path = "config/predictformer_config.yaml"
 with open(config_path, 'r') as f:
     config = yaml.safe_load(f)
 
+config_past_len: int = config["past_len"]
+
 # Create separate datasets for training and validation
 train_dataset = LazyBaseDataset(config=config, is_validation=False)
 print("Train dataset length: ", len(train_dataset))
@@ -47,7 +49,7 @@ with open(config_path, 'r') as f:
     model_config = yaml.safe_load(f)
 
 model = PredictFormer(model_config)
-name = "predictformer_2"
+name = "predictformer_" + str(config_past_len)
 logger = TensorBoardLogger("tb_logs", name=name)
 
 # Set up checkpointing

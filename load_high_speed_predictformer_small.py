@@ -37,13 +37,12 @@ dataloader: DataLoader = DataLoader(
     collate_fn=dataset.collate_fn
 )
 
-
 model_config: str = "config/high_speed_predictformer_config_small.yaml"
 with open(model_config, 'r') as f:
     model_config = yaml.safe_load(f)
 
 start_idx: int = data_config['past_len']
-name = "high_speed_predictformer_small"
+name = "high_speed_predictformer_small_" + str(start_idx) 
 # Check if there's an existing checkpoint to resume from
 checkpoint_dir = name+"_checkpoint/"
 checkpoint_callback = ModelCheckpoint(
@@ -116,8 +115,8 @@ for i, batch in enumerate(dataloader):
     
     output_history.append(new_output)
     infer_time.append(end_time - start_time)
-    # if i == 10:
-    #     break
+    if i == 10:
+        break
 
 # #Pickkle the output and batch
 import pickle as pkl

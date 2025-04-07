@@ -16,7 +16,7 @@ load_num_workers: 0 # number of workers for loading data
 max_data_num: [ 1000 ] # maximum number of data for each training dataset
 starting_frame: [ 0 ] # history trajectory starts at this frame for each training dataset
 past_len: 21 # history trajectory length, 2.1s
-# past_len: 120 # history trajectory length, 2.1s
+past_len: 120 # history trajectory length, 2.1s
 # past_len: 240 # history trajectory length, 2.1s
 future_len: 60 # future trajectory length, 6s
 object_type: [ 'VEHICLE' ]

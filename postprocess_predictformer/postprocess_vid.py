@@ -8,7 +8,7 @@ from typing import List, Tuple
 from mpl_toolkits.mplot3d import Axes3D  
 # plt.close('all')
 """
-Script to animate the trajectories of all the vehicles with the predictions
+- Script to animate the trajectories of all the vehicles with the predictions
 
 """
 

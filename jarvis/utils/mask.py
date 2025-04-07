@@ -57,7 +57,6 @@ class ActionMaskingRLModule(RLModule):
             **kwargs,
         )
 
-
 class MultiDimensionalMaskModule(ActionMaskingRLModule, PPOTorchRLModule, ValueFunctionAPI):
     """An RLModule for PPO with action masking that supports a multi-dimensional action mask.
 
