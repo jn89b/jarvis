@@ -169,7 +169,7 @@ class TestGenerateRLData(unittest.TestCase):
         )
 
         n_steps: int = 1000
-        agent_2_commands = np.array([0, 0, 25])
+        agent_2_commands = np.array([-1, 0, 25])
 
         agents = [pursuer_agent, agent_2]
         distance_history: list[float] = []

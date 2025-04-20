@@ -105,7 +105,7 @@ class ProNavV2():
         else:
             velocity_cmd = max_vel
 
-        return np.array([-pitch, yaw_cmd, velocity_cmd], dtype=np.float32)
+        return np.array([relative_pos[2], yaw_cmd, velocity_cmd], dtype=np.float32)
 
     def compute_commands(self, relative_pos: np.array,
                          current_yaw: float,

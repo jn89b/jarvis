@@ -30,7 +30,7 @@ battlespace_environment:
     num_pursuers: 2
     use_pursuer_heuristics: false
     ai_pursuers: false
-    use_pronav: false
+    use_pronav: true
 
     interaction:
       bubble_radius: 5 # wing span o  f aircraft

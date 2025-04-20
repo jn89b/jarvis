@@ -582,7 +582,7 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
 
     def mask_dz_commands(self, agent: SimpleAgent, dz_mask: np.ndarray,
                             z_bounds: Dict[str, List[float]],
-                            projection_time: float = 1.0) -> np.ndarray:
+                            projection_time: float = 3.0) -> np.ndarray:
         """
         Args:
             agent (SimpleAgent): The agent to mask the dz commands for
@@ -1159,10 +1159,15 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
                 new_mask = np.zeros_like(dz_mask)
                 # Based on the delta we want to update the dz commands relative to the evader
                 delta_z_to_evader: float = evader.state_vector.z - agent.state_vector.z
+                buffer = 3
                 if delta_z_to_evader > 0:
-                    new_mask[dz_mask > 0 ] = 1
+                    # get indices where dz value is greater than 0
+                    dz_indices = np.where(self.dz_commands > -buffer)[0]
+                    new_mask[dz_indices] = 1
+                    # new_mask[dz_mask > 0 ] = 1
                 elif delta_z_to_evader < 0:
-                    new_mask[dz_mask < 0] = 1
+                    dz_indices = np.where(self.dz_commands < buffer)[0]
+                    new_mask[dz_indices] = 1
                     
                 # any indices that are 0 from indicies set to new_mask
                 new_mask[indices] = 0
