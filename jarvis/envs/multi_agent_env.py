@@ -1270,7 +1270,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
             pursuer.old_distance_from_evader = distance
 
         #return delta_distance + (dot_product)
-        return dot_product + (1.5 * delta_distance)
+        return (1.5 * delta_distance)
 
     def compute_evader_reward(self, pursuer: Pursuer, evader: Evader) -> float:
         """
