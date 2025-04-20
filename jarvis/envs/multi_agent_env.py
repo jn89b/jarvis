@@ -1141,7 +1141,6 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
                 # sanity check
                 assert(yaw_mask[yaw_cmd_index] == 1)
                 
-                
                 # we're going to update the pitch masks with the consideration
                 # of where the evader is, we want to null out pitch commands outside
                 # the FOV in the pitch 
@@ -1162,26 +1161,37 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
                 # # everything else is 0
                 # unpacked_actions['pitch'] = new_mask
                 
-                dz_mask = unpacked_actions['dz']
-                # get all the indices that are 0
-                indices = np.where(dz_mask == 0)[0]
-                new_mask = np.zeros_like(dz_mask)
-                # Based on the delta we want to update the dz commands relative to the evader
-                delta_z_to_evader: float = evader.state_vector.z - agent.state_vector.z
-                buffer = 3
-                if delta_z_to_evader > 0:
-                    # get indices where dz value is greater than 0
-                    dz_indices = np.where(self.dz_commands > -buffer)[0]
-                    new_mask[dz_indices] = 1
-                    # new_mask[dz_mask > 0 ] = 1
-                elif delta_z_to_evader < 0:
-                    dz_indices = np.where(self.dz_commands < buffer)[0]
-                    new_mask[dz_indices] = 1
+                # dz_mask = unpacked_actions['dz']
+                # # get all the indices that are 0
+                # indices = np.where(dz_mask == 0)[0]
+                # new_mask = np.zeros_like(dz_mask)
+                # # Based on the delta we want to update the dz commands relative to the evader
+                # delta_z_to_evader: float = evader.state_vector.z - agent.state_vector.z
+                # buffer = 3
+                # if delta_z_to_evader > 0:
+                #     # get indices where dz value is greater than 0
+                #     dz_indices = np.where(self.dz_commands > -buffer)[0]
+                #     new_mask[dz_indices] = 1
+                #     # new_mask[dz_mask > 0 ] = 1
+                # elif delta_z_to_evader < 0:
+                #     dz_indices = np.where(self.dz_commands < buffer)[0]
+                #     new_mask[dz_indices] = 1
                     
-                # any indices that are 0 from indicies set to new_mask
-                new_mask[indices] = 0
-                unpacked_actions['dz'] = new_mask
-                action_mask = self.wrap_action_mask(unpacked_actions)
+                # # any indices that are 0 from indicies set to new_mask
+                # new_mask[indices] = 0
+                # unpacked_actions['dz'] = new_mask
+                # action_mask = self.wrap_action_mask(unpacked_actions)
+                
+                adjust_dz = self.adjust_dz(
+                    selected_agent=agent,
+                    evader=evader
+                )
+                # dz_mask: np.array = unpacked_actions['dz']
+                dz_mask: np.array = np.zeros_like(self.dz_commands)
+                # get index of adjust dz
+                dz_cmd_index: int = np.abs(self.dz_commands - adjust_dz).argmin()
+                dz_mask[dz_cmd_index] = 1
+                unpacked_actions['dz'] = dz_mask
 
             relative_pos: np.ndarray = agent.state_vector.array - \
                 other_agent.state_vector.array
@@ -1358,6 +1368,26 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         # action[pitch_idx] = -pitch_cmd
 
         return -pitch_cmd
+
+    def adjust_dz(self, selected_agent: Pursuer,
+                     evader: SimpleAgent,
+                     target_instead: bool = False,
+                     target_statevector: StateVector = None) -> float:
+        
+        """
+        Args: 
+            selected_agent (Pursuer): The pursuer agent
+            evader (SimpleAgent): The evader agent
+        Returns:
+            Dict[str, np.ndarray]: The adjusted action for the pursuer agent
+        """
+        dz: float = evader.state_vector.z - selected_agent.state_vector.z
+        
+        dz = np.clip(dz, self.pursuer_state_limits['u_dz']['min'],
+                        self.pursuer_state_limits['u_dz']['max'])
+        
+        return dz
+        
 
     def step(self, action_dict: Dict[str, Any],
              specific_agent_id: int = None,
