@@ -25,6 +25,7 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
         # Call the next __init__ in the MRO (likely gym.Env.__init__)
         super().__init__(**kwargs)
         self.config: Dict[str, Any] = config
+        self.bounds: Dict[str, List[float]] = config.get("bounds")
         self.agent_config: Dict[str, Any] = config.get("agents")
         self.spawn_config: Dict[str, Any] = config.get("spawning")
         self.simulation_config: Dict[str, Any] = config.get("simulation")
@@ -239,8 +240,8 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
             y_pos: float = evader.state_vector.y + \
                 random_radius * np.sin(random_heading)
             z_pos: float = np.random.uniform(
-                self.pursuer_state_limits['z']['min']+20,
-                self.pursuer_state_limits['z']['max']-20)
+                self.pursuer_state_limits['z']['min']+5,
+                self.pursuer_state_limits['z']['max']-5)
 
             dx: float = evader.state_vector.x - x_pos
             dy: float = evader.state_vector.y - y_pos
@@ -302,7 +303,7 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
             rand_x = np.random.uniform(-10, 10)
             rand_y = np.random.uniform(-10, 10)
             rand_z = np.random.uniform(
-                state_limits['z']['min']+20, state_limits['z']['max']-20)
+                state_limits['z']['min']+5, state_limits['z']['max']-5)
 
             rand_phi = np.random.uniform(state_limits['phi']['min'],
                                          state_limits['phi']['max'])
@@ -640,8 +641,9 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
         return pitch_mask
 
     def mask_psi_commands(self, agent: SimpleAgent, yaw_mask: np.ndarray,
-                          x_bounds: Dict[str, List[float]], y_bounds: Dict[str, List[float]],
-                          projection_time: float = 0.5,
+                          x_bounds: Dict[str, List[float]], 
+                          y_bounds: Dict[str, List[float]],
+                          projection_time: float = 5.0,
                           consider_target: bool = False) -> None:
         """
         Args:
@@ -659,33 +661,37 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
         if the agent is close to the x or y bounds
         we mask the yaw commands that will take the agent out of bounds
 
-        In addition if the user wants to consider the target we can do that as well
-        This is useful to mask possible commands that will either collide with the the target
-
         """
+        
+        # unpack state
+        x0, y0 = agent.state_vector.x, agent.state_vector.y
+        v = agent.state_vector.speed
+        yaws = np.array(self.yaw_commands)  # shape (N,)
+        current_state = agent.state_vector.array[0:7]
 
-        current_speed: float = agent.state_vector.speed
-        current_state: float = agent.simple_model.state_info
+        # # project all N possible endpoints
+        x_proj = x0 + (v * np.cos(yaws)) * projection_time   # shape (N,)
+        y_proj = y0 + (v * np.sin(yaws)) * projection_time
 
-        # for i, yaw_cmd in enumerate(self.yaw_commands):
-        #     u: np.ndarray = np.array([0,
-        #                               0,
-        #                               yaw_cmd,
-        #                               current_speed])
-        #     # next_state: np.array = agent.simple_model.rk45(
-        #     #     x=current_state, u=u, dt=projection_time)
-        #     # x_proj: float = next_state[KinematicIndex.X.value]
-        #     # y_proj: float = next_state[KinematicIndex.Y.value]
-        #     x_proj: float = agent.state_vector.x + \
-        #         (current_speed * np.cos(yaw_cmd) * projection_time)
-        #     y_proj: float = agent.state_vector.y + \
-        #         (current_speed * np.sin(yaw_cmd) * projection_time)
-        #     if x_proj > x_bounds['max'] or x_proj < x_bounds['min']:
-        #         yaw_mask[i] = 0
-        #     if y_proj > y_bounds['max'] or y_proj < y_bounds['min']:
-        #         yaw_mask[i] = 0
+        # build boolean mask of “in‑bounds”
+        in_x = (x_proj >= x_bounds[0]) & (x_proj <= x_bounds[1])
+        in_y = (y_proj >= y_bounds[0]) & (y_proj <= y_bounds[1])
+        valid = in_x & in_y
 
+        # apply to your integer mask (0 = invalid, 1 = valid)
+        yaw_mask[:] = valid.astype(int)
+        # xmin = x_bounds[0]
+        # xmax = x_bounds[1]
+        # ymin = y_bounds[0]
+        # ymax = y_bounds[1]
+        # for i, yaw in enumerate(self.yaw_commands):
+        #     u = [0, yaw, v]
+        #     state_next = agent.simple_model.rk45(x=current_state, u=u, dt=projection_time)
+        #     x_proj, y_proj = state_next[KinematicIndex.X.value], state_next[KinematicIndex.Y.value]
+        #     yaw_mask[i] = (xmin <= x_proj <= xmax) and (ymin <= y_proj <= ymax)
+        
         return yaw_mask
+
 
     def unwrap_action_mask(self, action_mask: np.ndarray) -> Dict[str, np.ndarray]:
         """
@@ -742,13 +748,16 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
         You can call override this method if you want
         """
         if agent.is_pursuer:
-            x_bounds: List[float] = self.pursuer_state_limits['x']
-            y_bounds: List[float] = self.pursuer_state_limits['y']
-            z_bounds: List[float] = self.pursuer_state_limits['z']
+            # x_bounds: List[float] = self.pursuer_state_limits['x']
+            # y_bounds: List[float] = self.pursuer_state_limits['y']
+            # z_bounds: List[float] = self.pursuer_state_limits['z']
+            x_bounds :List[float] = self.battlespace.x_bounds
+            y_bounds :List[float] = self.battlespace.y_bounds
+            z_bounds :List[float] = self.pursuer_state_limits['z']
         else:
-            x_bounds: List[float] = self.evader_state_limits['x']
-            y_bounds: List[float] = self.evader_state_limits['y']
-            z_bounds: List[float] = self.evader_state_limits['z']
+            x_bounds :List[float] = self.battlespace.x_bounds
+            y_bounds :List[float] = self.battlespace.y_bounds
+            z_bounds :List[float] = self.pursuer_state_limits['z']
 
         # Mask roll/yaw commands based on how close it is to x/y bounds
         # roll_mask: np.array = np.ones_like(self.roll_commands, dtype=np.int8)
@@ -1250,7 +1259,8 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         if update:
             pursuer.old_distance_from_evader = distance
 
-        return delta_distance + (0.5 *dot_product)
+        #return delta_distance + (dot_product)
+        return dot_product + (1.5 * delta_distance)
 
     def compute_evader_reward(self, pursuer: Pursuer, evader: Evader) -> float:
         """
@@ -1291,7 +1301,8 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         evader.old_distance_from_pursuer = distance
 
         # Return the negative reward for the evader without causing any state updates.
-        return - delta_distance - (0.5 *dot_product)
+        #return - delta_distance - (0.5 *dot_product)
+        return -dot_product - (0.5 * delta_distance)
 
     def sigmoid(self, x: float) -> float:
         x = np.clip(x, -500, 500)

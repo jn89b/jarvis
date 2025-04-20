@@ -1,14 +1,14 @@
 # Configurations for battlespace environment
 battlespace_environment:
   bounds:
-    x: [-2500, 2500]
-    y: [-2500, 2500]
-    z: [30, 100]
+    x: [-1500, 1500]
+    y: [-1500, 1500]
+    z: [30, 70]
 
   spawning:
     distance_from_other_agents:
-      min: 250
-      max: 500
+      min: 150
+      max: 300
     target:
       randomize: true
       position:
@@ -23,7 +23,7 @@ battlespace_environment:
   simulation:
     dt: 0.05 
     frequency: 100  # Hz
-    end_time: 35.0 # end time for each episode
+    end_time: 30.0 # end time for each episode
   
   agents:
     num_evaders: 1
@@ -39,11 +39,11 @@ battlespace_environment:
     relative_state_observations:
       position:
         x:
-          low: -2500
-          high: 2500
+          low: -1500
+          high: 1500
         y:
-          low: -2500
-          high: 2500
+          low: -1500
+          high: 1500
         z:
           low: -100
           high: 100
@@ -69,7 +69,7 @@ battlespace_environment:
           max: inf
         z:
           min: 30.0
-          max: 100.0
+          max: 70.0
         phi:
           min: !!float -0.7853981633974483   # -np.deg2rad(45)
           max: !!float 0.7853981633974483    # np.deg2rad(45)
@@ -121,7 +121,7 @@ battlespace_environment:
           max: inf
         z:
           min: 30.0
-          max: 100.0
+          max: 70.0
         phi:
           min: !!float -0.7853981633974483   # -np.deg2rad(45)
           max: !!float 0.7853981633974483    # np.deg2rad(45)
