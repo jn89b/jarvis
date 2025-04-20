@@ -260,10 +260,6 @@ class PlaneKinematicModel:
         self.theta_f: ca.SX = ca.SX.sym('theta_f')
         self.psi_f: ca.SX = ca.SX.sym('psi_f')
         self.v_f: ca.SX = ca.SX.sym('v_f')
-        # self.p_f: ca.SX = ca.SX.sym('p')  # roll rate
-        # self.q_f: ca.SX = ca.SX.sym('q')  # pitch rate
-        # self.r_f: ca.SX = ca.SX.sym('r')  # yaw rate
-
         self.states: ca.SX = ca.vertcat(
             self.x_f,
             self.y_f,
@@ -285,13 +281,13 @@ class PlaneKinematicModel:
             v_cmd: Airspeed command.
         """
         self.u_phi: ca.SX = ca.SX.sym('u_phi')
-        self.u_theta: ca.SX = ca.SX.sym('u_theta')
+        self.u_dz: ca.SX = ca.SX.sym('u_dz')
         self.u_psi: ca.SX = ca.SX.sym('u_psi')
         self.v_cmd: ca.SX = ca.SX.sym('v_cmd')
 
         self.controls: ca.SX = ca.vertcat(
             # self.u_phi,
-            self.u_theta,
+            self.u_dz,
             self.u_psi,
             self.v_cmd
         )
@@ -332,6 +328,8 @@ class PlaneKinematicModel:
             Positive roll is LEFT wing down
             Positive pitch is nose up
             Positive yaw is CCW 
+            
+        Update we're going to have to change this 
         """
 
         # # Airspeed dynamics (airspeed does not include wind)
@@ -363,8 +361,18 @@ class PlaneKinematicModel:
         self.phi_fdot: ca.SX = (phi_cmd - self.phi_f) / self.tau_phi
 
         # So a positive u_theta means we want the nose to be up
-        self.theta_fdot: ca.SX = (
-            self.u_theta - self.theta_f) / self.tau_theta
+        # self.theta_fdot: ca.SX = (
+        #     self.u_theta - self.theta_f) / self.tau_theta
+        
+        # we're going to use a built in altitude controller to map out pitch
+        dz_cmd = self.u_dz
+        k_pitch: float = 0.15
+        theta_cmd: ca.SX = k_pitch*dz_cmd 
+        theta_cmd = ca.if_else(theta_cmd > ca.pi/8, ca.pi/8, theta_cmd)
+        theta_cmd = ca.if_else(theta_cmd < -ca.pi/8, -ca.pi/8, theta_cmd)
+
+        self.theta_fdot: ca.SX = (theta_cmd - self.theta_f) / self.tau_theta
+        
         if make_z_positive_up:
             self.psi_fdot: ca.SX = self.g * (ca.tan(self.phi_f) / self.v_f)
         else:

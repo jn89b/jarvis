@@ -117,7 +117,6 @@ class PredictFormer(BaseModelV2):
             mode_probs: shape [B, c] mode probability predictions P(z|X_{1:T_obs})
         '''
         ego_in, agents_in = inputs['ego_in'], inputs['agents_in']
-
         B = ego_in.size(0)
         num_agents = agents_in.shape[2] + 1
         # Encode all input observations (k_attr --> d_k)
@@ -129,13 +128,11 @@ class PredictFormer(BaseModelV2):
         agents_emb = self.selu(self.agents_dynamic_encoder(agents_tensor))
         agents_emb = (agents_emb + self.agents_positional_embedding[
             :, :, :num_agents] + self.temporal_positional_embedding).view(B, -1, self.d_k)
-
         mixed_input_features = torch.concat(
             [agents_emb], dim=1)
         mixed_input_masks = torch.concat(
             [opps_masks_agents.view(B, -1)], dim=1)
         # Process through Wayformer's encoder
-
         context = self.perceiver_encoder(
             mixed_input_features, mixed_input_masks)
 
@@ -176,12 +173,9 @@ class PredictFormer(BaseModelV2):
         agents_in = agents_in.reshape(-1, *agents_in.shape[2:])
         agents_mask = agents_mask.reshape(-1, *agents_mask.shape[2:])
         ego_in = torch.gather(agents_in, 1, inputs['track_index_to_predict'].view(-1, 1, 1, 1).repeat(1, 1,
-                                                                                                      *agents_in.shape[
-                                                                                                          -2:])).squeeze(1)
+                    *agents_in.shape[-2:])).squeeze(1)
         ego_mask = torch.gather(agents_mask, 1, inputs['track_index_to_predict'].view(-1, 1, 1).repeat(1, 1,
-                                                                                                       agents_mask.shape[
-                                                                                                           -1])).squeeze(
-            1)
+                agents_mask.shape[-1])).squeeze(1)
         agents_in = torch.cat([agents_in, agents_mask.unsqueeze(-1)], dim=-1)
         agents_in = agents_in.transpose(1, 2)
         ego_in = torch.cat([ego_in, ego_mask.unsqueeze(-1)], dim=-1)
@@ -315,7 +309,7 @@ class Criterion(nn.Module):
             # 1D component for z.
             reg_gmm_log_coefficient_z = log_std
             reg_gmm_exp_z = 0.5 * (dz / std) ** 2
-
+    
             reg_loss = ((reg_gmm_log_coefficient_xy + reg_gmm_exp_xy +
                          reg_gmm_log_coefficient_z + reg_gmm_exp_z) * gt_valid_mask).sum(dim=-1)
         else:

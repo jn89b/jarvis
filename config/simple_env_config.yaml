@@ -96,9 +96,12 @@ battlespace_environment:
         u_phi:
           min: !!float -0.7853981633974483   # -np.deg2rad(45)
           max: !!float 0.7853981633974483    # np.deg2rad(45)
-        u_theta:
-          min: !!float -0.4363323129985824   # -np.deg2rad(25)
-          max: !!float 0.3490658503988659    # np.deg2rad(20)
+        # u_theta:
+        #   min: !!float -0.4363323129985824   # -np.deg2rad(25)
+        #   max: !!float 0.3490658503988659    # np.deg2rad(20)
+        u_dz:
+          min: -5.0
+          max: 5.0
         u_psi:
           min: !!float -3.14159 #radians
           max: !!float 3.14159  #radians
@@ -145,9 +148,12 @@ battlespace_environment:
         u_phi:
           min: !!float -0.7853981633974483   # -np.deg2rad(45)
           max: !!float 0.7853981633974483    # np.deg2rad(45)
-        u_theta:
-          min: !!float -0.4363323129985824   # -np.deg2rad(25)
-          max: !!float 0.3490658503988659    # np.deg2rad(20)
+        # u_theta:
+        #   min: !!float -0.4363323129985824   # -np.deg2rad(25)
+        #   max: !!float 0.3490658503988659    # np.deg2rad(20)
+        u_dz:
+          min: -5.0
+          max: 5.0
         u_psi:
           min: !!float -3.14159 #radians
           max: !!float 3.14159  #radians

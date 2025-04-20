@@ -659,7 +659,6 @@ def load_good_guy(checkpoint_path: str, index_save: int = 0,
                 np.array([v])) for k, v in obs.items()}
             action_logits = pursuer.forward_inference(
                 {"obs": torch_obs_batch})["action_dist_inputs"]
-        end_time = time.time()
         # For my action space I have a multidscrete environment
         # Since my action logits are a [1 x total_actions] tensor
         # I need to get the argmax of the tensor
@@ -813,7 +812,7 @@ if __name__ == '__main__':
     path: str = "/home/justin/ray_results/PPO_2025-03-11_01-00-20/PPO_hrl_env_1d8d6_00000_0_2025-03-11_01-00-20/checkpoint_000131"
     # path:str = "/home/justin/ray_results/PPO_2025-03-10_19-56-29/PPO_hrl_env_ab204_00000_0_2025-03-10_19-56-30/checkpoint_000018"
     path:str = "/home/justin/ray_results/pursuer_evader_2/PPO_2025-02-24_13-25-45/PPO_pursuer_evader_env_24ee9_00000_0_2025-02-24_13-25-45/checkpoint_000224"
-    #path:str = "/root/ray_results/PPO_2025-03-20_17-11-07/PPO_high_speed_pursuer_evader_3902d_00000_0_2025-03-20_17-11-07/checkpoint_000224"
+    # path:str = "/root/ray_results/PPO_2025-03-20_17-11-07/PPO_high_speed_pursuer_evader_3902d_00000_0_2025-03-20_17-11-07/checkpoint_000224"
     path:str = "/root/ray_results/PPO_2025-03-21_11-49-49/PPO_high_speed_pursuer_evader_80f0c_00000_0_2025-03-21_11-49-49/checkpoint_000061"
     path:str = "/root/ray_results/PPO_2025-03-21_11-49-49/PPO_high_speed_pursuer_evader_80f0c_00000_0_2025-03-21_11-49-49/checkpoint_000224"
     path:str = "/home/justin/ray_results/PPO_2025-03-26_01-05-00/PPO_pursuer_evader_env_40a11_00000_0_2025-03-26_01-05-00/checkpoint_000139"

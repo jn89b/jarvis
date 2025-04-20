@@ -23,25 +23,33 @@ plt.close('all')
 # 1) Define the labels for the models and columns
 models = [
     "CKAE",
-    "LSTM-Encoder-Decoder",
     "ITB-LSTM",
     "CNN-LSTM",
     "GA-FHT-Etman",
-    "AttConv-LSTM",    
+    "AttConv-LSTM",
+    "UKF",    
+    "LSTM-Encoder-Decoder",    
     "Predictformer"
 ]
 
 column_labels = ["0.5", "1.0", "1.5", "2.0", "2.5"]
 predictformer_metrics = pkl.load(open("small_model_metrics.pkl", "rb"))
 lstm_metrics = pkl.load(open("lstm_metrics.pkl", "rb"))
+ukf_metrics = pkl.load(open("ukf_metrics.pkl", "rb"))
 # set a color for each of the models
 colors = sns.color_palette("husl", len(models))
 color_key = dict(zip(models, colors))
 # each get the first 5 elements and average
+ukf_bins = []
 lstm_bins = []
 overall_bins = []
 
 # %%
+## This is the UKF
+mse_bins = np.array(ukf_metrics[0]["slice_mse"])
+mse_bins = mse_bins[:, :5]
+ukf_bins.append(np.mean(mse_bins, axis=0))
+
 ## This is the LSTM-Encoder-Decoder
 mse_bins = np.array(lstm_metrics["slice_mse"])
 mse_bins = mse_bins[:, :5]/2
@@ -59,13 +67,33 @@ data = [
     [5.42246, 7.80415, 14.4761, 17.83114, 23.23122],  # ITB-LSTM [56]
     [2.99728, 5.65739, 10.29234, 11.62909, 14.80631], # CNN-LSTM [29]
     [1.60886, 1.95828, 8.61368, 10.10829, 15.68474],  # GA-FHT-Etman [45]
-    [1.04976, 2.46361, 6.90185, 7.51149, 13.93615],   # AttConv-LSTM
+    [1.04976, 2.46361, 6.90185, 7.51149, 13.93615],   # AttConv-LSTM [46]
 ]
 
-#data.extend(list(lstm_bins))
 # Insert the LSTM-Encoder-Decoder data as the second row (index 1)
-data.insert(1, list(lstm_bins[0]))
+# data.insert(0, list(ukf_bins[0]))
+# data.insert(1, list(lstm_bins[0]))
+data.append(list(ukf_bins[0]))
+data.append(list(lstm_bins[0]))
 data.extend([list(predictformer_sample)])
+
+# save the data as a pickle file with the model names
+data_dict = dict(zip(models, data))
+with open("prediction_model_data.pkl", "wb") as f:
+    pkl.dump(data_dict, f)
+# generate a text file with the data
+with open("prediction_model_data.txt", "w") as f:
+    for model, values in data_dict.items():
+        f.write(f"{model}: {values}\n")
+# export the data as a csv file
+import pandas as pd
+df = pd.DataFrame(data_dict)
+#transpose the data
+df = df.transpose()
+
+df.to_csv("prediction_model_data.csv", index=False)        
+
+# data.append(list(predictformer_sample))
 
 # 3) Create a grouped bar chart
 x = np.arange(len(column_labels))  # positions for each column group
@@ -75,7 +103,6 @@ fig, ax = plt.subplots(figsize=(16, 10))
 # add horizontal grid lienes
 # Plot each model’s data, shifting each bar group horizontally
 for i, model in enumerate(models):
-    print(i)
     # Shift by i * width so bars don’t overlap
     ax.bar(x + i*width, data[i], width, label=model, color=color_key[model])
     # annotate the bars

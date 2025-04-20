@@ -115,8 +115,8 @@ for i, batch in enumerate(dataloader):
     
     output_history.append(new_output)
     infer_time.append(end_time - start_time)
-    if i == 10:
-        break
+    # if i == 10:
+    #     break
 
 # #Pickkle the output and batch
 import pickle as pkl
@@ -128,7 +128,6 @@ folder_dir = "postprocess_predictformer"
 if not os.path.exists(folder_dir):
     os.makedirs(folder_dir)
 pkl.dump(info, open(os.path.join(folder_dir, "small_model.pkl"), "wb"))
-
 
 # %%
 # Predicited probability is an [num_agents, num_modes] num_modes is the gaussian mixture model

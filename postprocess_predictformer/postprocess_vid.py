@@ -73,7 +73,6 @@ for i in range(num_agents):
     agent['predicted_probability'] = predicted_modes
     overall_agents.append(agent)
 
-
 def animate_agent_3d(agent, num_modes, id_num):
     total_steps = len(agent['ground_truth'])
     print(total_steps)

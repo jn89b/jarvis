@@ -55,7 +55,8 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
 
         # these methods will be implemented by the user
         # self.roll_commands: np.array = None
-        self.pitch_commands: np.array = None
+        #self.pitch_commands: np.array = None
+        self.dz_commands: np.array = None   
         self.yaw_commands: np.array = None
         self.airspeed_commands: np.array = None
 
@@ -471,19 +472,26 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
 
         Converts the discrete action space to a continous action space
         """
-        if self.pitch_commands is None or self.yaw_commands is None or self.airspeed_commands is None:
+        # if self.pitch_commands is None or self.yaw_commands is None or self.airspeed_commands is None:
+        #     raise ValueError(
+        #         "The roll, pitch, yaw, and airspeed commands are not initialized")
+
+        if self.dz_commands is None or self.yaw_commands is None or self.airspeed_commands is None:
             raise ValueError(
                 "The roll, pitch, yaw, and airspeed commands are not initialized")
 
-        pitch_idx: int = action[0]
+
+        #pitch_idx: int = action[0]
+        dz_idx: int = action[0]
         yaw_idx: int = action[1]
         vel_idx: int = action[2]
 
-        pitch_cmd: float = self.pitch_commands[pitch_idx]
+        #pitch_cmd: float = self.pitch_commands[pitch_idx]
+        dz_cmd:float = self.dz_commands[dz_idx]
         yaw_cmd: float = self.yaw_commands[yaw_idx]
         vel_cmd: float = self.airspeed_commands[vel_idx]
 
-        return np.array([pitch_cmd, yaw_cmd, vel_cmd], dtype=np.float32)
+        return np.array([dz_cmd, yaw_cmd, vel_cmd], dtype=np.float32)
 
     def get_discrete_action_space(self,
                                   is_pursuer: bool = True) -> gym.spaces.MultiDiscrete:
@@ -517,11 +525,15 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
             control_limits=control_config
         )
         roll_idx: int = 0
-        pitch_idx: int = 1
+        #pitch_idx: int = 1
+        dz_idx: int = 1
         yaw_idx: int = 2
         vel_idx: int = 3
-        self.pitch_commands: np.array = np.arange(
-            continous_action_space.low[pitch_idx], continous_action_space.high[pitch_idx],
+        # self.pitch_commands: np.array = np.arange(
+        #     continous_action_space.low[pitch_idx], continous_action_space.high[pitch_idx],
+        #     np.deg2rad(1))
+        self.dz_commands: np.array = np.arange(
+            continous_action_space.low[dz_idx], continous_action_space.high[dz_idx],
             np.deg2rad(1))
         self.yaw_commands: np.array = np.arange(
             continous_action_space.low[yaw_idx], continous_action_space.high[yaw_idx],
@@ -530,7 +542,7 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
             continous_action_space.low[vel_idx], continous_action_space.high[vel_idx],
             1)
 
-        action_space = gym.spaces.MultiDiscrete([len(self.pitch_commands),
+        action_space = gym.spaces.MultiDiscrete([len(self.dz_commands),
                                                 len(self.yaw_commands),
                                                 len(self.airspeed_commands)])
 
@@ -567,6 +579,29 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
     def compute_ascent_descent_rate(self, current_vel: float,
                                     pitch_cmd: float) -> float:
         return current_vel * np.sin(pitch_cmd)
+
+    def mask_dz_commands(self, agent: SimpleAgent, dz_mask: np.ndarray,
+                            z_bounds: Dict[str, List[float]],
+                            projection_time: float = 1.0) -> np.ndarray:
+        """
+        Args:
+            agent (SimpleAgent): The agent to mask the dz commands for
+            action_mask (np.ndarray): The action mask to update
+            z_bounds (List[float]): The bounds of the agent
+            projection_time (float): The time to project the agent forward
+        Returns:
+            np.ndarray: The updated action mask
+        
+        This method masks the dz commands based on how close the agent is to the z bounds
+        """
+        z_position = agent.state_vector.z
+        
+        for i , dz_cmd in enumerate(self.dz_commands):
+            projected_z = z_position + (dz_cmd * projection_time)
+            if projected_z >= z_bounds['max'] or projected_z <= z_bounds['min']:
+                dz_mask[i] = 0
+        
+        return dz_mask
 
     def mask_pitch_commands(self, agent: SimpleAgent, pitch_mask: np.ndarray,
                             z_bounds: Dict[str, List[float]],
@@ -664,10 +699,15 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
         #     'vel': action_mask[len(self.roll_commands) + len(self.pitch_commands) + len(self.yaw_commands):]
         # }
 
+        # unwrapped_mask: Dict[str, np.array] = {
+        #     'pitch': action_mask[:len(self.pitch_commands)],
+        #     'yaw': action_mask[len(self.pitch_commands):len(self.pitch_commands) + len(self.yaw_commands)],
+        #     'vel': action_mask[len(self.pitch_commands) + len(self.yaw_commands):]
+        # }
         unwrapped_mask: Dict[str, np.array] = {
-            'pitch': action_mask[:len(self.pitch_commands)],
-            'yaw': action_mask[len(self.pitch_commands):len(self.pitch_commands) + len(self.yaw_commands)],
-            'vel': action_mask[len(self.pitch_commands) + len(self.yaw_commands):]
+            'dz': action_mask[:len(self.dz_commands)],
+            'yaw': action_mask[len(self.dz_commands):len(self.dz_commands) + len(self.yaw_commands)],
+            'vel': action_mask[len(self.dz_commands) + len(self.yaw_commands):]
         }
 
         return unwrapped_mask
@@ -681,9 +721,14 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
         #                               unwrapped_mask['yaw'],
         #                               unwrapped_mask['vel']])
 
-        action_mask = np.concatenate([unwrapped_mask['pitch'],
+        # action_mask = np.concatenate([unwrapped_mask['pitch'],
+        #                               unwrapped_mask['yaw'],
+        #                               unwrapped_mask['vel']])
+
+        action_mask = np.concatenate([unwrapped_mask['dz'],
                                       unwrapped_mask['yaw'],
                                       unwrapped_mask['vel']])
+
 
         return np.array(action_mask, dtype=np.int8)
 
@@ -707,21 +752,27 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
 
         # Mask roll/yaw commands based on how close it is to x/y bounds
         # roll_mask: np.array = np.ones_like(self.roll_commands, dtype=np.int8)
-        pitch_mask: np.array = np.ones_like(self.pitch_commands, dtype=np.int8)
+        #pitch_mask: np.array = np.ones_like(self.pitch_commands, dtype=np.int8)
+        dz_mask: np.array = np.ones_like(self.dz_commands, dtype=np.int8)
         yaw_mask: np.array = np.ones_like(self.yaw_commands, dtype=np.int8)
         vel_mask: np.array = np.ones_like(
             self.airspeed_commands, dtype=np.int8)
 
-        pitch_mask: np.array = self.mask_pitch_commands(agent=agent,
-                                                        pitch_mask=pitch_mask,
-                                                        z_bounds=z_bounds)
+
+        dz_mask: np.array = self.mask_dz_commands(agent=agent,
+                                                dz_mask=dz_mask,
+                                                z_bounds=z_bounds)
+        
+        # pitch_mask: np.array = self.mask_pitch_commands(agent=agent,
+        #                                                 pitch_mask=pitch_mask,
+        #                                                 z_bounds=z_bounds)
 
         yaw_mask: np.array = self.mask_psi_commands(agent=agent,
                                                     yaw_mask=yaw_mask,
                                                     x_bounds=x_bounds,
                                                     y_bounds=y_bounds)
 
-        full_mask = np.concatenate([pitch_mask, yaw_mask, vel_mask])
+        full_mask = np.concatenate([dz_mask, yaw_mask, vel_mask])
 
         if action_space_sum is not None:
             assert full_mask.size == action_space_sum
@@ -776,8 +827,6 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
 
         obs = np.array(obs, dtype=np.float32)
 
-        # make sure obs is np.float32t("e")
-        obs = np.array(obs, dtype=np.float32)
         action_mask: np.ndarray = self.get_action_mask(agent=agent,
                                                        action_space_sum=total_actions)
         return {'observations': obs, 'action_mask': action_mask}
@@ -1082,25 +1131,42 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
                 unpacked_actions['yaw'] = yaw_mask
                 # sanity check
                 assert(yaw_mask[yaw_cmd_index] == 1)
+                
+                
                 # we're going to update the pitch masks with the consideration
                 # of where the evader is, we want to null out pitch commands outside
                 # the FOV in the pitch 
-                pitch_desired:float = self.adjust_pitch(
-                    selected_agent=agent,
-                    evader=evader
-                )
-                fov_half:int = 5
-                pitch_mask: np.array = unpacked_actions['pitch']
-                pitch_cmd_index = np.abs(self.pitch_commands - pitch_desired).argmin()
-                pitch_indices = np.arange(pitch_cmd_index - fov_half, pitch_cmd_index + fov_half + 1) \
-                    % len(self.pitch_commands)
-                # get all indicies that are 0 currently
-                new_mask = np.zeros_like(pitch_mask)
-                indices = np.where(pitch_mask == 0)[0]
-                updated_indices = np.setdiff1d(pitch_indices, indices)
-                new_mask[updated_indices] = 1
-                # everything else is 0
-                unpacked_actions['pitch'] = new_mask
+                # pitch_desired:float = self.adjust_pitch(
+                #     selected_agent=agent,
+                #     evader=evader
+                # )
+                # fov_half:int = 5
+                # pitch_mask: np.array = unpacked_actions['pitch']
+                # pitch_cmd_index = np.abs(self.pitch_commands - pitch_desired).argmin()
+                # pitch_indices = np.arange(pitch_cmd_index - fov_half, pitch_cmd_index + fov_half + 1) \
+                #     % len(self.pitch_commands)
+                # # get all indicies that are 0 currently
+                # new_mask = np.zeros_like(pitch_mask)
+                # indices = np.where(pitch_mask == 0)[0]
+                # updated_indices = np.setdiff1d(pitch_indices, indices)
+                # new_mask[updated_indices] = 1
+                # # everything else is 0
+                # unpacked_actions['pitch'] = new_mask
+                
+                dz_mask = unpacked_actions['dz']
+                # get all the indices that are 0
+                indices = np.where(dz_mask == 0)[0]
+                new_mask = np.zeros_like(dz_mask)
+                # Based on the delta we want to update the dz commands relative to the evader
+                delta_z_to_evader: float = evader.state_vector.z - agent.state_vector.z
+                if delta_z_to_evader > 0:
+                    new_mask[dz_mask > 0 ] = 1
+                elif delta_z_to_evader < 0:
+                    new_mask[dz_mask < 0] = 1
+                    
+                # any indices that are 0 from indicies set to new_mask
+                new_mask[indices] = 0
+                unpacked_actions['dz'] = new_mask
                 action_mask = self.wrap_action_mask(unpacked_actions)
 
             relative_pos: np.ndarray = agent.state_vector.array - \
@@ -1340,10 +1406,10 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         evader = evaders[0]
 
         for agent in self.get_controlled_agents:
-            # rewards for the pursuers
+            # rewards for the pursuersprint("Evad
             if agent.is_pursuer:
                 if self.is_caught(pursuer=agent, evader=evader) or evader.crashed:
-                    print("Evader,   Caught")
+                    print("Evader,   Caught", evader.state_vector)
                     terminateds['__all__'] = True
                     rewards[evader.agent_id] = -self.terminal_reward
                     for pursuer in self.get_pursuer_agents():

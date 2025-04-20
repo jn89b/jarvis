@@ -16,8 +16,8 @@ import os
 
 plt.close('all')    
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#device = "cpu"
+#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = "cpu"
 data_config = "config/predictformer_config.yaml"
 with open(data_config, 'r') as f:
     data_config = yaml.safe_load(f)
