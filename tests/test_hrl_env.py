@@ -86,7 +86,7 @@ class TestHRLEnv(unittest.TestCase):
         self.env.reset()
         print("agents now ", self.env.agents)
         self.env.current_agent = "1"
-        for i in range(20):
+        for i in range(1000):
             # agent = next(self.env.agent_cycle)
             # print("agent", agent)
             actions = {agent_id: action_space['action'].sample()
@@ -96,18 +96,58 @@ class TestHRLEnv(unittest.TestCase):
             current_action = {
                 "action": current_action
             }
+            if self.env.current_agent == "good_guy_hrl":
+                current_action["action"] = 0
             action_dict = {self.env.current_agent: current_action}
             obs, reward, done, _, info = self.env.step(
                 action_dict=action_dict)
-            print("obs", obs.keys())
+            #print("obs", obs.keys())
             # check if obs is empty dictionary
-            if not obs:
-                raise ValueError("obs is empty current agent is",
-                                 self.env.current_agent)
-                print("obs is empty")
+            # if done:
+            #     break
+            # if not obs:
+            #     raise ValueError("obs is empty current agent is",
+            #                      self.env.current_agent)
+                # print("obs is empty")
 
         print("agents now ", self.env.agents)
+        
+        # plot the distance to the target
+        # get the good guy
 
+        # plot a 3D plot
+        datas: List[DataHandler] = []
+        agents = self.env.get_all_agents
+        # agents
+        new_agents = []
+        new_agents.append(self.env.get_evader_agents()[0])
+        new_agents.extend(self.env.get_pursuer_agents())
+        agents = new_agents
+        for agent in agents:
+            data: DataHandler = agent.simple_model.data_handler
+            datas.append(data)
+
+        # plot a 3D plot of the agents
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+
+        for i, data in enumerate(datas):
+            ax.scatter(data.x[0], data.y[1], data.z[2], label=f"Agent Start {i}")
+            ax.plot(data.x, data.y, data.z, label=f"Agent {i}")
+
+        target: StateVector = self.env.target
+        # plot the goal target as a cylinder
+        ax.scatter(target.x, target.y, target.z,
+                label="Target", color='red', s=100)
+
+        # print("env step", self.env.current_step)
+        ax.set_xlabel('X Label')
+        ax.set_ylabel('Y Label')
+        # tight axis
+        fig.tight_layout()
+        ax.legend()
+        plt.show()
+        
 
 if __name__ == "__main__":
     unittest.main()

@@ -781,12 +781,11 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
                     max_vel=vel_cmd
                 )
                 #clip the dz command
-                action_cmd[1] = np.clip(action_cmd[1], 
-                                        -self.pursuer_control_limits['u_dz']['min'],
+                # delta_z = target_pos - current_pos
+                print("action_cmd", action_cmd)
+                action_cmd[0] = np.clip(action_cmd[0],
+                                        self.pursuer_control_limits['u_dz']['min'],
                                         self.pursuer_control_limits['u_dz']['max'])
-
-
-
             # else:
             #     action_cmd: np.array = self.discrete_to_continuous_action(
             #         action[str(self.good_guy_offensive_key)]['action'])
@@ -906,8 +905,8 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
                 relative_vel=relative_vel
             )
             #clip the dz command
-            action_cmd[1] = np.clip(action_cmd[1], 
-                                    -self.pursuer_control_limits['u_dz']['min'],
+            action_cmd[0] = np.clip(action_cmd[0], 
+                                    self.pursuer_control_limits['u_dz']['min'],
                                     self.pursuer_control_limits['u_dz']['max'])
 
 
@@ -1123,7 +1122,7 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         evader.old_distance_from_pursuer = distance
 
         # Return the negative reward for the evader without causing any state updates.
-        return -dot_product - delta_distance
+        return -dot_product #- delta_distance
 
     def compute_target_reward(self, good_guy: Pursuer, target: StateVector) -> float:
         """
@@ -1219,7 +1218,9 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
             distance: float = good_guy.state_vector.distance_3D(
                 pursuer.state_vector)
             if distance <= pursuer.capture_radius or good_guy.crashed:
-                print("Good Guy has been captured", distance)
+                distance_from_target: float = good_guy.state_vector.distance_3D(
+                    target)
+                print("Good Guy has been captured distance from target", distance, distance_from_target)
                 rewards[self.good_guy_hrl_key] = -self.terminal_reward
                 rewards[self.good_guy_offensive_key] = -self.terminal_reward
                 rewards[self.good_guy_defensive_key] = -self.terminal_reward
@@ -1247,7 +1248,7 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         intermediate_evader_reward: float = self.compute_evader_reward(
             closet_pursuer, good_guy)
         lambda_1: float = 1.0
-        lambda_2: float = 0.5
+        lambda_2: float = 0.1
         rewards[self.good_guy_hrl_key] = (lambda_1*intermediate_dist_reward) + \
             (lambda_2*intermediate_evader_reward) - 0.1
 

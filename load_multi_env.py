@@ -605,13 +605,11 @@ def load_good_guy(checkpoint_path: str, index_save: int = 0,
     """
     ray.init(ignore_reinit_error=True)
     env = create_hrl_env(config=None, env_config=env_config)
-
+    env.use_pronav = True
     policies: MultiRLModuleSpec = RLModule.from_checkpoint(
         pathlib.Path(checkpoint_path) /
         "learner_group" / "learner" / "rl_module"
     )
-    print("policies", policies)
-    print("policies", policies.keys())
 
     good_guy_hrl = policies["good_guy_hrl"]
     good_guy_offensive = policies["good_guy_offensive"]
@@ -824,7 +822,7 @@ if __name__ == '__main__':
     # path: str = "/home/justin/ray_results/PPO_2025-02-28_02-55-49/PPO_hrl_env_cecd1_00000_0_2025-02-28_02-55-50/checkpoint_000000"
     # path:str = "/home/justin/ray_results/PPO_hrl/PPO_hrl_env_aed44_00000_0_2025-02-28_03-30-43/checkpoint_000031"
     # plt.show()
-
+    path:str = "/home/justin/ray_results/PPO_2025-04-21_03-52-53/PPO_hrl_env_0327a_00000_0_2025-04-21_03-52-53/checkpoint_000000"
     run_multiple_sims(checkpoint_path=path, num_sims=10, type='good_guy',
                       use_random_seed=False)
     # ray_trainer = RayTrainerSimpleEnv(
