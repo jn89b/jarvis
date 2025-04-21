@@ -197,6 +197,7 @@ def train_multi_agent() -> None:
     evader_action_space = example_env.action_spaces['0']
     pursuer_obs_space = example_env.observation_spaces['1']
     pursuer_action_space = example_env.action_spaces['1']
+    
     # Build the PPO configuration.
     config = (
         PPOConfig()
@@ -270,7 +271,8 @@ def train_hrl(checkpoint_path=None) -> None:
         evader_policy: SimpleEnvMaskModule = RLModule.from_checkpoint(
             pathlib.Path(checkpoint_path) /
             "learner_group" / "learner" / "rl_module"
-        )["evader_policy"]
+        )
+        
         print("evader_policy", evader_policy)
 
     # Extract the observation and action spaces from your environment.
@@ -351,7 +353,7 @@ def train_hrl(checkpoint_path=None) -> None:
         )
         .resources(num_gpus=1)
         .env_runners(observation_filter="MeanStdFilter",
-                     num_env_runners=12)
+                     num_env_runners=10)
     )
     # Initialize and run the training using Ray Tune.
     tuner = tune.Tuner("PPO", param_space=config, run_config=run_config)
@@ -362,7 +364,9 @@ def train_hrl(checkpoint_path=None) -> None:
 if __name__ == '__main__':
     # main()
     # train_rllib()
-    train_multi_agent()
+    #train_multi_agent()
+    #path:str = "/home/justin/ray_results/PPO_2025-04-20_13-25-48_evade/PPO_pursuer_evader_env_e216c_00000_0_2025-04-20_13-25-49/checkpoint_000014"
     #path: str = "/home/justin/ray_results/pursuer_evader_2/PPO_2025-02-24_13-25-45/PPO_pursuer_evader_env_24ee9_00000_0_2025-02-24_13-25-45/checkpoint_000224"
-    #train_hrl(checkpoint_path=path)
+    path:str = "/home/justin/coding_projects/Jarvis/checkpoint_000048"
+    train_hrl(checkpoint_path=path)
     ray.shutdown()

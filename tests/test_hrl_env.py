@@ -99,7 +99,7 @@ class TestHRLEnv(unittest.TestCase):
             action_dict = {self.env.current_agent: current_action}
             obs, reward, done, _, info = self.env.step(
                 action_dict=action_dict)
-            print("obs", obs)
+            print("obs", obs.keys())
             # check if obs is empty dictionary
             if not obs:
                 raise ValueError("obs is empty current agent is",

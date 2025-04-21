@@ -338,7 +338,7 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
             y: float = evader.state_vector.y + \
                 np.random.uniform(-rand_radius, rand_radius)
             z_bounds: List[float] = self.battlespace.z_bounds
-            z: float = np.random.uniform(z_bounds[0], z_bounds[1])
+            z: float = np.random.uniform(z_bounds[0]+10, z_bounds[1]-10)
 
         else:
             x: float = self.target_config['position']['x']
@@ -548,6 +548,7 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
             observation: Dict[str, np.array] = super().observe(
                 agent, total_actions)
             obs: np.array = observation['observations']
+            masks: np.array = observation['action_mask']
 
             if self.last_high_level_action == OFFENSIVE_IDX:
                 # return the euclidean distance from the the target
@@ -564,6 +565,10 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
                     relative_pos[0], relative_pos[1], relative_pos[2],
                     relative_vel, relative_heading]
                 obs = np.concatenate([obs, relative_info]).astype(np.float32)
+
+                if obs.shape[0] != self.observation_spaces[self.good_guy_offensive_key]['observations'].shape[0]:
+                    raise ValueError("The observation space is not the same \
+                        current shape and actual shape is", obs.shape, self.observation_spaces[self.good_guy_offensive_key]['observations'].shape)
 
             elif self.last_high_level_action == DEFENSIVE_IDX:
 
@@ -591,10 +596,20 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
                                      relative_velocity, relative_heading]
 
                     overall_relative_pos.extend(relative_info)
-
+                    
                 obs = np.concatenate(
                     [obs, overall_relative_pos]).astype(np.float32)
 
+                # check if pitch is outside the bounds
+
+                if obs.shape[0] != self.observation_spaces[self.good_guy_defensive_key]['observations'].shape[0]:
+                    raise ValueError("The observation space is not the same \
+                        current shape and actual shape is", obs.shape, self.observation_spaces[self.good_guy_defensive_key]['observations'].shape)
+                
+                if masks.shape[0] != self.observation_spaces[self.good_guy_defensive_key]['action_mask'].shape[0]:
+                    raise ValueError("The action mask is not the same \
+                        current shape and actual shape is", masks.shape, self.action_spaces[agent.agent_id]['action'].nvec.sum())
+                    
             observation['observations'] = obs
             return observation
 
@@ -603,6 +618,7 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
             observation: Dict[str, np.array] = super().observe(
                 agent, total_actions)
             obs: np.array = observation['observations']
+            masks: np.array = observation['action_mask']
 
             evader: SimpleAgent = self.get_evader_agents()[0]
             relative_pos: np.array = agent.state_vector.array - \
@@ -623,8 +639,17 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
 
             obs = np.concatenate([obs, relative_info]).astype(np.float32)
 
-            observation['observations'] = obs
+            if obs.shape[0] != self.observation_spaces[agent.agent_id]['observations'].shape[0]:
+                raise ValueError("The observation space is not the same \
+                    current shape and actual shape is", obs.shape, self.observation_spaces[agent.agent_id]['observations'].shape)
 
+            # check action mask is correct
+            if masks.shape[0] != self.observation_spaces[self.good_guy_defensive_key]['action_mask'].shape[0]:
+                raise ValueError("The action mask is not the same \
+                    current shape and actual shape is", masks.shape, self.action_spaces[agent.agent_id]['action'].nvec.sum())
+
+            observation['observations'] = obs
+            
             return observation
 
     def get_hrl_observation(self) -> Dict[str, np.array]:
@@ -755,24 +780,33 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
                     consider_yaw=False,
                     max_vel=vel_cmd
                 )
+                #clip the dz command
+                action_cmd[1] = np.clip(action_cmd[1], 
+                                        -self.pursuer_control_limits['u_dz']['min'],
+                                        self.pursuer_control_limits['u_dz']['max'])
 
-            else:
-                action_cmd: np.array = self.discrete_to_continuous_action(
-                    action[str(self.good_guy_offensive_key)]['action'])
-                if selected_agent.is_pursuer:
-                    action_cmd = self.adjust_pitch(
-                        selected_agent, self.get_evader_agents()[
-                            0], action_cmd,
-                        target_instead=True, target_statevector=self.target)
+
+
+            # else:
+            #     action_cmd: np.array = self.discrete_to_continuous_action(
+            #         action[str(self.good_guy_offensive_key)]['action'])
+            #     if selected_agent.is_pursuer:
+            #         action_cmd = self.adjust_pitch(
+            #             selected_agent, self.get_evader_agents()[
+            #                 0], action_cmd,
+            #             target_instead=True, target_statevector=self.target)
 
             command_action: Dict[str, np.array] = {
                 selected_agent.agent_id: action_cmd}
             self.simulate(command_action, use_multi=True)
 
-            # I'm going to need to return the observation of the next pursuer
-            # Reward everything else here
-            # self.current_agent: Pursuer = self.get_pursuer_agents()[0]
-            self.current_agent: str = self.get_pursuer_agents()[0].agent_id
+            # Anytime we make a low level action we need to switch to the pursuer 
+            # to make sure time is being stepped correctly
+            # we have to use the agent cycle to get the next agent otherwise 
+            # we will get stuck in a loop
+            while self.current_agent != self.get_pursuer_agents()[0].agent_id:
+                self.current_agent = next(self.agent_cycle)
+                
             agent = self.get_specific_agent(self.current_agent)
             if agent is None:
                 raise ValueError("The agent is not defined")
@@ -853,8 +887,8 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         )
         action_cmd: np.array = self.discrete_to_continuous_action(
             action[str(selected_agent.agent_id)]['action'])
-        action_cmd = self.adjust_pitch(
-            selected_agent, self.get_evader_agents()[0], action_cmd)
+        # action_cmd = self.adjust_pitch(
+        #     selected_agent, self.get_evader_agents()[0], action_cmd)
 
         if self.use_pronav:
             pronav: ProNavV2 = ProNavV2()
@@ -871,6 +905,11 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
                 current_speed=selected_agent.state_vector.speed,
                 relative_vel=relative_vel
             )
+            #clip the dz command
+            action_cmd[1] = np.clip(action_cmd[1], 
+                                    -self.pursuer_control_limits['u_dz']['min'],
+                                    self.pursuer_control_limits['u_dz']['max'])
+
 
         command_action: Dict[str, np.array] = {
             selected_agent.agent_id: action_cmd}
@@ -883,8 +922,9 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
         self.current_agent: str = next(self.agent_cycle)
 
         # Using this in case we have the same cycle
-        while self.current_agent == selected_agent.agent_id:
-            self.current_agent: str = next(self.agent_cycle)
+        # while self.current_agent == selected_agent.agent_id:
+        #     self.current_agent: str = next(self.agent_cycle)
+        #     print("Current agent is", self.current_agent)
         if (self.current_agent == self.good_guy_hrl_key or
             self.current_agent == self.good_guy_offensive_key or
                 self.current_agent == self.good_guy_defensive_key):

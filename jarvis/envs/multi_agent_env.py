@@ -835,6 +835,24 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
                agent.state_vector.vz]
 
         obs = np.array(obs, dtype=np.float32)
+        
+        # check if pitch is outside the bounds of the agent
+        if agent.is_pursuer:
+            # if agent.state_vector.pitch_rad < self.pursuer_state_limits['theta']['min'] or \
+            #         agent.state_vector.pitch_rad > self.pursuer_state_limits['theta']['max']:
+            #     raise ValueError(
+            #         f"Pitch angle {agent.state_vector.pitch_rad} is outside the bounds of the agent")
+        
+            #clip the pitch angle to the limits
+            obs[4] = np.clip(obs[4], self.pursuer_state_limits['theta']['min'],
+                                self.pursuer_state_limits['theta']['max'])  
+        else:
+            # if agent.state_vector.pitch_rad < self.evader_state_limits['theta']['min'] or \
+            #         agent.state_vector.pitch_rad > self.evader_state_limits['theta']['max']:
+                # raise ValueError(
+                #     f"Pitch angle {agent.state_vector.pitch_rad} is outside the bounds of the agent")
+            obs[4] = np.clip(obs[4], self.evader_state_limits['theta']['min'],
+                                self.evader_state_limits['theta']['max'])   
 
         action_mask: np.ndarray = self.get_action_mask(agent=agent,
                                                        action_space_sum=total_actions)
@@ -1466,7 +1484,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
                     # compute the intermediate reward
                     rewards[agent.agent_id] = self.compute_pursuer_reward(
                         pursuer=agent, evader=evader)
-                    rewards[evader.agent_id] = -rewards[agent.agent_id]
+                    # rewards[evader.agent_id] = -rewards[agent.agent_id]
             # rewards for the evader
             else:
                 if self.current_step >= self.max_steps:
@@ -1489,14 +1507,14 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
                             # closest pursuer
                             rewards[evader.agent_id] = self.compute_evader_reward(
                                 pursuer=pursuer, evader=evader)
-                            rewards[pursuer.agent_id] = -\
-                                rewards[evader.agent_id]
+                            # rewards[pursuer.agent_id] = -\
+                            #     rewards[evader.agent_id]
 
                         if pursuer.crashed and not evader.crashed:
                             terminateds['__all__'] = True
                             rewards[evader.agent_id] = self.terminal_reward
-                            rewards[pursuer.agent_id] = - \
-                                rewards[agent.agent_id]
+                            # rewards[pursuer.agent_id] = - \
+                            #     rewards[agent.agent_id]
                             print("Pursuer Crashed", pursuer.state_vector)
 
         self.current_agent = next(self.agent_cycle)
