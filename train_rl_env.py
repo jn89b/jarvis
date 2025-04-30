@@ -15,20 +15,7 @@ from ray.rllib.models import ModelCatalog
 # )
 
 from jarvis.utils.mask import MultiDimensionalMaskModule
-# from ray.rllib.examples.rl_modules.classes.action_masking_rlm import (
-#     ActionMaskingTorchRLModule)
-
-# tune.register_env("env", HierarchicalEnv)
-# tune.register_env("mask_env", ActionMaskingHRLEnv)
-# Register the custom model
-# ModelCatalog.register_custom_model(
-#     "masked_action_model", MultiActionMaskingTorchRLModule)
-
-# Register your custom model with a name so you can reference it in your RLlib config.
-# ModelCatalog.register_custom_model(
-#     "unpacked_masked_torch_model", UnpackedMaskedActionsTorchModel)
 import gc
-
 gc.collect()
 
 # Used to clean up the Ray processes after training

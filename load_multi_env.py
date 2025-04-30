@@ -726,9 +726,9 @@ def load_good_guy(checkpoint_path: str, index_save: int = 0,
     fig.tight_layout()
     ax.legend()
     
-    fig, ax = plt.subplots()
-    ax.plot(current_action_history, label='High Level Action')
-    ax.legend()
+    # fig, ax = plt.subplots()
+    # ax.plot(current_action_history, label='High Level Action')
+    # ax.legend()
     
 
     # save the datas and the rewards
@@ -822,7 +822,8 @@ if __name__ == '__main__':
     # path: str = "/home/justin/ray_results/PPO_2025-02-28_02-55-49/PPO_hrl_env_cecd1_00000_0_2025-02-28_02-55-50/checkpoint_000000"
     # path:str = "/home/justin/ray_results/PPO_hrl/PPO_hrl_env_aed44_00000_0_2025-02-28_03-30-43/checkpoint_000031"
     # plt.show()
-    path:str = "/home/justin/ray_results/PPO_2025-04-21_03-52-53/PPO_hrl_env_0327a_00000_0_2025-04-21_03-52-53/checkpoint_000000"
+    #path:str = "/home/justin/ray_results/PPO_2025-04-21_04-33-08/PPO_hrl_env_a2de8_00000_0_2025-04-21_04-33-09/checkpoint_000012"
+    path:str = "/home/justin/ray_results/PPO_2025-04-29_21-44-10/PPO_hrl_env_febd7_00000_0_2025-04-29_21-44-10/checkpoint_000109"
     run_multiple_sims(checkpoint_path=path, num_sims=10, type='good_guy',
                       use_random_seed=False)
     # ray_trainer = RayTrainerSimpleEnv(
@@ -831,6 +832,7 @@ if __name__ == '__main__':
     # ray_trainer.infer_pursuer_evader(
     #     checkpoint_path=path, num_episodes=1, save=True,
     # )
+
     # ray_trainer.infer_multiple_times(checkpoint_path=path, 
     #                                  folder_name='pursuer_evader_high_speed_data_test',
     #                                  num_sims=5,
@@ -839,4 +841,3 @@ if __name__ == '__main__':
     #                                  use_pronav = True ,
     #                                  save=True,
     #                                  start_count=0)
-    

@@ -333,10 +333,12 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
             min_radius: float = spawn_radius['min']
             max_radius: float = spawn_radius['max']
             rand_radius: float = np.random.uniform(min_radius, max_radius)
+            sign_convention: int = np.random.choice([-1, 1])
+            rand_radius *= sign_convention
             x: float = evader.state_vector.x + \
-                np.random.uniform(-rand_radius, rand_radius)
+                rand_radius
             y: float = evader.state_vector.y + \
-                np.random.uniform(-rand_radius, rand_radius)
+                rand_radius
             z_bounds: List[float] = self.battlespace.z_bounds
             z: float = np.random.uniform(z_bounds[0]+10, z_bounds[1]-10)
 
@@ -782,7 +784,6 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
                 )
                 #clip the dz command
                 # delta_z = target_pos - current_pos
-                print("action_cmd", action_cmd)
                 action_cmd[0] = np.clip(action_cmd[0],
                                         self.pursuer_control_limits['u_dz']['min'],
                                         self.pursuer_control_limits['u_dz']['max'])

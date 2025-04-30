@@ -33,7 +33,7 @@ class ProNavV2():
 
     def __init__(self,
                  N: float = 1.0,
-                 dt: float = 0.5,
+                 dt: float   = 0.5,
                  closing_distance: float = 50.0):
         self.N: float = N
         self.close_distance: float = closing_distance

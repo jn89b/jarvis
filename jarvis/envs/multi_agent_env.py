@@ -55,8 +55,6 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
         self.ctrl_counter: int = 0  # control counter
 
         # these methods will be implemented by the user
-        # self.roll_commands: np.array = None
-        #self.pitch_commands: np.array = None
         self.dz_commands: np.array = None   
         self.yaw_commands: np.array = None
         self.airspeed_commands: np.array = None

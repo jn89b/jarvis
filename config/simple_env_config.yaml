@@ -69,7 +69,7 @@ battlespace_environment:
           max: inf
         z:
           min: 30.0
-          max: 70.0
+          max: 90.0
         phi:
           min: !!float -0.7853981633974483   # -np.deg2rad(45)
           max: !!float 0.7853981633974483    # np.deg2rad(45)
@@ -121,7 +121,7 @@ battlespace_environment:
           max: inf
         z:
           min: 30.0
-          max: 70.0
+          max: 90.0
         phi:
           min: !!float -0.7853981633974483   # -np.deg2rad(45)
           max: !!float 0.7853981633974483    # np.deg2rad(45)

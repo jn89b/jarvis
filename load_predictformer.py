@@ -230,13 +230,13 @@ for i in range(num_agents):
         z = z_start + agent_traj[j, :, 2]
         # x = transformed_traj[j, :, 0]
         # y = transformed_traj[j, :, 1]
-        
-        
+            
         ax.scatter(
             x, y, z, label=f"Mode {j} for agent {i} ")
 
     ax.scatter(x_start, y_start, z_start, label="Start " + str(i))
     ax.legend()
-
+    
 #%%
+
 plt.show()
