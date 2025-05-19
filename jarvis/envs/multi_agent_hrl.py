@@ -1248,8 +1248,8 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
             good_guy, target)
         intermediate_evader_reward: float = self.compute_evader_reward(
             closet_pursuer, good_guy)
-        lambda_1: float = 1.0
-        lambda_2: float = 0.1
+        lambda_1: float = 0.8
+        lambda_2: float = 0.5
         rewards[self.good_guy_hrl_key] = (lambda_1*intermediate_dist_reward) + \
             (lambda_2*intermediate_evader_reward) - 0.1
 

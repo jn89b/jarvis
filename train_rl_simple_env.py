@@ -364,9 +364,9 @@ def train_hrl(checkpoint_path=None) -> None:
 if __name__ == '__main__':
     # main()
     # train_rllib()
-    #train_multi_agent()
+    train_multi_agent()
     #path:str = "/home/justin/ray_results/PPO_2025-04-20_13-25-48_evade/PPO_pursuer_evader_env_e216c_00000_0_2025-04-20_13-25-49/checkpoint_000014"
     #path: str = "/home/justin/ray_results/pursuer_evader_2/PPO_2025-02-24_13-25-45/PPO_pursuer_evader_env_24ee9_00000_0_2025-02-24_13-25-45/checkpoint_000224"
-    path:str = "/home/justin/coding_projects/Jarvis/checkpoint_000048"
-    train_hrl(checkpoint_path=path)
+    #path:str = "/home/justin/coding_projects/Jarvis/checkpoint_000048"
+    #train_hrl(checkpoint_path=path)
     ray.shutdown()

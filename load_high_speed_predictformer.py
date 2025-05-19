@@ -116,19 +116,19 @@ for i, batch in enumerate(dataloader):
     
     output_history.append(new_output)
     infer_time.append(end_time - start_time)
-    # if i == 10:
+    # if i == 25:
     #     break
 
 # #Pickkle the output and batch
 import pickle as pkl
-info = {"output": output_history,
-        "infer_time": infer_time,
-        "center_gt_trajs": center_gt_trajs,
-        "center_objects_world": center_objects_world}
-folder_dir = "postprocess_predictformer"
-if not os.path.exists(folder_dir):
-    os.makedirs(folder_dir)
-pkl.dump(info, open(os.path.join(folder_dir, "highspeed_predictformer_output_1.pkl"), "wb"))
+# info = {"output": output_history,
+#         "infer_time": infer_time,
+#         "center_gt_trajs": center_gt_trajs,
+#         "center_objects_world": center_objects_world}
+# folder_dir = "postprocess_predictformer"
+# if not os.path.exists(folder_dir):
+#     os.makedirs(folder_dir)
+# pkl.dump(info, open(os.path.join(folder_dir, "highspeed_predictformer_output_1.pkl"), "wb"))
 
 
 # %%

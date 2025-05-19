@@ -160,6 +160,3 @@ battlespace_environment:
         v_cmd:
           min: 20.0
           max: 35.0
-
-
-
