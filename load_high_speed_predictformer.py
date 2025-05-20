@@ -1,6 +1,7 @@
 import numpy as np
 import unittest
 import yaml
+import pickle as pkl
 import torch
 import matplotlib.pyplot as plt
 import time 
@@ -15,7 +16,8 @@ import os
 
 
 plt.close('all')    
-
+SAVE_PICKLE:bool = False
+pickle_file_name:str = "high_speed_predictformer_output.pkl" 
 #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device = "cpu"
 data_config = "config/high_speed_predictformer_config.yaml"
@@ -36,7 +38,6 @@ dataloader: DataLoader = DataLoader(
     shuffle=False,
     collate_fn=dataset.collate_fn
 )
-
 
 model_config: str = "config/high_speed_predictformer_config.yaml"
 with open(model_config, 'r') as f:
@@ -87,8 +88,6 @@ for i, batch in enumerate(dataloader):
     output, loss = model(batch)
     end_time = time.time()
     print(f"Time taken for inference: {end_time - start_time}")
-    # if i == 2:
-    #     break
     center_gt_trajs.append(batch['input_dict']['center_gt_trajs'].detach().numpy())
     center_objects_world.append(batch['input_dict']['center_objects_world'].detach().numpy())
     predicted_traj = output['predicted_trajectory'].detach().numpy()
@@ -116,19 +115,19 @@ for i, batch in enumerate(dataloader):
     
     output_history.append(new_output)
     infer_time.append(end_time - start_time)
-    # if i == 25:
-    #     break
+    if i == 50:
+        break
 
-# #Pickkle the output and batch
-import pickle as pkl
-# info = {"output": output_history,
-#         "infer_time": infer_time,
-#         "center_gt_trajs": center_gt_trajs,
-#         "center_objects_world": center_objects_world}
-# folder_dir = "postprocess_predictformer"
-# if not os.path.exists(folder_dir):
-#     os.makedirs(folder_dir)
-# pkl.dump(info, open(os.path.join(folder_dir, "highspeed_predictformer_output_1.pkl"), "wb"))
+info = {"output": output_history,
+        "infer_time": infer_time,
+        "center_gt_trajs": center_gt_trajs,
+        "center_objects_world": center_objects_world}
+
+if SAVE_PICKLE:
+    folder_dir = "postprocess_predictformer"
+    if not os.path.exists(folder_dir):
+        os.makedirs(folder_dir)
+    pkl.dump(info, open(os.path.join(folder_dir, pickle_file_name), "wb"))
 
 
 # %%
@@ -170,7 +169,7 @@ for i in range(num_agents):
         f"Agent {i} Trajectory Highest Probability Mode {highest_probabilty_index}")
     ax.legend()
 
-fig, ax = plt.subplots(1, 1)
+fig, ax = plt.subplots(1, 1, figsize=(12,12))
 heading_idx:int = 5
 # transpose this to ground truth trajectory [num_agents, num_timesteps, num_attributes]
 for i in range(num_agents):
@@ -202,7 +201,7 @@ for i in range(num_agents):
     ax.legend()
 
 # Now plot this for 3d
-fig = plt.figure()
+fig = plt.figure(figsize=(10,10))
 ax = fig.add_subplot(111, projection='3d')
 for i in range(num_agents):
     x = original_pos_past[i, :, 0]

@@ -350,7 +350,7 @@ def train_hrl(checkpoint_path=None) -> None:
             policy_mapping_fn=policy_mapping_fn,
             policies_to_train=["good_guy_hrl", "good_guy_offensive",
                                "good_guy_defensive", "pursuer"]
-        )
+        )   
         .resources(num_gpus=1)
         .env_runners(observation_filter="MeanStdFilter",
                      num_env_runners=10)

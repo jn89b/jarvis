@@ -47,7 +47,7 @@ with open(config_path, 'r') as f:
     model_config = yaml.safe_load(f)
 
 model = PredictFormer(model_config)
-name = "high_speed_predictformer"
+name = "high_speed_predictformer" + str(model_config["past_len"])
 logger = TensorBoardLogger("tb_logs", name=name)
 
 # Set up checkpointing

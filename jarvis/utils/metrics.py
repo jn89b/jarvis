@@ -8,13 +8,34 @@ import pandas as pd
 from typing import List, Tuple
 from mpl_toolkits.mplot3d import Axes3D  
 
+# 1) Light grey grid lines everywhere
+plt.rcParams['axes.grid']       = True
+plt.rcParams['grid.color']      = 'lightgrey'
+plt.rcParams['grid.linestyle']  = '-'
+plt.rcParams['grid.linewidth']  = 0.5
+plt.rcParams['grid.alpha']      = 0.8
+
+# 2) Default font sizes
+plt.rcParams['font.size']       = 12    # general text
+plt.rcParams['axes.titlesize']  = 14    # subplot title
+plt.rcParams['axes.labelsize']  = 12    # x/y labels
+plt.rcParams['xtick.labelsize'] = 10    # x-tick labels
+plt.rcParams['ytick.labelsize'] = 10    # y-tick labels
+plt.rcParams['legend.fontsize'] = 11    # legend text
+
+# Now any plot you make will use these settings:
+fig, ax = plt.subplots()
+ax.plot([0,1,2],[1,2,0])
+ax.set_title("Example Plot")
+ax.set_xlabel("X axis")
+ax.set_ylabel("Y axis")
+plt.show()
 
 """
 Metrics comparison class to compare forecasting models
 - Compare predictformer, ukf, and lstm on the same dataset
 
 """
-
 class Metrics():
     def __init__(
         self,
@@ -76,6 +97,34 @@ class Metrics():
             agent['predicted_probability'] = predicted_modes
             self.overall_agents.append(agent)
             
+    def continous_mse(self) -> List[float]:
+        """
+        We are going to loop through each prediction and compute the 
+        MSE 
+        """
+        overall_metrics = []
+        
+        for i, agent in enumerate(self.overall_agents):
+            # Predcited trajectory is a list of [num_predictions, xyz, num_predictions, len(predicted_trajectory)]
+            predicted_trajectory = np.array(agent["predicted_trajectory"])
+            ground_truth_trajectory = np.array(agent["ground_truth"])
+            
+            for j in range(len(predicted_trajectory)):
+                best_modes = np.argsort(agent['predicted_probability'][j])[-3:]
+                current_predicted_trajectory = predicted_trajectory[j]
+                lowest_mse = np.inf
+                best_mode:int = 0
+                for idx in best_modes:
+                    selected_traj = current_predicted_trajectory[:, idx, :]
+                    gt = ground_truth_trajectory[j][:, self.start_idx:]
+                    mse = np.mean((selected_traj - gt) ** 2)
+                    if mse < lowest_mse:
+                        lowest_mse = mse
+                        best_mode = idx
+                        
+                best_predicted_trajectory = current_predicted_trajectory[:, best_mode, :]
+
+         
     def predictformer_mse(self,
                           slice_size:int=10,
                           to_plot:bool=False) -> List[float]:
@@ -200,9 +249,72 @@ class Metrics():
             filename:str = save_name+".svg"
             plt.savefig(filename)
 
+    def plot_mse_lines(self, overall_metrics:List[float]) -> None:
+        """
+        Plot the MSE metrics but we will bin this into every 
+        increment as a line
+        """
         
+    def plot_mse_lines(self, overall_metrics,
+                         to_save:bool=False,
+                         save_name:str="",
+                         to_break:bool=True,
+                         x_min:float=1,
+                         x_max:float=6, 
+                         plot_subplots:bool=False) -> None:
+        # Determine the number of bins from the first agent's data
+        num_bins = len(np.mean(np.array(overall_metrics[0]['slice_mse']), axis=0))
+        print(f"Number of bins: {num_bins}")
+        # Create x positions linearly spaced from 1 to 6 seconds
+        x = np.arange(0.0, 6, 0.1)
+
+        # Determine the width for grouped bars
+        num_agents = len(overall_metrics)
+        width = 0.8 / num_agents
 
 
-        
-        
-        
+        if plot_subplots:
+            fig, ax = plt.subplots(num_agents-1, 1, figsize=(10, 6),
+                                   sharex=True)
+        else:
+            fig, ax = plt.subplots(figsize=(10, 6))            
+        sns.set_palette("Set1")
+        colors = ["blue", "orange", "green"]
+        timesteps = np.arange(0, num_bins)
+        for i, agent in enumerate(overall_metrics):
+            if i == len(overall_metrics)-1 and to_break:
+                break
+            mse_bins = np.array(agent['slice_mse'])  # shape: (num_runs, num_bins)
+            print(len(mse_bins))
+            mean_mse = np.mean(mse_bins, axis=0)
+            std_mse = np.std(mse_bins, axis=0)
+            n = mse_bins.shape[0]
+            sem = std_mse / np.sqrt(n)      # standard error of the mean
+            ci = 1.96 * sem                 # 95% confidence interval
+
+            # Offset each agent's bars so they appear side by side
+            positions = x 
+
+            if plot_subplots:
+                ax[i].plot(positions, mean_mse, marker='o', label=f"Agent {i}", color=colors[i])
+                # plot the confidence intervals 
+                ax[i].fill_between(positions, mean_mse - ci, mean_mse + ci, alpha=0.2, color=colors[i], 
+                            label=f"CI Agent {i}", linestyle='--', linewidth=0.5)
+                # set x title
+                fig.supxlabel('Projected Time (s)')
+                fig.supylabel('Mean Absolute Error (m)')
+            else:
+                ax.plot(positions, mean_mse, marker='o', label=f"Agent {i}", color=colors[i])
+                # plot the confidence intervals 
+                ax.fill_between(positions, mean_mse - ci, mean_mse + ci, alpha=0.2, color=colors[i], 
+                                label=f"CI Agent {i}", linestyle='--', linewidth=0.5)
+                ax.set_xlabel("Projected Time (s)", fontsize=14)
+                ax.set_ylabel("Magnitude Average Error MAE (m)", fontsize=14)
+                ax.set_title("MAE Error Propagation for Predicted Trajectories", fontsize=16)
+                ax.legend()
+        plt.tight_layout()        
+        # save as an svg
+        if to_save:
+            filename:str = save_name+".svg"
+            plt.savefig(filename)
+            
