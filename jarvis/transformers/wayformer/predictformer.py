@@ -235,9 +235,6 @@ class Criterion(nn.Module):
             pred_trajs (batch_size, num_modes, num_timestamps, 5 or 3)
             gt_trajs (batch_size, num_timestamps, 3):
             timestamp_loss_weight (num_timestamps):
-
-
-
         Extended GMM Loss for Motion Transformer (MTR) with 3D trajectories (x, y, z).
 
         Args:

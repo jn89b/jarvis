@@ -33,3 +33,8 @@ def unnormalize_obs(self, obs: np.ndarray, obs_rms: RunningMeanStd) -> np.ndarra
     :return: unnormalized observation
     """
     return (obs * np.sqrt(obs_rms.var + self.epsilon)) + obs_rms.mean
+
+def process_obs_to_predictformer()-> None:
+    """
+    Get the observation space from the environment:
+    """

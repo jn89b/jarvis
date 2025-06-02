@@ -16,8 +16,9 @@ load_num_workers: 0 # number of workers for loading data
 max_data_num: [ 1000 ] # maximum number of data for each training dataset
 starting_frame: [ 0 ] # history trajectory starts at this frame for each training dataset
 past_len: 21 # history trajectory length, 2.1s
-# past_len: 120 # history trajectory length, 2.1s
-# past_len: 240 # history trajectory length, 2.1s
+past_len: 120 # history trajectory length, 2.1s
+past_len: 6
+  ` # history trajectory length, 2.1s
 future_len: 60 # future trajectory length, 6s
 object_type: [ 'VEHICLE' ]
 line_type: [ 'lane','stop_sign','road_edge','road_line','crosswalk','speed_bump' ] # line type to be considered in the input
@@ -36,7 +37,7 @@ num_encoder_layers: 2
 num_decoder_layers: 8
 tx_hidden_size: 1024
 tx_num_heads: 4
-dropout: 0.1
+dropout: 0.1P
 entropy_weight: 40.0
 kl_weight: 20.0
 use_FDEADE_aux_loss: True

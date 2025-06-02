@@ -600,7 +600,7 @@ class Evader(SimpleAgent):
 
     def __init__(self, battle_space: BattleSpace,
                  state_vector: StateVector,
-                 simple_model: SimpleAgent,
+                 simple_model: PlaneKinematicModel,
                  radius_bubble: float,
                  agent_id: int = None,
                  wind_vector: np.ndarray = np.array([0, 0, 0]),
@@ -619,7 +619,7 @@ class Pursuer(SimpleAgent):
 
     def __init__(self, battle_space: BattleSpace,
                  state_vector: StateVector,
-                 simple_model: SimpleAgent,
+                 simple_model: PlaneKinematicModel,
                  radius_bubble: float,
                  agent_id: int = None,
                  wind_vector: np.ndarray = np.array([0, 0, 0]),

@@ -20,9 +20,7 @@ from abc import ABC, abstractmethod
 
 class AbstracKinematicEnv(gym.Env, ABC):
     """
-
     """
-
     def __init__(self, config: Optional[Dict[str, Any]] = None, **kwargs) -> None:
         # Call the next __init__ in the MRO (likely gym.Env.__init__)
         super().__init__(**kwargs)
@@ -683,18 +681,6 @@ class AbstracKinematicEnv(gym.Env, ABC):
                agent.state_vector.vz]
 
         obs = np.array(obs, dtype=np.float32)
-        # obs_space: Dict[str, gym.spaces.Box] = self.build_observation_space(
-        #     is_pursuer=agent.is_pursuer)
-        # low = obs_space['observations'].low
-        # high = obs_space['observations'].high
-        # clip the psi
-        # obs[KinematicIndex.YAW] = np.clip(obs[KinematicIndex.YAW.])
-        # if np.any(obs < low) or np.any(obs > high):
-        #     # print the one out of bounds
-        #     for i, (obs_val, low_val, high_val) in enumerate(zip(obs, low, high)):
-        #         if obs_val < low_val or obs_val > high_val:
-        #             raise ValueError("Observation out of bounds",
-        #                              f"Observation {i} out of bounds: {obs_val} not in [{low_val}, {high_val}]")
 
         # make sure obs is np.float32
         obs = np.array(obs, dtype=np.float32)
@@ -1390,7 +1376,6 @@ class PursuerEvaderEnv(MultiAgentEnv, AbstracKinematicEnv):
                 current_speed=state_vector.speed)
 
             # let's use pn instead of the discrete action
-
         command_action: Dict[str, np.array] = {agent.agent_id: action}
         self.simulate(command_action, use_multi=True)
 

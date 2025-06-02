@@ -1202,9 +1202,6 @@ class LazyBaseDataset(Dataset):
             'batch_sample_count': batch_size
         }
         
-        # segment_data_list = [sample['segment_data'] for sample in data_list]
-        # input_dict = {'segment_data': torch.from_numpy(np.stack(segment_data_list))}
-        # return {'batch_size': len(data_list), 'input_dict': input_dict}
         return batch_dict
     
     

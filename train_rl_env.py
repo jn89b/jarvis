@@ -83,10 +83,11 @@ def train_rllib() -> None:
         control_limits=control_limits,
         state_limits=state_limits))
 
-    example_env = create_env(env_config=None,
-                             aircraft_config_dir=aircraft_config_dir,
-                             control_limits=control_limits,
-                             state_limits=state_limits)
+    example_env = create_env(
+        env_config=None,
+        aircraft_config_dir=aircraft_config_dir,
+        control_limits=control_limits,
+        state_limits=state_limits)
 
     observation_space = example_env.observation_space
     action_space = example_env.action_space
@@ -96,9 +97,7 @@ def train_rllib() -> None:
         checkpoint_config=tune.CheckpointConfig(
             checkpoint_frequency=20,
             checkpoint_at_end=True,
-            num_to_keep=5,
-            # checkpoint_score_attribute="episode_reward_mean",
-            # checkpoint_score_order="max",
+            num_to_keep=5
         ),
     )
 

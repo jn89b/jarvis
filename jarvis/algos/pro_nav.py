@@ -16,6 +16,19 @@ def safe_normalize(v: np.array, eps: float = 1e-6):
 GRAVITY = 9.81
 
 
+class JSBSIMProNav():
+    """
+    This class implements the ProNav algorithm for JSBSIM.
+    It computes the lateral acceleration command based on the relative position
+    and velocity of the target, and converts it into pitch and yaw commands.
+    """
+
+    def __init__(self, N: float = 1.0, dt: float = 0.5):
+        self.N: float = N
+        self.dt: float = dt
+
+    # def compute_los(self, )
+
 class ProNavV2():
     """
     The PN law is implemented as:

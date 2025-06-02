@@ -7,6 +7,7 @@ import seaborn as sns
 import pandas as pd
 from typing import List, Tuple
 from mpl_toolkits.mplot3d import Axes3D  
+from typing import Dict, Any
 
 # 1) Light grey grid lines everywhere
 plt.rcParams['axes.grid']       = True
@@ -23,13 +24,6 @@ plt.rcParams['xtick.labelsize'] = 10    # x-tick labels
 plt.rcParams['ytick.labelsize'] = 10    # y-tick labels
 plt.rcParams['legend.fontsize'] = 11    # legend text
 
-# Now any plot you make will use these settings:
-fig, ax = plt.subplots()
-ax.plot([0,1,2],[1,2,0])
-ax.set_title("Example Plot")
-ax.set_xlabel("X axis")
-ax.set_ylabel("Y axis")
-plt.show()
 
 """
 Metrics comparison class to compare forecasting models
@@ -219,7 +213,7 @@ class Metrics():
         num_agents = len(overall_metrics)
         width = 0.8 / num_agents
 
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(8, 8))
         sns.set_palette("Set1")
         colors = ["blue", "orange", "green"]
         for i, agent in enumerate(overall_metrics):
@@ -249,11 +243,53 @@ class Metrics():
             filename:str = save_name+".svg"
             plt.savefig(filename)
 
-    def plot_mse_lines(self, overall_metrics:List[float]) -> None:
-        """
-        Plot the MSE metrics but we will bin this into every 
-        increment as a line
-        """
+    def save_mse_metrics(self, overall_metrics,
+                            to_save:bool=False,
+                            save_name:str="",
+                            to_break:bool=True) -> None:
+            # Determine the number of bins from the first agent's data
+        # Determine the number of bins from the first agent's data
+        num_bins = len(np.mean(np.array(overall_metrics[0]['slice_mse']), axis=0))
+        print(f"Number of bins: {num_bins}")
+        # Create x positions linearly spaced from 1 to 6 seconds
+        x = np.arange(0.0, 6, 0.1)
+        # Determine the width for grouped bars
+        num_agents = len(overall_metrics)
+        overall_df = pd.DataFrame()
+        for i, agent in enumerate(overall_metrics):
+            if i == len(overall_metrics)-1 and to_break:
+                break
+            agent_info: Dict[str, Any] = {}
+            mse_bins = np.array(agent['slice_mse'])  # shape: (num_runs, num_bins)
+            print(len(mse_bins))
+            mean_mse = np.mean(mse_bins, axis=0)
+            std_mse = np.std(mse_bins, axis=0)
+            n = mse_bins.shape[0]
+            sem = std_mse / np.sqrt(n)      # standard error of the mean
+            ci = 1.96 * sem                 # 95% confidence interval
+            # Offset each agent's bars so they appear side by side
+            positions = x
+            
+            # Create a DataFrame for the current agent
+            agent_df = pd.DataFrame({
+                'Time (s)': positions,
+                'Mean MSE': mean_mse,
+                'Standard Deviation': std_mse,
+                'SEM': sem,
+                'CI': ci
+            })
+            
+            overall_df = pd.concat([overall_df, agent_df], axis=1)
+            
+        # save the DataFrame to a CSV file
+        if to_save:
+            filename:str = save_name+".csv"
+            overall_df.to_csv(filename, index=False)
+            print(f"Metrics saved to {filename}")
+        else:
+            print("Metrics not saved. Set to_save=True to save the metrics.")
+        # save the DataFrame to a CSV file
+        
         
     def plot_mse_lines(self, overall_metrics,
                          to_save:bool=False,
@@ -267,17 +303,14 @@ class Metrics():
         print(f"Number of bins: {num_bins}")
         # Create x positions linearly spaced from 1 to 6 seconds
         x = np.arange(0.0, 6, 0.1)
-
         # Determine the width for grouped bars
         num_agents = len(overall_metrics)
-        width = 0.8 / num_agents
-
-
+        
         if plot_subplots:
-            fig, ax = plt.subplots(num_agents-1, 1, figsize=(10, 6),
+            fig, ax = plt.subplots(num_agents-1, 1, figsize=(8, 8),
                                    sharex=True)
         else:
-            fig, ax = plt.subplots(figsize=(10, 6))            
+            fig, ax = plt.subplots(figsize=(8, 8))            
         sns.set_palette("Set1")
         colors = ["blue", "orange", "green"]
         timesteps = np.arange(0, num_bins)
@@ -291,23 +324,34 @@ class Metrics():
             n = mse_bins.shape[0]
             sem = std_mse / np.sqrt(n)      # standard error of the mean
             ci = 1.96 * sem                 # 95% confidence interval
-
             # Offset each agent's bars so they appear side by side
             positions = x 
-
             if plot_subplots:
                 ax[i].plot(positions, mean_mse, marker='o', label=f"Agent {i}", color=colors[i])
                 # plot the confidence intervals 
-                ax[i].fill_between(positions, mean_mse - ci, mean_mse + ci, alpha=0.2, color=colors[i], 
-                            label=f"CI Agent {i}", linestyle='--', linewidth=0.5)
+                # ax[i].fill_between(positions, mean_mse - ci, mean_mse + ci, alpha=0.2, color=colors[i], 
+                #             label=f"CI Agent {i}", linestyle='--', linewidth=0.5)
+                # plot the standard deviation
+                lower_bound = mean_mse - std_mse
+                lower_bound = np.clip(lower_bound, 0, None)
+                ax[i].fill_between(positions, lower_bound, mean_mse + std_mse, alpha=0.2, color=colors[i], 
+                            label=f"SD Agent {i}", linestyle='--', linewidth=0.5)
                 # set x title
                 fig.supxlabel('Projected Time (s)')
                 fig.supylabel('Mean Absolute Error (m)')
+                ax[i].legend()
             else:
                 ax.plot(positions, mean_mse, marker='o', label=f"Agent {i}", color=colors[i])
                 # plot the confidence intervals 
+                lower_bound = mean_mse - ci
+            
                 ax.fill_between(positions, mean_mse - ci, mean_mse + ci, alpha=0.2, color=colors[i], 
                                 label=f"CI Agent {i}", linestyle='--', linewidth=0.5)
+                lower_bound = mean_mse - std_mse
+                lower_bound = np.clip(lower_bound, 0, None)
+                ax.fill_between(positions, lower_bound, mean_mse + std_mse, alpha=0.2, color=colors[i], 
+                                label=f"SD Agent {i}", linestyle='--', linewidth=0.5)
+                ax.fill_between
                 ax.set_xlabel("Projected Time (s)", fontsize=14)
                 ax.set_ylabel("Magnitude Average Error MAE (m)", fontsize=14)
                 ax.set_title("MAE Error Propagation for Predicted Trajectories", fontsize=16)
@@ -318,3 +362,5 @@ class Metrics():
             filename:str = save_name+".svg"
             plt.savefig(filename)
             
+            
+    

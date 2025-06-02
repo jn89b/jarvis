@@ -32,6 +32,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.core.rl_module import RLModule
+
 """
 Example script to load models from inference
 https://docs.ray.io/en/latest/rllib/rllib-training.html
@@ -66,8 +67,11 @@ def create_multi_agent_env(config: Dict[str, Any],
 
 
 # Load your environment configuration (same as used in training).
+# env_config = load_yaml_config(
+#     "config/simple_env_config.yaml")['battlespace_environment']
+
 env_config = load_yaml_config(
-    "config/simple_env_config.yaml")['battlespace_environment']
+    "config/simple_env_high_speed_config.yaml")['battlespace_environment']
 
 # Define your policy mapping function as in training.
 
@@ -437,7 +441,6 @@ def load_and_infer_evader(checkpoint_path: str):
         action_logits = action_logits.detach().numpy().squeeze()
         unwrapped_action: Dict[str, np.array] = env.unwrap_action_mask(
             action_logits)
-
         discrete_actions = []
         for k, v in unwrapped_action.items():
             v = torch.from_numpy(v)
@@ -542,7 +545,6 @@ def load_and_infer_pursuer(checkpoint_path: str):
     env.max_steps = 1000
     env.use_pronav = False
     while not terminated['__all__']:
-        # get number of age
         num_actions: int = env.action_spaces["1"]["action"].nvec.sum()
         current_pursuer: Pursuer = env.get_pursuer_agents()[0]
         obs = env.observe(current_pursuer, num_actions)
@@ -758,6 +760,7 @@ def run_multiple_sims(checkpoint_path: str, num_sims: int = 10,
                       type: str = 'evader',
                       save: bool = False,
                       use_random_seed: bool = True,
+                      use_pronav: bool = True,
                       num_random_seeds: int = 10) -> None:
 
     if use_random_seed:
@@ -768,7 +771,7 @@ def run_multiple_sims(checkpoint_path: str, num_sims: int = 10,
             for i in range(num_sims):
                 if type == 'pursuer_evader':
                     infer(checkpoint_path=checkpoint_path, num_episodes=1,
-                          use_pronav=False, save=save, index_save=i,
+                          use_pronav=use_pronav, save=save, index_save=i,
                           folder_dir=folder_name)
                 if type == 'pursuer':
                     load_and_infer_pursuer(checkpoint_path=checkpoint_path)
@@ -778,7 +781,6 @@ def run_multiple_sims(checkpoint_path: str, num_sims: int = 10,
                     load_good_guy(
                         checkpoint_path=checkpoint_path, index_save=i,
                         folder_dir=folder_name)
-
     else:
         #random seed
         random_num = np.random.randint(0, 100)
@@ -787,7 +789,7 @@ def run_multiple_sims(checkpoint_path: str, num_sims: int = 10,
         for i in range(num_sims):
             if type == 'pursuer_evader':
                 infer(checkpoint_path=checkpoint_path, num_episodes=1,
-                      use_pronav=False, save=save, index_save=i)
+                      use_pronav=use_pronav, save=save, index_save=i)
             if type == 'pursuer':
                 load_and_infer_pursuer(checkpoint_path=checkpoint_path)
             if type == "evader":
@@ -813,7 +815,9 @@ if __name__ == '__main__':
     # path:str = "/root/ray_results/PPO_2025-03-20_17-11-07/PPO_high_speed_pursuer_evader_3902d_00000_0_2025-03-20_17-11-07/checkpoint_000224"
     path:str = "/root/ray_results/PPO_2025-03-21_11-49-49/PPO_high_speed_pursuer_evader_80f0c_00000_0_2025-03-21_11-49-49/checkpoint_000061"
     path:str = "/root/ray_results/PPO_2025-03-21_11-49-49/PPO_high_speed_pursuer_evader_80f0c_00000_0_2025-03-21_11-49-49/checkpoint_000224"
-    path:str = "/home/justin/ray_results/PPO_2025-05-02_01-05-30/PPO_pursuer_evader_env_73731_00000_0_2025-05-02_01-05-30/checkpoint_000020"
+    #path:str = "/home/justin/ray_results/PPO_2025-05-02_01-05-30/PPO_pursuer_evader_env_73731_00000_0_2025-05-02_01-05-30/checkpoint_000020"
+    path:str = "/home/justin/ray_results/PPO_2025-06-02_11-39-52/PPO_high_speed_pursuer_evader_35767_00000_0_2025-06-02_11-39-53/checkpoint_000005"
+    
     # ---- Pursuer Evader----
     #path:str = "/home/justin/ray_results/PPO_2025-03-31_12-45-23_attention/PPO_pursuer_evader_env_ec13d_00000_0_2025-03-31_12-45-23/checkpoint_000152"
     
@@ -824,8 +828,8 @@ if __name__ == '__main__':
     # plt.show()
     #path:str = "/home/justin/ray_results/PPO_2025-04-21_04-33-08/PPO_hrl_env_a2de8_00000_0_2025-04-21_04-33-09/checkpoint_000012"
     #path:str = "/home/justin/ray_results/PPO_2025-04-29_21-44-10/PPO_hrl_env_febd7_00000_0_2025-04-29_21-44-10/checkpoint_000120"
-    run_multiple_sims(checkpoint_path=path, num_sims=10, type='pursuer_evader',
-                      use_random_seed=True)
+    run_multiple_sims(checkpoint_path=path, num_sims=2, type='pursuer_evader',
+                      use_random_seed=False, use_pronav=True)
     # ray_trainer = RayTrainerSimpleEnv(
     #     config_file="config/simple_env_config.yaml"
     # )

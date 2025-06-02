@@ -15,11 +15,23 @@ from pytorch_lightning import Trainer
 import os
 
 
+def recursive_to(obj, device):
+    if torch.is_tensor(obj):
+        return obj.to(device)
+    elif isinstance(obj, dict):
+        return { k: recursive_to(v, device) for k,v in obj.items() }
+    elif isinstance(obj, (list, tuple)):
+        # preserve type
+        t = [recursive_to(v, device) for v in obj]
+        return type(obj)(t)
+    else:
+        return obj
+
 plt.close('all')    
-SAVE_PICKLE:bool = False
+SAVE_PICKLE:bool = True
 pickle_file_name:str = "high_speed_predictformer_output.pkl" 
 #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-device = "cpu"
+device = "cuda"
 data_config = "config/high_speed_predictformer_config.yaml"
 with open(data_config, 'r') as f:
     data_config = yaml.safe_load(f)
@@ -44,7 +56,7 @@ with open(model_config, 'r') as f:
     model_config = yaml.safe_load(f)
 
 start_idx: int = data_config['past_len']
-name = "high_speed_predictformer"
+name = "high_speed_predictformer4"
 # Check if there's an existing checkpoint to resume from
 checkpoint_dir = name+"_checkpoint/"
 checkpoint_callback = ModelCheckpoint(
@@ -66,7 +78,6 @@ if os.path.exists(checkpoint_dir):
         print(
             f"Resuming training from checkpoint: {latest_checkpoint}")
 
-
 # set the model to evaluation mode
 model = PredictFormer.load_from_checkpoint(
     latest_checkpoint, config=model_config)
@@ -82,16 +93,39 @@ center_gt_trajs = []
 center_objects_world = []
 infer_time = []
 for i, batch in enumerate(dataloader):
-    batch = {key: value.to(device) if isinstance(value, torch.Tensor) else value
-             for key, value in batch.items()}
+    # batch = {key: value.to(device) if isinstance(value, torch.Tensor) else value
+    #          for key, value in batch.items()}
+    center_xyz = batch['input_dict']['center_objects_world'].detach().numpy()
+    batch = recursive_to(batch, device)
     start_time = time.time()
     output, loss = model(batch)
+    # convert output to cpu
     end_time = time.time()
+    output = recursive_to(output, 'cpu')
     print(f"Time taken for inference: {end_time - start_time}")
-    center_gt_trajs.append(batch['input_dict']['center_gt_trajs'].detach().numpy())
-    center_objects_world.append(batch['input_dict']['center_objects_world'].detach().numpy())
+    # convert to cpu
+    cpu_traj = (
+        batch['input_dict']['center_gt_trajs']
+        .detach()      # break the graph
+        .cpu()         # copy to host (CPU) memory
+        .numpy()       # now safe to convert
+    )
+    center_gt_trajs.append(cpu_traj)
+    cpu_objs = (
+        batch['input_dict']['center_objects_world']
+            .detach()   # unhook from the graph
+            .cpu()      # move tensor from GPU to CPU
+            .numpy()    # now safe to convert to a NumPy array
+    )
+    output['input_obj_trajs'] = (
+        batch['input_dict']['obj_trajs']
+            .detach()     # break the computation graph
+            .cpu()        # move tensor from GPU to CPU
+            .numpy()      # convert to NumPy
+            .squeeze()    # remove any singleton dimensions
+    )
+    center_objects_world.append(cpu_objs)
     predicted_traj = output['predicted_trajectory'].detach().numpy()
-    center_xyz = batch['input_dict']['center_objects_world'].detach().numpy()
     center_xy = center_xyz.squeeze()[:, start_idx, 0:2]
     center_heading = center_xyz.squeeze()[:, start_idx, 5]
     predicted_headings = predicted_traj[:, :, 5]
@@ -102,7 +136,6 @@ for i, batch in enumerate(dataloader):
         heading_index=5
     )
 
-    output['input_obj_trajs'] = batch['input_dict']['obj_trajs'].detach().numpy().squeeze()
     output['predicted_ground_traj'] = predicted_traj
     new_output = {}
     
@@ -115,8 +148,8 @@ for i, batch in enumerate(dataloader):
     
     output_history.append(new_output)
     infer_time.append(end_time - start_time)
-    if i == 50:
-        break
+    # if i == 50:
+    #     break
 
 info = {"output": output_history,
         "infer_time": infer_time,
@@ -140,13 +173,44 @@ predicted_trajectory: np.array = output['predicted_trajectory'].detach(
 predicted_traj = output['predicted_ground_traj']
 
 num_modes: int = predicted_probability.shape[1]
-ground_truth_trajectory: np.array = batch['input_dict']['center_gt_trajs'].squeeze(
-).detach().numpy()
+# ground_truth_trajectory: np.array = batch['input_dict']['center_gt_trajs'].squeeze(
+# ).detach().numpy()
 
-ground_truth_world = batch['input_dict']['center_objects_world'].squeeze(
-).detach().numpy()
-original_pos_past = batch['input_dict']['center_objects_world'].squeeze().detach().numpy()
-mask = batch['input_dict']['center_gt_trajs_mask'].unsqueeze(-1)
+# ground_truth_world = batch['input_dict']['center_objects_world'].squeeze(
+# ).detach().numpy()
+# original_pos_past = batch['input_dict']['center_objects_world'].squeeze().detach().numpy()
+# mask = batch['input_dict']['center_gt_trajs_mask'].unsqueeze(-1)
+# get NumPy arrays on CPU
+ground_truth_trajectory = (
+    batch['input_dict']['center_gt_trajs']
+        .squeeze()
+        .detach()
+        .cpu()        # ← copy to host
+        .numpy()
+)
+
+ground_truth_world = (
+    batch['input_dict']['center_objects_world']
+        .squeeze()
+        .detach()
+        .cpu()
+        .numpy()
+)
+
+original_pos_past = (
+    batch['input_dict']['center_objects_world']
+        .squeeze()
+        .detach()
+        .cpu()
+        .numpy()
+)
+
+# if you still need a torch tensor mask on CPU:
+mask = (
+    batch['input_dict']['center_gt_trajs_mask']
+        .unsqueeze(-1)
+        .cpu()       # ← now on CPU
+)
 
 
 num_agents: int = predicted_probability.shape[0]

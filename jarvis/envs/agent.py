@@ -143,27 +143,28 @@ class Agent():
 class Evader(Agent):
     is_pursuer: bool = False
     is_controlled: bool = True
-
-    def __init__(self, battle_space: BattleSpace,
-                 state_vector: StateVector,
-                 sim_interface: SimInterface,
-                 radius_bubble: float,
-                 id: int = None) -> None:
-        super().__init__(battle_space, state_vector, sim_interface, id, radius_bubble)
+    def __init__(self, 
+                battle_space: BattleSpace,
+                state_vector: StateVector,
+                sim_interface: SimInterface,
+                radius_bubble: float,
+                id: int = None) -> None:
+        super().__init__(battle_space, 
+                         state_vector, sim_interface, id, radius_bubble)
 
 
 class Pursuer(Agent):
     is_pursuer: bool = True
-
-    def __init__(self, battle_space: BattleSpace,
-                 state_vector: StateVector,
-                 sim_interface: SimInterface,
-                 id: int = None,
-                 is_controlled: bool = False,
-                 radius_bubble: float = 0.0,
-                 pursuer_state_limits: Dict = None,
-                 pursuer_control_limits: Dict = None,
-                 capture_distance: float = 5.0) -> None:
+    def __init__(self, 
+            battle_space: BattleSpace,
+            state_vector: StateVector,
+            sim_interface: SimInterface,
+            id: int = None,
+            is_controlled: bool = False,
+            radius_bubble: float = 0.0,
+            pursuer_state_limits: Dict = None,
+            pursuer_control_limits: Dict = None,
+            capture_distance: float = 5.0) -> None:
         super().__init__(battle_space, state_vector,
                          sim_interface, id, radius_bubble)
         self.is_controlled: bool = is_controlled

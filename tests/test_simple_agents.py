@@ -182,26 +182,8 @@ class TestGenerateRLData(unittest.TestCase):
             relative_pos = relative_pos.array[0:3]
             relative_vel = pursuer_agent.state_vector.speed - \
                 agent_2.state_vector.speed
-
-            # pro_nav_actions = pro_nav.compute_commands(relative_pos=relative_pos,
-            #                                            current_yaw=pursuer_agent.state_vector.yaw_rad,
-            #                                            current_speed=pursuer_agent.state_vector.speed)
-            # print("pro nav actions", np.rad2deg(pro_nav_actions[1]))
-            #
-            # agent_2_commands[1] = np.deg2rad(i)
+                
             agent_2.act(action=agent_2_commands)
-            # augmented_pro_nav_actions = pro_nav.augmented_pro_nav(
-            #     relative_pos=relative_pos,
-            #     current_yaw=pursuer_agent.state_vector.yaw_rad,
-            #     current_speed=pursuer_agent.state_vector.speed,
-            # )
-            # augmented_pro_nav_actions = pro_nav.calculate(
-            #     relative_pos=relative_pos,
-            #     current_yaw=pursuer_agent.state_vector.yaw_rad,
-            #     current_speed=pursuer_agent.state_vector.speed,
-            #     evader_yaw=agent_2.state_vector.yaw_rad,
-            #     evader_speed=agent_2.state_vector.speed
-            # )
             augmented_pro_nav_actions = pro_nav.predict(
                 current_pos=pursuer_agent.state_vector.array[0:3],
                 relative_pos=relative_pos,

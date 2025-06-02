@@ -16,9 +16,7 @@ from jarvis.envs.agent import Agent, Pursuer, Evader
 from jarvis.envs.battlespace import BattleSpace
 from jarvis.utils.vector import StateVector
 from jarvis.envs.tokens import ControlIndex, ObservationIndex
-
 from aircraftsim import AircraftIC, SimInterface
-
 
 @dataclass
 class EnvConfig:
@@ -118,7 +116,7 @@ def load_limit_config(file_path: str) -> Tuple[Dict[str, Dict[str, float]],
 
     # file_path = 'config/' + file_path
     try:
-        with open(file_path, 'r') as f:
+         with open(file_path, 'r') as f:
             config = yaml.safe_load(f)
     except FileNotFoundError:
         raise FileNotFoundError(
@@ -146,7 +144,6 @@ def load_limit_config(file_path: str) -> Tuple[Dict[str, Dict[str, float]],
         }
 
     return control_limits_dict, state_limits_dict
-
 
 class TargetEngageEnv(gym.Env):
     """
@@ -917,4 +914,5 @@ class TargetEngageEnv(gym.Env):
             reward = self.compute_intermediate_reward()
 
         self.current_step += 1
+        
         return observation, reward, terminated, truncated, infos
