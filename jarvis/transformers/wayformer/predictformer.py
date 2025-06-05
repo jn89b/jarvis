@@ -107,6 +107,25 @@ class PredictFormer(BaseModelV2):
 
         return ego_tensor, opps_tensor, opps_masks, env_masks
 
+    @torch.no_grad()
+    def predict(self, ego_in: torch.Tensor, agents_in: torch.Tensor):
+        """
+        ego_in:    [B, T_obs, k_attr+1]  (past + validity‐mask)
+        agents_in: [B, T_obs, M-1, k_attr+1]
+        Returns a dict with:
+          - 'predicted_probability': [B, num_modes]
+          - 'predicted_trajectory': [B, num_modes, T_future, 7]
+          - 'scene_emb': [B, something]
+        """
+        # 1) Call the same encoder→decoder path:
+        output = self._forward({'ego_in': ego_in, 'agents_in': agents_in})
+
+        # 2) Softmax the mode scores to turn raw logits into probabilities:
+        output['predicted_probability'] = F.softmax(
+            output['predicted_probability'], dim=-1
+        )
+        return output
+
     def _forward(self, inputs):
         '''
         :param ego_in: [B, T_obs, k_attr+1] with last values being the existence mask.
@@ -154,6 +173,36 @@ class PredictFormer(BaseModelV2):
         if len(np.argwhere(np.isnan(out_dists.detach().cpu().numpy()))) > 1:
             breakpoint()
         return output
+
+    def process_inputs(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Process the input batch to extract relevant tensors for the model.
+        Args:
+            batch: A dictionary containing the following
+                input_dict: A dictionary containing the following
+                    obj_trajs: A tensor of shape [B, T, M, k_attr] where M is the number of agents in the scene.
+                    obj_trajs_mask: A tensor of shape [B, T, M] where M is the number of agents in the scene.
+        Returns:
+            model_input: A dictionary with processed tensors ready for model input.
+        """
+        model_input = {}
+        inputs = batch['input_dict']
+        agents_in, agents_mask = inputs['obj_trajs'], inputs['obj_trajs_mask']
+        # agents_in = agents_in.squeeze()
+        # agents_mask = agents_mask.squeeze()
+        agents_in = agents_in.reshape(-1, *agents_in.shape[2:])
+        agents_mask = agents_mask.reshape(-1, *agents_mask.shape[2:])
+        ego_in = torch.gather(agents_in, 1, inputs['track_index_to_predict'].view(-1, 1, 1, 1).repeat(1, 1,
+                    *agents_in.shape[-2:])).squeeze(1)
+        ego_mask = torch.gather(agents_mask, 1, inputs['track_index_to_predict'].view(-1, 1, 1).repeat(1, 1,
+                agents_mask.shape[-1])).squeeze(1)
+        agents_in = torch.cat([agents_in, agents_mask.unsqueeze(-1)], dim=-1)
+        agents_in = agents_in.transpose(1, 2)
+        ego_in = torch.cat([ego_in, ego_mask.unsqueeze(-1)], dim=-1)
+        model_input['ego_in'] = ego_in
+        model_input['agents_in'] = agents_in
+        
+        return model_input
 
     def forward(self, batch: Dict[str, Any]):
         """

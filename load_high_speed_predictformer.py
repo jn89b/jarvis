@@ -12,23 +12,32 @@ from torch.utils.data import DataLoader
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning import Trainer
+from typing import Any
 import os
 
 
-def recursive_to(obj, device):
+def recursive_to(obj, dev:str) -> Any:
+    """
+    Args:
+        obj: The object to move to the device.
+        dev: The device to move the object to, e.g., 'cuda' or 'cpu'.
+    Returns:
+        The object moved to the specified device.
+    Recursively moves tensors, lists, tuples, and dictionaries to the specified device.
+    """
     if torch.is_tensor(obj):
-        return obj.to(device)
+        return obj.to(dev)
     elif isinstance(obj, dict):
-        return { k: recursive_to(v, device) for k,v in obj.items() }
+        return { k: recursive_to(v, dev) for k,v in obj.items() }
     elif isinstance(obj, (list, tuple)):
         # preserve type
-        t = [recursive_to(v, device) for v in obj]
+        t = [recursive_to(v, dev) for v in obj]
         return type(obj)(t)
     else:
         return obj
 
 plt.close('all')    
-SAVE_PICKLE:bool = True
+SAVE_PICKLE:bool = False
 pickle_file_name:str = "high_speed_predictformer_output.pkl" 
 #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device = "cuda"
@@ -56,7 +65,7 @@ with open(model_config, 'r') as f:
     model_config = yaml.safe_load(f)
 
 start_idx: int = data_config['past_len']
-name = "high_speed_predictformer4"
+name = "high_speed_predictformer"
 # Check if there's an existing checkpoint to resume from
 checkpoint_dir = name+"_checkpoint/"
 checkpoint_callback = ModelCheckpoint(
@@ -99,6 +108,7 @@ for i, batch in enumerate(dataloader):
     batch = recursive_to(batch, device)
     start_time = time.time()
     output, loss = model(batch)
+    print("loss", loss)
     # convert output to cpu
     end_time = time.time()
     output = recursive_to(output, 'cpu')
@@ -148,8 +158,8 @@ for i, batch in enumerate(dataloader):
     
     output_history.append(new_output)
     infer_time.append(end_time - start_time)
-    # if i == 50:
-    #     break
+    if i == 50:
+        break
 
 info = {"output": output_history,
         "infer_time": infer_time,
@@ -212,7 +222,6 @@ mask = (
         .cpu()       # ← now on CPU
 )
 
-
 num_agents: int = predicted_probability.shape[0]
 # Let's plot each agent trajectory in a seperate plot and show the gaussian mixture model trajectory of the agent
 for i in range(num_agents):
@@ -252,6 +261,7 @@ for i in range(num_agents):
         current_position=current_position,
         heading_index=heading_idx
     )
+    
     for j in range(num_modes):
         highest_probabilty_index = np.argmax(predicted_probability[i])
         x = x_start + agent_traj[j, :, 0]
@@ -293,8 +303,7 @@ for i in range(num_agents):
         z = z_start + agent_traj[j, :, 2]
         # x = transformed_traj[j, :, 0]
         # y = transformed_traj[j, :, 1]
-        
-        
+
         ax.scatter(
             x, y, z, label=f"Mode {j} for agent {i} ")
 

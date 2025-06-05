@@ -16,7 +16,7 @@ import os
 
 plt.close('all')    
 
-#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device = "cpu"
 data_config = "config/predictformer_config.yaml"
 with open(data_config, 'r') as f:
@@ -52,6 +52,7 @@ checkpoint_callback = ModelCheckpoint(
     save_top_k=5,
     mode="min"
 )
+
 latest_checkpoint = None
 if os.path.exists(checkpoint_dir):
     checkpoint_files = sorted(
@@ -63,7 +64,6 @@ if os.path.exists(checkpoint_dir):
         latest_checkpoint = checkpoint_files[-1]
         print(
             f"Resuming training from checkpoint: {latest_checkpoint}")
-
 
 # set the model to evaluation mode
 model = PredictFormer.load_from_checkpoint(
@@ -115,7 +115,7 @@ for i, batch in enumerate(dataloader):
     
     output_history.append(new_output)
     infer_time.append(end_time - start_time)
-    if i == 10:
+    if i == 20:
         break
 
 # #Pickkle the output and batch

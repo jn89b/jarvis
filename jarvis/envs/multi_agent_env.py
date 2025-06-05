@@ -840,6 +840,38 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
 
         return {'observations': obs, 'action_mask': action_mask}
 
+    def get_observation_from_predictformer(self) -> Dict[str, Any]:
+        """
+        """
+        ego_agent: SimpleAgent = self.get_evader_agents()[0]
+        predictformer_obs: Dict[str, Any] = {}
+        
+        obs: List[float] = np.array([ego_agent.state_vector.x,
+               ego_agent.state_vector.y,
+               ego_agent.state_vector.z,
+               np.rad2deg(ego_agent.state_vector.roll_rad),
+               np.rad2deg(ego_agent.state_vector.pitch_rad),
+               np.rad2deg(ego_agent.state_vector.yaw_rad),
+               ego_agent.state_vector.speed], dtype=np.float32)
+        
+        predictformer_obs["ego"] = obs
+        predictformer_obs["vehicles"] = []
+        pursuers: List[Pursuer] = self.get_pursuer_agents()
+        
+        for pursuer in pursuers:
+            relative_pos: np.ndarray = pursuer.state_vector.array - ego_agent.state_vector.array
+            
+            pursuer_obs: List[float] = np.array([pursuer.state_vector.x ,
+                                        pursuer.state_vector.y,
+                                        pursuer.state_vector.z,
+                                        np.rad2deg(pursuer.state_vector.roll_rad),
+                                        np.rad2deg(pursuer.state_vector.pitch_rad),
+                                        np.rad2deg(pursuer.state_vector.yaw_rad),
+                                        pursuer.state_vector.speed], dtype=np.float32)
+            predictformer_obs["vehicles"].append(pursuer_obs)
+
+        return predictformer_obs
+
 class PursuerEvaderEnv(AbstractKinematicEnv):
     """
     Evader where must avoid being captured by the pursuers must 
@@ -1053,6 +1085,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
             self.observation_spaces[agent.agent_id] = observation_space
 
         return self.observation_spaces
+
 
     def observe(self, agent: SimpleAgent,
                 num_actions: int = None) -> Dict[str, np.ndarray]:

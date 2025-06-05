@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from jarvis.envs.jsbsim_agent import Agent, Evader, Pursuer
 from jarvis.envs.battlespace import BattleSpace
 from jarvis.utils.vector import StateVector
-from jarvis.envs.tokens import ControlIndex, ObservationIndex
+# from jarvis.envs.tokens import ControlIndex, ObservationIndex
 from aircraftsim import AircraftIC, SimInterface
 from typing import Any
 from ray.rllib.env import MultiAgentEnv

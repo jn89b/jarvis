@@ -73,7 +73,8 @@ class BaseDataset(Dataset):
     def __init__(self, config=None,
                  is_test: bool = False,
                  is_validation=False,
-                 num_samples=None):
+                 num_samples=None,
+                 inference: bool = False):
 
         self.is_validation: bool = is_validation
         if is_test:
@@ -458,7 +459,7 @@ class BaseDataset(Dataset):
                 obj_trajs_future: np.array = obj_trajs_full[:,
                                                             self.past_len:, :]
                 ego_traj_overall: np.array = obj_trajs_full[idx_to_track, :, :]
-
+            
                 # # this is basically the ego agent
                 # processed_traj['center_objects'] = ego_traj_overall
 
@@ -847,7 +848,8 @@ class LazyBaseDataset(Dataset):
             idx_counter += 1
         return segments
 
-    def process_segment(self, segment: np.array, timestamps: List[float], idx: int) -> Dict[str, Any]:
+    def process_segment(self, segment: np.array, 
+                        timestamps: List[float], idx: int) -> Dict[str, Any]:
         """
         Processes a single segment.
         For instance, here we convert the heading angles from degrees to radians.
@@ -1116,12 +1118,12 @@ class LazyBaseDataset(Dataset):
 
         ## 1. Measurement Noise (Sensor Errors)
         # Gaussian position noise (simulating GPS or LIDAR errors)
-        position_noise:float = 0.5
+        position_noise:float = 0.1
         obj_trajs_past[:, :, 0:2] += np.random.normal(0, position_noise, obj_trajs_past[:, :, 0:2].shape)  # (Mean 0, Std 0.1m)
     
         # Multiplicative noise (simulating sensor drift)
         obj_trajs_past[:, :, 0:2] *= np.random.normal(1, 
-                                                      0.01, 
+                                                      0.001, 
                                                       obj_trajs_past[:, :, 0:2].shape)  # 2% variation
 
         # Heading noise (simulating IMU/Gyro errors)
@@ -1151,7 +1153,6 @@ class LazyBaseDataset(Dataset):
             timestamps=timestamp, obj_types=obj_types
         )
                     
-
         ret: Dict[str, Any] = {
             # 'scenario_id': np.array([scene_id] * len(track_index_to_predict)),
             'obj_trajs': obj_trajs_data,
@@ -1683,7 +1684,7 @@ class LSTMDataset(Dataset):
 
         ## 1. Measurement Noise (Sensor Errors)
         # Gaussian position noise (simulating GPS or LIDAR errors)
-        position_noise:float = 0.5
+        position_noise:float = 0.1
         obj_trajs_past[:, :, 0:2] += np.random.normal(0, 
                                                       position_noise, 
                                                       obj_trajs_past[:, :, 0:2].shape)  # (Mean 0, Std 0.1m)
