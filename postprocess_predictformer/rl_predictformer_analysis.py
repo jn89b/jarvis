@@ -138,6 +138,4 @@ ax.set_xlabel('X Position')
 ax.set_ylabel('Y Position')
 ax.legend()
 
-
-
 plt.show()
