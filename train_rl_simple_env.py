@@ -353,7 +353,7 @@ def train_hrl(checkpoint_path=None) -> None:
         )   
         .resources(num_gpus=1)
         .env_runners(observation_filter="MeanStdFilter",
-                     num_env_runners=10)
+                     num_env_runners=5)
     )
     # Initialize and run the training using Ray Tune.
     tuner = tune.Tuner("PPO", param_space=config, run_config=run_config)

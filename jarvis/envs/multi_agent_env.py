@@ -533,7 +533,6 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
         self.airspeed_commands: np.array = np.arange(
             continous_action_space.low[vel_idx], continous_action_space.high[vel_idx],
             1)
-
         action_space = gym.spaces.MultiDiscrete([len(self.dz_commands),
                                                 len(self.yaw_commands),
                                                 len(self.airspeed_commands)])

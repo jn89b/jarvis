@@ -24,7 +24,8 @@ ray.init()
 
 if __name__ == "__main__":
     # Load the RL simulation environment
-    checkpoint_path = "/home/justin/ray_results/PPO_2025-06-02_11-39-52/PPO_high_speed_pursuer_evader_35767_00000_0_2025-06-02_11-39-53/checkpoint_000005" 
+    # checkpoint_path = "/home/justin/ray_results/PPO_2025-06-02_11-39-52/PPO_high_speed_pursuer_evader_35767_00000_0_2025-06-02_11-39-53/checkpoint_000005" 
+    checkpoint_path:str = "/root/ray_results/PPO_2025-06-10_13-19-45/PPO_pursuer_evader_env_7c419_00000_0_2025-06-10_13-19-45/checkpoint_000224"
     num_episodes = 1
     use_pronav = True
     save = False

@@ -74,11 +74,11 @@ The questions I have right now is, how well am I actually predicting the traject
 """
 # let's plot each agent trajectory in a separate plot and show the predicted trajectory of the agent 
 
-idx = 400
+idx = 200
 desired_traj = predicted_trajectory[idx]
 current_idx:int = 20
 original_pos = original_pos_history[idx][:,current_idx,:]
-buffer_idx: int = 60
+buffer_idx: int = 25
 fig, ax = plt.subplots(1, 1, figsize=(10, 10))
 ax.plot(ego_history[:idx+buffer_idx, 0], ego_history[:idx+buffer_idx, 1], label='Ego Vehicle', color='blue')
 ax.scatter(ego_history[0, 0], ego_history[0, 1], label='Ego Start', color='blue', marker='o')
@@ -106,7 +106,7 @@ for i in range(desired_traj.shape[0]):
     current_pursuer_traj = pursuer_history[i-1]
     x_start = current_pursuer_traj[idx, 0]
     y_start = current_pursuer_traj[idx, 1]
-    current_heading = original_pos[i, 5]
+    current_heading = original_pos[i-1, 5]
     #current_heading = current_pursuer_traj[idx, 5]  # Assuming heading is at index 5
     # desired_ground_truth = ground_truth[idx][i]
     current_position = current_pursuer_traj[idx, :2]
@@ -121,8 +121,8 @@ for i in range(desired_traj.shape[0]):
         heading_index=5
     )
     for j in range(transformed_traj.shape[0]):
-        x = pred_traj[j, :, 0] + x_start
-        y = pred_traj[j, :, 1] + y_start
+        x = transformed_traj[j, :, 0] #+ x_start
+        y = transformed_traj[j, :, 1] #+ y_start
 
         ax.plot(x, y, label=f'Predicted Trajectory {i}', linestyle='--')
     

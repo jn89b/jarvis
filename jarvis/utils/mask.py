@@ -357,7 +357,6 @@ class SimpleEnvMaskModule(MultiDimensionalMaskModule):
             torch.log(pitch_mask.float()), min=FLOAT_MIN)
         inf_mask_yaw = torch.clamp(torch.log(yaw_mask.float()), min=FLOAT_MIN)
         inf_mask_vel = torch.clamp(torch.log(vel_mask.float()), min=FLOAT_MIN)
-
         # roll_logits = logits[:, :n_roll]
         # pitch_logits = logits[:, n_roll:n_roll+n_pitch]
         # yaw_logits = logits[:, n_roll+n_pitch:n_roll+n_pitch+n_yaw]

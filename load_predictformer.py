@@ -24,8 +24,10 @@ with open(data_config, 'r') as f:
 
 dataset = BaseDataset(
     config=data_config,
-    is_test=True,
+    is_test=False,
+    is_validation=True,
     num_samples=100)
+
 print("Dataset Length", len(dataset))
 # set seed number
 # seed = 42
@@ -33,7 +35,7 @@ print("Dataset Length", len(dataset))
 dataloader: DataLoader = DataLoader(
     dataset,
     batch_size=1,
-    shuffle=True,
+    shuffle=False,
     collate_fn=dataset.collate_fn
 )
 
@@ -42,7 +44,7 @@ with open(model_config, 'r') as f:
     model_config = yaml.safe_load(f)
 
 start_idx: int = data_config['past_len']
-name = "predictformer"
+name = "predictformer_21"
 # Check if there's an existing checkpoint to resume from
 checkpoint_dir = name+"_checkpoint/"
 checkpoint_callback = ModelCheckpoint(

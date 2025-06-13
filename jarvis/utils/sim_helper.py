@@ -171,7 +171,7 @@ class RLSimHelper():
         self.past_len: int = start_idx
         self.future_len: int = model_config['future_len']
         #name = "high_speed_predictformer"
-        name = "predictformer"
+        name = "predictformer_21"
         # Check if there's an existing checkpoint to resume from
         checkpoint_dir = name+"_checkpoint/"
 

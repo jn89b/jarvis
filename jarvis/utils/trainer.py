@@ -452,6 +452,7 @@ class RayTrainerSimpleEnv():
             np.random.seed(2)
             for i in range(num_sims):
                 index_save: int = int(i + start_count)
+                print("i" , i)
                 if type == 'pursuer_evader':
                     self.infer_pursuer_evader(checkpoint_path=checkpoint_path, 
                         num_episodes=1,
@@ -561,6 +562,7 @@ class RayTrainerSimpleEnv():
 
         folder_name = folder_dir+"/index_" + str(index_save)
         if self.convert_json:
+            print("index save", folder_name)
             self.convert_to_json(datas, folder_name)
 
         # # plot a 3D plot of the agents

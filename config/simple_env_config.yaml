@@ -81,7 +81,7 @@ battlespace_environment:
           max: !!float 3.14159     # np.deg2rad(360)
         v:
           min: 12.0
-          max: 30.0
+          max: 20.0
         vx:
           min: -35.0
           max: 35.0
@@ -106,8 +106,8 @@ battlespace_environment:
           min: !!float -3.14159 #radians
           max: !!float 3.14159  #radians
         v_cmd:
-          min: 15.0
-          max: 30
+          min: 12.0
+          max: 20.0
 
     pursuers:
       # observation 
@@ -133,7 +133,7 @@ battlespace_environment:
           max: !!float 3.14159     # np.deg2rad(180)
         v:
           min: 12.0
-          max: 35.0
+          max: 20.0
         vx:
           min: -35.0
           max: 35.0
@@ -158,5 +158,5 @@ battlespace_environment:
           min: !!float -3.14159 #radians
           max: !!float 3.14159  #radians
         v_cmd:
-          min: 20.0
-          max: 35.0
+          min: 12.0
+          max: 20.0
