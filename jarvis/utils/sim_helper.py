@@ -5,14 +5,19 @@ import numpy as np
 import yaml
 import os
 import pickle as pkl
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from jarvis.envs.multi_agent_env import PursuerEvaderEnv
 from jarvis.utils.mask import SimpleEnvMaskModule
 from jarvis.transformers.wayformer.predictformer import PredictFormer
 from jarvis.transformers.wayformer.dataset import LazyBaseDataset
+from jarvis.envs.simple_agent import DataHandler, Pursuer, Evader
+from jarvis.utils.vector import StateVector
 
 from ray.rllib.core.rl_module import RLModule
 from pytorch_lightning.callbacks import ModelCheckpoint
+from jarvis.envs.simple_agent import (
+    SimpleAgent, PlaneKinematicModel, DataHandler,
+    Evader, Pursuer)
 
 from collections import deque
 
@@ -395,7 +400,7 @@ class RLSimHelper():
 
         obj_trajs_mask = obj_trajs[:, :, :, -1]
         obj_trajs_data[obj_trajs_mask == 0] = 0
-
+    
         obj_trajs_future = obj_trajs_future.astype(np.float32)
         copy_obj = obj_trajs_future.copy()
         center_objects = obj_trajs_future
@@ -494,7 +499,8 @@ class RLSimHelper():
                 center_gt_final_valid_idx,
                 track_index_to_predict_new)
 
-    def process(self, sim_data: Dict[str,Any]) -> Dict[str,Any]:
+    def process(self, sim_data: Dict[str,Any],
+                add_noise:bool=False) -> Dict[str,Any]:
         """
         Process the data in internal format and return the processed data.
         """
@@ -518,27 +524,30 @@ class RLSimHelper():
 
         ## 1. Measurement Noise (Sensor Errors)
         # Gaussian position noise (simulating GPS or LIDAR errors)
-        position_noise:float = 0.2
-        obj_trajs_past[:, :, 0:2] += np.random.normal(0, position_noise, obj_trajs_past[:, :, 0:2].shape)  # (Mean 0, Std 0.1m)
-    
-        # # Multiplicative noise (simulating sensor drift)
-        obj_trajs_past[:, :, 0:2] *= np.random.normal(1, 
-                                                      0.01, 
-                                                      obj_trajs_past[:, :, 0:2].shape)  # 2% variation
-
-        # Heading noise (simulating IMU/Gyro errors)
-        # obj_trajs_past[:, :, HEADING_IDX] += np.random.normal(0, np.deg2rad(1), obj_trajs_past[:, :, HEADING_IDX].shape)  # 2-degree noise
-
-        ## 2. Process Noise (Motion Model Uncertainty)
-        # Random walk noise (simulating object drift over time)
-        # drift = np.cumsum(np.random.normal(0, 0.05, obj_trajs_past[:, :, 0:2].shape), axis=1)  # Accumulate small movements
-        # obj_trajs_past[:, :, 0:2] += drift
-
-        # Velocity noise (simulating varying acceleration)
-        # velocity_noise = np.random.normal(0, 0.2, obj_trajs_past[:, :, VELOCITY_IDX].shape)  # Velocity in (x, y)
-        # obj_trajs_past[:, :, VELOCITY_IDX] += velocity_noise
-
+        if add_noise:
+            position_noise:float = 0.2
+            obj_trajs_past[:, :, 0:2] += np.random.normal(0, position_noise, obj_trajs_past[:, :, 0:2].shape)  # (Mean 0, Std 0.1m)
         
+            # # Multiplicative noise (simulating sensor drift)
+            obj_trajs_past[:, :, 0:2] *= np.random.normal(1, 
+                                                        0.01, 
+                                                        obj_trajs_past[:, :, 0:2].shape)  # 2% variation
+
+            # Heading noise (simulating IMU/Gyro errors)
+            # obj_trajs_past[:, :, HEADING_IDX] += np.random.normal(0, np.deg2rad(1), obj_trajs_past[:, :, HEADING_IDX].shape)  # 2-degree noise
+
+            ## 2. Process Noise (Motion Model Uncertainty)
+            # Random walk noise (simulating object drift over time)
+            # drift = np.cumsum(np.random.normal(0, 0.05, obj_trajs_past[:, :, 0:2].shape), axis=1)  # Accumulate small movements
+            # obj_trajs_past[:, :, 0:2] += drift
+
+            # Velocity noise (simulating varying acceleration)
+            # velocity_noise = np.random.normal(0, 0.2, obj_trajs_past[:, :, VELOCITY_IDX].shape)  # Velocity in (x, y)
+            # obj_trajs_past[:, :, VELOCITY_IDX] += velocity_noise
+
+        else:
+            obj_trajs_past = obj_trajs_past.astype(np.float32)
+            
         (obj_trajs_data, obj_trajs_mask, 
         obj_trajs_pos, obj_trajs_last_pos, 
         obj_trajs_future_state,
@@ -703,7 +712,70 @@ class RLSimHelper():
         
         return self.batch_data([processed_segment])
 
-    def infer_pursuer_evader_env(self) -> None:
+    def place_pursuers(self) -> None:
+        """
+        Place pursuers in the environment.
+        """
+        self.env.remove_all_agents()
+        evader_x: float = 0.0#np.random.uniform(-1, 1)
+        evader_y: float = 0.0#np.random.uniform(-1, 1)
+        evader_z: float = 55 # np.random.uniform(55, 56)
+        state_vector = StateVector(
+            x=evader_x, y=evader_y, z=evader_z, yaw_rad=np.deg2rad(90), roll_rad=0,
+            pitch_rad=0, speed=15)
+        
+        evader: Evader = Evader(
+            agent_id="0",
+            state_vector=state_vector,
+            battle_space=self.env.battlespace,
+            simple_model=PlaneKinematicModel(),
+            is_controlled=True,
+            radius_bubble=5,
+        )
+        
+        rand_x: float = -55 #np.random.uniform(-55, -54)
+        rand_y: float = 175#np.random.uniform(175, 176)
+        rand_z: float = 55 #np.random.uniform(55, 56)
+        state_vector = StateVector(
+            x=rand_x, y=rand_y, z=rand_z, yaw_rad=np.deg2rad(270), roll_rad=0,
+            pitch_rad=0, speed=20)
+        
+        pursuer: Pursuer = Pursuer(
+            agent_id="1",
+            state_vector=state_vector,
+            battle_space=self.env.battlespace,
+            simple_model=PlaneKinematicModel(),
+            is_controlled=True,
+            radius_bubble=5
+        )
+
+        rand_x: float = 50 #np.random.uniform(49, 50)
+        rand_y: float = 175 #np.random.uniform(175, 176)
+        rand_z: float = 55 #np.random.uniform(55, 56)
+        state_vector = StateVector(
+            x=rand_x, y=rand_y, z=rand_z, yaw_rad=np.deg2rad(270), roll_rad=0,
+            pitch_rad=0, speed=20)
+
+        pursuer_2: Pursuer = Pursuer(
+            agent_id="2",
+            state_vector=state_vector,
+            battle_space=self.env.battlespace,
+            simple_model=PlaneKinematicModel(),
+            is_controlled=True,
+            radius_bubble=5
+        )
+
+        self.env.insert_agent(evader)
+        self.env.insert_agent(pursuer)
+        self.env.insert_agent(pursuer_2)
+
+        self.env.init_action_space()
+        self.env.init_observation_space()
+        
+    def infer_pursuer_evader_env(self,
+                                 head_on_placement:Optional[bool]=False,
+                                 use_predictformer_for_rl:Optional[bool]=False,
+                                 desired_time_idx:int = 1) -> None:
         """
         This function is used to infer the pursuer evader environment
         and run the simulation for the specified number of episodes.
@@ -726,28 +798,33 @@ class RLSimHelper():
         reward_list: List[float] = []
         terminated = {'__all__': False}
         observation, info = env.reset()
+        
+        if head_on_placement:
+            self.place_pursuers()
+        
         counter = 0
         
         time_step:float = 0.0
         current_counter:int = 0
         dt:float = 0.1  # time step in seconds
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        end_counter:int = 600
+        end_counter:int = 1200
         
         predicted_traj_list: List[np.array] = []
         observation_history: List[Dict[str, Any]] = []
         batch_history: List[Dict[str, Any]] = []
         output_history: List[Dict[str, Any]] = []
         original_pos_history: List[np.array] = []
+        predictformer_count:int = 0 # used to keep track of trajectory stored
         
         while not terminated['__all__']:
             print(f"Time step: {env.current_step}, Counter: {current_counter}")
+            
             if self.use_predictformer:
-                
                 # for this to work we need the past n observations to predict the future
                 predictformer_obs:Dict[str,Any] = self.env.get_observation_from_predictformer()
                 batch = self.get_predictformer_batch(
-                    obs=predictformer_obs, time_step=time_step, 
+                    obs=predictformer_obs, time_step=time_step,
                     current_counter=current_counter)
                 batch = recursive_to(batch, dev=device)
                 output_cuda, _ = self.predictformer_model(batch)
@@ -785,22 +862,24 @@ class RLSimHelper():
                 )
 
                 predicted_traj = output['predicted_trajectory'].detach().numpy()
-                center_xy = center_xyz.squeeze()[:, self.past_len, 0:2]
-                center_heading = center_xyz.squeeze()[:, self.past_len, 5]
-                predicted_headings = predicted_traj[:, :, 5]
-                predicted_ground_traj = self.inverse_transform_trajs_from_center_coords(
-                    obj_trajs_center=predicted_traj,
-                    center_xyz=center_xy,
-                    center_heading=center_heading,
-                    heading_index=5
-                )
+                # center_xy = center_xyz.squeeze()[:, self.past_len, 0:2]
+                # center_heading = center_xyz.squeeze()[:, self.past_len, 5]
+                # predicted_headings = predicted_traj[:, :, 5]
+                # predicted_ground_traj = self.inverse_transform_trajs_from_center_coords(
+                #     obj_trajs_center=predicted_traj,
+                #     center_xyz=center_xy,
+                #     center_heading=center_heading,
+                #     heading_index=5
+                # )
                 output['predicted_ground_traj'] = predicted_traj
                 
                 # if counter is a modulus of 3 save
-                if current_counter % self.num_vehicles == 0:                    
+                if current_counter % self.num_vehicles == 0:                  
                     predicted_traj_list.append(predicted_traj)
                     observation_history.append(
-                        self.env.get_observation_from_predictformer())                
+                        self.env.get_observation_from_predictformer())
+                    predictformer_count += 1
+                    print(f"PredictFormer count: {predictformer_count}")               
                     # batch_history.append(cpu_objs)
                     # output_history.append(output)
                     original_pos_history.append(original_pos_past)
@@ -815,9 +894,88 @@ class RLSimHelper():
                 
             elif key_value == '0':
                 obs = observation['0']             
-                    # If using transformer we need to pack the observations and batch it correctly
-                    # to feed into the transformer model
-                
+                # If using transformer we need to pack the observations and batch it correctly
+                # to feed into the transformer model
+                if predictformer_count > self.past_len and use_predictformer_for_rl:
+                    # replace the of the bad guys with the predictformer batch
+                    all_obs:Dict[str,Any] = self.env.get_observation_from_predictformer()
+                    all_pursuers:List[np.array] = all_obs['vehicles']
+                    ego:np.array = all_obs['ego']
+                    x_idx:int = 0
+                    y_idx:int = 1
+                    z_idx:int = 2
+                    heading_idx:int = 5
+                    vel_idx:int = 6
+                    vx_idx:int = 7
+                    vy_idx:int = 8
+                    vz_idx:int = 9
+                    # recall the dt is 0.1 seconds
+                    desired_time_step_idx: int = 25
+                    for i, pursuer in enumerate(all_pursuers):
+                        pursuer_pos:np.array = pursuer[x_idx:z_idx]
+                        pursuer_heading:float = pursuer[heading_idx]
+                        pursuer_3d_pos:np.array = pursuer[x_idx:z_idx+1]
+                        idx_pursuer = i + 1  # +1 because the first agent is the evader
+                        pursuer_predicted_traj:np.array = predicted_traj[idx_pursuer]
+                        # transform the predicted trajectory with the current heading
+                        transformed_traj:np.array = transform_with_current_heading(
+                            pred_traj=pursuer_predicted_traj,
+                            current_heading=pursuer_heading,
+                            current_position=pursuer_pos,
+                            heading_index=heading_idx
+                        )
+                        closest_idx:int = 1
+                        closest_distance:float = float('inf')
+                        
+                        # for simplicity sake we want to choose the location that is closest to our evader from our GMMs
+                        for j in range(transformed_traj.shape[0]):
+                            x = transformed_traj[j, desired_time_step_idx, x_idx]
+                            y = transformed_traj[j, desired_time_step_idx, y_idx]
+                            z = transformed_traj[j, desired_time_step_idx, z_idx]
+                            z = z + pursuer_3d_pos[2]  # add the z position of the pursuer
+                            # print("predicted position: ", x, y, z)
+                            # print("pursuer position: ", pursuer_3d_pos)
+                            distance = np.linalg.norm(
+                                np.array([x, y, z]) - ego[x_idx:z_idx+1])
+                            if distance < closest_distance:
+                                closest_distance = distance
+                                closest_idx = j
+                        
+                        #TODO: There's a bug here not predicting the actual distance correctly 
+                        # the predicted distance should be closer than the actual distance
+                        # print("distance: ", distance)
+                        # actual_distance:float = np.linalg.norm(
+                        #     np.array([ego[x_idx], ego[y_idx], ego[z_idx]]) -
+                        #     pursuer_3d_pos)
+                        # print("actual distance: ", actual_distance)
+                        ## For this highest predicted threat from our gmm we want to update our observations of the
+                        # pursuers with this informatio
+                        highest_threat:np.array = transformed_traj[closest_idx]
+                        rel_x:float = ego[x_idx] - highest_threat[desired_time_step_idx, x_idx]
+
+                        rel_y:float = ego[y_idx] - highest_threat[desired_time_step_idx, y_idx]
+                        rel_z:float = ego[z_idx] - highest_threat[desired_time_step_idx, z_idx] 
+                        rel_heading:float = ego[heading_idx] - np.deg2rad(highest_threat[desired_time_step_idx, heading_idx])
+                        # wrap the heading to [-pi, pi]
+                        rel_heading:float = (rel_heading + np.pi) % (2 * np.pi) - np.pi
+                        rel_vel:float = ego[vel_idx] - highest_threat[desired_time_step_idx, vel_idx]
+                       
+                        # now we have the closest index, we can replace the pursuer observationers
+                        offset_counter = i*5  # since we have 5 observations per pursuer 
+                        from copy import deepcopy
+                        old_observations = deepcopy(obs['observations'])
+                        print("old x position: ", old_observations[vz_idx+offset_counter+1])
+
+                        print("old y position: ", old_observations[vz_idx+offset_counter + 2])
+                        obs['observations'][vz_idx+offset_counter + 1] = rel_x
+                        obs['observations'][vz_idx+offset_counter + 2] = rel_y
+                                                # print("new x position: ", obs['observations'][vz_idx+offset_counter+1])
+
+                        print("new y position: ", obs['observations'][vz_idx+offset_counter + 2])
+                        # obs['observations'][vz_idx+offset_counter + 2] = rel_z
+                        # obs['observations'][vz_idx+offset_counter + 3] = rel_heading
+                        # obs['observations'][vz_idx+offset_counter + 4] = rel_vel
+                    
                 torch_obs_batch = {k: torch.from_numpy(
                     np.array([v])) for k, v in obs.items()}
                 action_logits = evader_policy.forward_inference({"obs": torch_obs_batch})[

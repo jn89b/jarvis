@@ -860,7 +860,7 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
         for pursuer in pursuers:
             relative_pos: np.ndarray = pursuer.state_vector.array - ego_agent.state_vector.array
             
-            pursuer_obs: List[float] = np.array([pursuer.state_vector.x ,
+            pursuer_obs: np.array = np.array([pursuer.state_vector.x ,
                                         pursuer.state_vector.y,
                                         pursuer.state_vector.z,
                                         np.rad2deg(pursuer.state_vector.roll_rad),
@@ -870,6 +870,17 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
             predictformer_obs["vehicles"].append(pursuer_obs)
 
         return predictformer_obs
+    
+    def get_regular_observations(self) -> Dict[str, Any]:
+        """
+        Returns the regular observations for the environment
+        This is used for training and evaluation
+        """
+        observations: Dict[str, Any] = {}
+        for agent in self.get_controlled_agents:
+            observations[agent.agent_id] = self.observe(agent=agent)
+
+        return observations
 
 class PursuerEvaderEnv(AbstractKinematicEnv):
     """
@@ -1258,6 +1269,8 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         capture_radius: float = self.interaction_config['capture_radius']
         distance: float = pursuer.state_vector.distance_3D(evader.state_vector)
         if distance <= capture_radius:
+            print("Pursuer {} caught Evader {}".format(
+                pursuer.agent_id, evader.agent_id))
             return True
 
         return False

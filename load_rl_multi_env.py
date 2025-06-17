@@ -506,12 +506,16 @@ def load_and_infer_pursuer(checkpoint_path: str):
     evader_x: float = 100.0
     evader_y: float = 0.0
     evader_z: float = 40
-    # evader_x: float = np.random.uniform(-300, 300)
-    # evader_y: float = np.random.uniform(-300, 300)
-    # evader_z: float = np.random.uniform(20, 60)
+
     state_vector = StateVector(
-        x=evader_x, y=evader_y, z=evader_z, yaw_rad=0, roll_rad=0,
-        pitch_rad=0, speed=0)
+        x=evader_x,
+        y=evader_y, 
+        z=evader_z, 
+        yaw_rad=0, 
+        roll_rad=0,
+        pitch_rad=0, 
+        speed=0)
+    
     evader: Evader = Evader(
         agent_id="0",
         state_vector=state_vector,
@@ -821,7 +825,7 @@ if __name__ == '__main__':
     #path:str = "/home/justin/ray_results/PPO_2025-05-02_01-05-30/PPO_pursuer_evader_env_73731_00000_0_2025-05-02_01-05-30/checkpoint_000020"
 
     #path:str = "/home/justin/ray_results/PPO_2025-06-02_11-39-52/PPO_high_speed_pursuer_evader_35767_00000_0_2025-06-02_11-39-53/checkpoint_000005"
-    path:str = "/root/ray_results/PPO_2025-06-10_13-19-45/PPO_pursuer_evader_env_7c419_00000_0_2025-06-10_13-19-45/checkpoint_000224"
+    path:str = "/home/justin/ray_results/skyhunter_evader/PPO_2025-06-10_13-19-45/PPO_pursuer_evader_env_7c419_00000_0_2025-06-10_13-19-45/checkpoint_000224"
     #path:str = "/root/ray_results/PPO_2025-06-12_12-10-43/PPO_pursuer_evader_env_2c7b3_00000_0_2025-06-12_12-10-43/checkpoint_000035"
     # ---- Pursuer Evader----
     #path:str = "/home/justin/ray_results/PPO_2025-03-31_12-45-23_attention/PPO_pursuer_evader_env_ec13d_00000_0_2025-03-31_12-45-23/checkpoint_000152"
