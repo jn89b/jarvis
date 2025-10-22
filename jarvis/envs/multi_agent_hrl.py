@@ -770,8 +770,8 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
                     action[str(self.good_guy_offensive_key)]['action'])
                 # get the velocity of the agent
                 vel_cmd = action_cmd[-1]
-                if vel_cmd >= 30:
-                    vel_cmd = 30
+                if vel_cmd >= 20:
+                    vel_cmd = 20
                 action_cmd = pronav.predict(
                     current_pos=current_pos,
                     relative_pos=relative_pos,
@@ -1153,7 +1153,7 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
             dot_product=dot_product, delta_distance=delta_distance)
 
         self.old_distance_from_target = distance
-        return reward
+        return dot_product - delta_distance
 
     def rewards_truncated_terminated(self) -> Tuple[Dict[str, float], Dict[str, bool], Dict[str, bool]]:
         """
@@ -1248,8 +1248,8 @@ class HRLMultiAgentEnv(AbstractKinematicEnv):
             good_guy, target)
         intermediate_evader_reward: float = self.compute_evader_reward(
             closet_pursuer, good_guy)
-        lambda_1: float = 0.8
-        lambda_2: float = 0.5
+        lambda_1: float = 0.9
+        lambda_2: float = 0.2
         rewards[self.good_guy_hrl_key] = (lambda_1*intermediate_dist_reward) + \
             (lambda_2*intermediate_evader_reward) - 0.1
 

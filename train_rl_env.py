@@ -122,7 +122,6 @@ def train_rllib() -> None:
     tuner = tune.Tuner("PPO", param_space=config, run_config=run_config)
     tuner.fit()
 
-
 if __name__ == '__main__':
     # main()
     train_rllib()

@@ -51,8 +51,7 @@ if __name__ == "__main__":
         predictformer_config=predictformer_config,
         env_type="pursuer_evader"
     )
-    
-    
+
     for i in range(5):
         rl_sim_helper.infer_pursuer_evader_env(head_on_placement=True,
                                             use_predictformer_for_rl=True)

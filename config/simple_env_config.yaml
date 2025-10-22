@@ -1,13 +1,13 @@
 # Configurations for battlespace environment
 battlespace_environment:
   bounds:
-    x: [-1500, 1500]
-    y: [-1500, 1500]
+    x: [-750, 750]
+    y: [-1000, 1000]
     z: [30, 100]
 
   spawning:
     distance_from_other_agents:
-      min: 225
+      min: 250
       max: 450
     target:
       randomize: true
@@ -16,8 +16,8 @@ battlespace_environment:
         y: -450
         z: 50
       spawn_radius_from_agent:
-        min: 350
-        max: 600
+        min: 250
+        max: 450
 
   # Used to define resolution of sim 
   simulation:

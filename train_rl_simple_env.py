@@ -111,7 +111,6 @@ def train_rllib() -> None:
     env_config = load_yaml_config(
         "config/simple_env_config.yaml")['battlespace_environment']
 
-
     tune.register_env("engage_env", lambda config:
                       create_env(config=config,
                                  env_config=env_config))
@@ -368,5 +367,6 @@ if __name__ == '__main__':
     #path:str = "/home/justin/ray_results/PPO_2025-04-20_13-25-48_evade/PPO_pursuer_evader_env_e216c_00000_0_2025-04-20_13-25-49/checkpoint_000014"
     #path: str = "/home/justin/ray_results/pursuer_evader_2/PPO_2025-02-24_13-25-45/PPO_pursuer_evader_env_24ee9_00000_0_2025-02-24_13-25-45/checkpoint_000224"
     #path:str = "/home/justin/coding_projects/Jarvis/checkpoint_000048"
-    #train_hrl(checkpoint_path=path)
+    # path: str = "/root/ray_results/PPO_2025-06-18_15-33-54/PPO_pursuer_evader_env_8d5fd_00000_0_2025-06-18_15-33-54/checkpoint_000224"
+    # train_hrl(checkpoint_path=path)
     ray.shutdown()

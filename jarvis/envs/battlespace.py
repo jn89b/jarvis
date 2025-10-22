@@ -19,11 +19,13 @@ class BattleSpace():
                  x_bounds: np.ndarray,
                  y_bounds: np.ndarray,
                  z_bounds: np.ndarray,
-                 agents: List["Agent"] = None) -> None:
+                 agents: List["Agent"] = None,
+                 consider_out_of_bounds_pursuer:bool=False) -> None:
         self.x_bounds: np.ndarray = x_bounds
         self.y_bounds: np.ndarray = y_bounds
         self.z_bounds: np.ndarray = z_bounds
         self.all_agents: List[Agent] = agents
+        self.consider_out_of_bounds_pursuer: bool = consider_out_of_bounds_pursuer
 
     def is_out_bounds(self, state_vector: StateVector) -> bool:
         """
@@ -129,6 +131,9 @@ class BattleSpace():
                 #     if agent.agent_id == other_agent.agent_id:
                 #         continue
                 if agent.agent_id != other_agent.agent_id:
+                    # allow the pursuers to be out of bounds
+                    if agent.is_pursuer and not self.consider_out_of_bounds_pursuer:
+                        continue
                     self.check_collisions(agent, other_agent)
                 # if agent.id != other_agent.id:
                 #     self.check_collisions(agent, other_agent)
@@ -168,5 +173,5 @@ class BattleSpace():
 
         # check out of bounds
         for agent in self.all_agents:
-            if self.is_out_bounds(agent.state_vector):
+            if self.is_out_bounds(agent.state_vector) and not agent.is_pursuer:
                 agent.crashed = True

@@ -283,18 +283,50 @@ def infer(checkpoint_path: str, num_episodes: int = 1,
         datas.append(data)
 
     # plot a 3D plot of the agents
-    fig = plt.figure()
+    fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(111, projection='3d')
 
+    # for i, data in enumerate(datas):
+    #     # print("data: ", i)
+    #     ax.scatter(data.x[0], data.y[1], data.z[2], label=f"Agent Start {i}")
+    #     ax.plot(data.x, data.y, data.z, label=f"Agent {i}")
+
+    # colors for red 
+    colors = ['#006400', '#FF0000', '#8B0000']
     for i, data in enumerate(datas):
-        # print("data: ", i)
-        ax.scatter(data.x[0], data.y[1], data.z[2], label=f"Agent Start {i}")
-        ax.plot(data.x, data.y, data.z, label=f"Agent {i}")
+        if i == 0:
+            label = "Evader AI"
+            ax.scatter(
+                [data.x[-1]], [data.y[-1]], [data.z[-1]],
+                marker='*',        # five-pointed star
+                s=300,             # marker size (area)
+                color='gold',      # fill color
+                edgecolor='k',     # black outline
+                linewidth=1.5,
+                label='Target'
+            )
+        else:
+            label = f"Pursuer AI {i-1}"
+        # ax.scatter(data.x[0], data.y[1], data.z[2], label=f"Agent Start {i}")
+        ax.plot(data.x, data.y, data.z, label=label, color=colors[i])
+        # label the start location
+        ax.scatter(data.x[0], data.y[1], data.z[2],
+                     label=label + " start", color=colors[i])
+        
+        # draw a cylinder as the 
 
     print("env step", env.current_step)
-    ax.set_xlabel('X Label (m)')
-    ax.set_ylabel('Y Label (m)')
+    # ax.set_xlabel('X Label (m)')
+    # ax.set_ylabel('Y Label (m)')
+    # SET z limit
+    ax.set_zlim(20, 100)
     ax.legend()
+    # delete the gridlines
+    ax.grid(False) 
+    # remove the x ticks and y ticks
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_zticks([])
     # tight axis
     fig.tight_layout()
 
@@ -472,9 +504,15 @@ def load_and_infer_evader(checkpoint_path: str):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
 
+    # for i, data in enumerate(datas):
+    #     # ax.scatter(data.x[0], data.y[1], data.z[2], label=f"Agent Start {i}")
+    #     ax.plot(data.x, data.y, data.z, label=f"Agent {i}")
+    # colors for red 
+    colors = ['#98FB98', '#FF0000', '#8B0000']
     for i, data in enumerate(datas):
         # ax.scatter(data.x[0], data.y[1], data.z[2], label=f"Agent Start {i}")
-        ax.plot(data.x, data.y, data.z, label=f"Agent {i}")
+        ax.plot(data.x, data.y, data.z, label=f"Agent {i}", colors=colors[i])
+    
 
     ax.scatter(evader_x, evader_y, evader_z, label="Evader Start")
 
@@ -596,12 +634,13 @@ def load_and_infer_pursuer(checkpoint_path: str):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
 
+    # colors for red 
+    colors = ['#98FB98', '#FF0000', '#8B0000']
     for i, data in enumerate(datas):
         # ax.scatter(data.x[0], data.y[1], data.z[2], label=f"Agent Start {i}")
-        ax.plot(data.x, data.y, data.z, label=f"Agent {i}")
-
+        ax.plot(data.x, data.y, data.z, label=f"Agent {i}", colors=colors[i])
+    
     ax.scatter(evader_x, evader_y, evader_z, label="Evader Start")
-
     ax.set_xlabel('X Label')
     ax.set_ylabel('Y Label')
     ax.legend()
@@ -825,9 +864,10 @@ if __name__ == '__main__':
     #path:str = "/home/justin/ray_results/PPO_2025-05-02_01-05-30/PPO_pursuer_evader_env_73731_00000_0_2025-05-02_01-05-30/checkpoint_000020"
 
     #path:str = "/home/justin/ray_results/PPO_2025-06-02_11-39-52/PPO_high_speed_pursuer_evader_35767_00000_0_2025-06-02_11-39-53/checkpoint_000005"
-    path:str = "/home/justin/ray_results/skyhunter_evader/PPO_2025-06-10_13-19-45/PPO_pursuer_evader_env_7c419_00000_0_2025-06-10_13-19-45/checkpoint_000224"
+    #path:str = "/home/justin/ray_results/skyhunter_evader/PPO_2025-06-10_13-19-45/PPO_pursuer_evader_env_7c419_00000_0_2025-06-10_13-19-45/checkpoint_000224"
+    path:str = "/root/ray_results/PPO_2025-06-17_15-57-48/PPO_pursuer_evader_env_b9c43_00000_0_2025-06-17_15-57-48/checkpoint_000224"
     #path:str = "/root/ray_results/PPO_2025-06-12_12-10-43/PPO_pursuer_evader_env_2c7b3_00000_0_2025-06-12_12-10-43/checkpoint_000035"
-    # ---- Pursuer Evader----
+    # ---- Pursuer Evader----c
     #path:str = "/home/justin/ray_results/PPO_2025-03-31_12-45-23_attention/PPO_pursuer_evader_env_ec13d_00000_0_2025-03-31_12-45-23/checkpoint_000152"
     
     # path:str = "/home/justin/ray_results/PPO_2025-03-31_01-10-24/PPO_pursuer_evader_env_d58f4_00000_0_2025-03-31_01-10-24/checkpoint_000149"
@@ -839,24 +879,27 @@ if __name__ == '__main__':
     #path:str = "/home/justin/ray_results/PPO_2025-04-29_21-44-10/PPO_hrl_env_febd7_00000_0_2025-04-29_21-44-10/checkpoint_000120"
 
     #config_file = "config/simple_env_high_speed_config.yaml"
+    # path:str = "/root/ray_results/PPO_2025-06-18_15-33-54/PPO_pursuer_evader_env_8d5fd_00000_0_2025-06-18_15-33-54/checkpoint_000224" # this is the pursuer evader
+    path:str = "/root/ray_results/PPO_2025-06-19_16-43-22/PPO_hrl_env_6bf9a_00000_0_2025-06-19_16-43-22/checkpoint_000224"
     config_file:str = "config/simple_env_config.yaml"
     folder_name:str = "pursuer_evader_data_test" 
     ray_trainer = RayTrainerSimpleEnv(
         config_file=config_file
     )
-    # run_multiple_sims(checkpoint_path=path, num_sims=10  , type='pursuer_evader',
-    #                   use_random_seed=False, use_pronav=True)
+    sim_type:str = ['pursuer_evader', 'pursuer', 'evader', 'good_guy']
+    run_multiple_sims(checkpoint_path=path, num_sims=3, type=sim_type[-1],
+                      use_random_seed=False, use_pronav=True)
 
-    ray_trainer.infer_pursuer_evader(
-        folder_dir="pursuer_evader_data_new",
-        checkpoint_path=path, num_episodes=1, save=True,
-    )
+    # ray_trainer.infer_pursuer_evader(
+    #     folder_dir="pursuer_evader_data_new",
+    #     checkpoint_path=path, num_episodes=1, save=True,
+    # )
 
-    ray_trainer.infer_multiple_times(checkpoint_path=path, 
-                                     folder_name=folder_name,
-                                     num_sims=10,
-                                     use_random_seed=False, 
-                                     type='pursuer_evader', 
-                                     use_pronav = True ,
-                                     save=True,
-                                     start_count=0)
+    # ray_trainer.infer_multiple_times(checkpoint_path=path, 
+    #                                  folder_name=folder_name,
+    #                                  num_sims=10,
+    #                                  use_random_seed=False, 
+    #                                  type='pursuer_evader', 
+    #                                  use_pronav = False,
+    #                                  save=True,
+    #                                  start_count=0)

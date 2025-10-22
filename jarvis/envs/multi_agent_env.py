@@ -445,7 +445,7 @@ class AbstractKinematicEnv(MultiAgentEnv, ABC):
         else:
             total_actions = num_actions
 
-        mask_space = gym.spaces.MultiBinary(total_actions)
+        mask_space = gym.spaces.MultiBinary(int(total_actions))
         observation = gym.spaces.Dict({
             "action_mask": mask_space,
             "observations": obs_bounds
@@ -1352,7 +1352,7 @@ class PursuerEvaderEnv(AbstractKinematicEnv):
         evader.old_distance_from_pursuer = distance
 
         # Return the negative reward for the evader without causing any state updates.
-        return - delta_distance - (0.5 *dot_product)
+        return - delta_distance #- (0.1 *dot_product)
         #return -dot_product - (0.8 * delta_distance)
 
     def sigmoid(self, x: float) -> float:

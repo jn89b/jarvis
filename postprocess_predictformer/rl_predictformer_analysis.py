@@ -126,13 +126,7 @@ for i in range(desired_traj.shape[0]):
 
         ax.plot(x, y, label=f'Predicted Trajectory {i}', linestyle='--')
     
-    # let's plot what is being fed into the transformer from the ground truth
-    
-    # x_gt = desired_ground_truth[:, 0]
-    # y_gt = desired_ground_truth[:, 1]
-    # ax.plot(x_gt, y_gt, label=f'Ground Truth {i}', color='cyan', marker='x')
-    
-    
+
 ax.set_title(f'Agent {i+1} Trajectory')
 ax.set_xlabel('X Position')
 ax.set_ylabel('Y Position')
