@@ -1,8 +1,4 @@
 from setuptools import find_packages, setup
-
-with open("jarvis/README.md", "r") as f:
-    long_description = f.read()
-
 setup(
     name="Jarvis",
     version="1.0.01",
