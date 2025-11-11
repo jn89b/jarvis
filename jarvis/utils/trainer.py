@@ -42,7 +42,7 @@ from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.core.rl_module import RLModule
 
-matplotlib.use('TkAgg')
+#matplotlib.use('TkAgg')
 
 
 def load_yaml_config(yaml_file: str) -> dict:
