@@ -11,6 +11,7 @@ from jarvis.envs.multi_agent_env import PursuerEvaderEnv
 from jarvis.envs.multi_agent_hrl import HRLMultiAgentEnv
 from jarvis.utils.trainer import load_yaml_config
 from jarvis.utils.mask import SimpleEnvMaskModule
+from jarvis.utils.callbacks import WargameCallback
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 
@@ -119,7 +120,7 @@ def train_rllib() -> None:
     run_config = tune.RunConfig(
         stop={"training_iteration": 1000},
         checkpoint_config=tune.CheckpointConfig(
-            checkpoint_frequency=20,
+            checkpoint_frequency=5,
             checkpoint_at_end=True,
             num_to_keep=5,
             # checkpoint_score_attribute="episode_reward_mean",
@@ -176,7 +177,7 @@ def train_multi_agent() -> None:
     run_config = tune.RunConfig(
         stop={"training_iteration": 4500},
         checkpoint_config=tune.CheckpointConfig(
-            checkpoint_frequency=20,
+            checkpoint_frequency=5,
             checkpoint_at_end=True,
             num_to_keep=5,
             checkpoint_score_attribute="episode_reward_mean",
@@ -188,6 +189,7 @@ def train_multi_agent() -> None:
     evader_action_space = example_env.action_spaces['0']
     pursuer_obs_space = example_env.observation_spaces['1']
     pursuer_action_space = example_env.action_spaces['1']
+    
     # Build the PPO configuration.
     config = (
         PPOConfig()
@@ -220,8 +222,9 @@ def train_multi_agent() -> None:
             policy_mapping_fn=policy_mapping_fn,
         )
         .resources(num_gpus=0.05)
+        .callbacks(WargameCallback)
         .env_runners(observation_filter="MeanStdFilter",
-                     num_env_runners=6)
+                     num_env_runners=1)
     )
 
     # Initialize and run the training using Ray Tune.
@@ -283,7 +286,7 @@ def train_hrl(checkpoint_path=None) -> None:
     run_config = tune.RunConfig(
         stop={"training_iteration": 4500},
         checkpoint_config=tune.CheckpointConfig(
-            checkpoint_frequency=20,
+            checkpoint_frequency=5,
             checkpoint_at_end=True,
             num_to_keep=5,
             checkpoint_score_attribute="episode_reward_mean",
