@@ -42,15 +42,16 @@ class SaveVecNormalizeCallback(CheckpointCallback):
 class WargameCallback(DefaultCallbacks):
     """
     Minimal RLlib callback for MongoDB logging.
-    - Logs metrics per iteration
+    - Logs metrics per iteration and stores in runs collection
     - Scans and logs checkpoints from ray_results
-    - Marks experiment complete on stop
+    - Marks experiment complete on stop and stores final status in experiments collection
     """
 
     def __init__(self):
         super().__init__()
         self.enable_mongo = os.getenv("enable_mongo", "false").lower() == "true"
-        self.collection = None
+        self.experiments_collection = None
+        self.runs_collection = None
         self._experiment_id = None
 
         if self.enable_mongo:
@@ -58,7 +59,11 @@ class WargameCallback(DefaultCallbacks):
                 client = MongoClient(os.getenv("mongo_uri", "mongodb://localhost:27017/"), serverSelectionTimeoutMS=5000)
                 client.admin.command('ping')
                 db = client[os.getenv("db", "wargame_experiments")]
-                self.collection = db[os.getenv("collection", "experiments")]
+                experiments_collection = os.getenv("experiments_collection", "experiments")
+                runs_collection = os.getenv("runs_collection", "runs")
+                self.experiments_collection = db[experiments_collection]
+                self.runs_collection = db[runs_collection]
+                
             except Exception as e:
                 print(f"[WargameCallback] MongoDB connection failed: {e}")
                 self.enable_mongo = False
@@ -77,10 +82,10 @@ class WargameCallback(DefaultCallbacks):
         self._experiment_id = f"exp_{datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d_%H%M%S_%f')}"
         return self._experiment_id
     
-    # TODO: This document will actually be for another collection (runs) linked to (experiments) by experiment_id
+    # Store minimal metrics snapshot per iteration in runs collection
     def on_train_result(self, *, algorithm, result, **kwargs):
         """Store minimal metrics snapshot per iteration."""
-        if not self.enable_mongo or self.collection is None:
+        if not self.enable_mongo or self.runs_collection is None:
             return
         try:
             experiment_id = self._get_experiment_id(algorithm=algorithm)
@@ -95,7 +100,7 @@ class WargameCallback(DefaultCallbacks):
                 "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
             }
 
-            self.collection.update_one(
+            self.runs_collection.update_one(
                 {"experiment_id": experiment_id},
                 {
                     "$push": {"metrics_history": metrics_entry},
@@ -106,15 +111,15 @@ class WargameCallback(DefaultCallbacks):
             
             # Scan ray_results for checkpoints
             if hasattr(algorithm, 'logdir'):
-                trial_name = Path(algorithm.logdir).name
-                ray_results = Path.home() / "ray_results"
+                trial_name: str = Path(algorithm.logdir).name
+                ray_results: Path = Path.home() / "ray_results"
                 
                 for exp_dir in sorted(ray_results.glob("PPO_*"), key=lambda p: p.stat().st_mtime, reverse=True): # TODO: filter by algo
                     trial_dirs = list(exp_dir.glob(trial_name))
                     if trial_dirs:
                         for ckpt_path in sorted(trial_dirs[0].glob("checkpoint_*")):
-                            if not self.collection.find_one({"experiment_id": experiment_id, "checkpoints.id": ckpt_path.name}):
-                                self.collection.update_one(
+                            if not self.runs_collection.find_one({"experiment_id": experiment_id, "checkpoints.id": ckpt_path.name}):
+                                self.runs_collection.update_one(
                                     {"experiment_id": experiment_id},
                                     {"$push": {"checkpoints": {
                                         "id": ckpt_path.name,
@@ -128,16 +133,26 @@ class WargameCallback(DefaultCallbacks):
             print(f"[WargameCallback] Error: {e}")
 
 
-    # TODO: implement on algo stop to regiester full experiment completion (this will call our parser script that we already created)
+    # TODO: implement on algo stop to register full experiment completion (this will call our parser script that we already created)
     def on_algorithm_stop(self, *, algorithm, **kwargs):
-        """Mark experiment complete."""
-        if not self.enable_mongo or self.collection is None:
+        """Parse and ingest full experiment data on completion of stop."""
+        if not self.enable_mongo or self.experiments_collection is None:
             return
         
         try:
-            experiment_id = self._get_experiment_id(algorithm=algorithm)
+            experiment_id: str = self._get_experiment_id(algorithm=algorithm)
+
+            # Get trial directory path
+            if not hasattr(algorithm, 'logdir'):
+                print(f"[WargameCallback] Unable to determine logdir for experiment")
+                return
             
-            self.collection.update_one(
+            trial_dir = Path(algorithm.logdir)
+
+            # if experiment files exist from the parser script, ingest them
+            params: dict = self.load_json(trial_dir / "params.json"), keys_to_extract=param_keys)
+            
+            self.experiments_collection.update_one(
                 {"experiment_id": experiment_id},
                 {
                     "$set": {
