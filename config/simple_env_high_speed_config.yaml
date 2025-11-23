@@ -23,7 +23,7 @@ battlespace_environment:
   simulation:
     dt: 0.05
     frequency: 100  # Hz
-    end_time: 35.0 # end time for each episode
+    end_time: 2.0 # end time for each episode
   
   agents:
     num_evaders: 1

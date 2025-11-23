@@ -11,7 +11,7 @@ from jarvis.envs.multi_agent_env import PursuerEvaderEnv
 from jarvis.envs.multi_agent_hrl import HRLMultiAgentEnv
 from jarvis.utils.trainer import load_yaml_config
 from jarvis.utils.mask import SimpleEnvMaskModule
-from jarvis.utils.callbacks import WargameCallback
+from jarvis.utils.callbacks import WargameCallback, WargameTuneCallback
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 
@@ -150,7 +150,7 @@ def train_rllib() -> None:
     tuner = tune.Tuner("PPO", param_space=config, run_config=run_config)
     tuner.fit()
     ray.shutdown()
-    
+
 def train_multi_agent() -> None:
 
     def policy_mapping_fn(agent_id, episode, **kwargs):
@@ -175,6 +175,7 @@ def train_multi_agent() -> None:
 
     # Define the run configuration for Ray Tune.
     run_config = tune.RunConfig(
+        callbacks=[WargameTuneCallback()],  # Ray Tune callback for final snapshot
         stop={"training_iteration": 4500},
         checkpoint_config=tune.CheckpointConfig(
             checkpoint_frequency=5,
