@@ -2,6 +2,7 @@ from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.vec_env import VecNormalize
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray import tune
+from ray.train import Checkpoint
 from pymongo import MongoClient
 from pymongo.collection import Collection
 from dotenv import load_dotenv
@@ -86,23 +87,6 @@ class MongoDBMixin:
         # Fallback: generate timestamped ID
         return f"exp_{datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d_%H%M%S_%f')}"
     
-    def _list_checkpoints(self, trial_dir: Path) -> List[Dict[str, Any]]:
-        """Return list of checkpoint directories with metadata."""
-        if not trial_dir.exists():
-            return []
-
-        checkpoints = []
-        for item in trial_dir.iterdir():
-            if item.is_dir() and item.name.startswith("checkpoint_"):
-                rllib_metadata_path = item / "rllib_checkpoint.json"
-                checkpoints.append({
-                    "id": item.name,
-                    "path": str(item),
-                    "rllib_json": str(rllib_metadata_path) if rllib_metadata_path.exists() else None,
-                    "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
-                })
-        return checkpoints
-    
     def _load_json(self, file_path: Path, keys_to_extract: Optional[list] = None) -> Dict[str, Any]:
         """Load JSON file and optionally extract specific keys."""
         if file_path.exists():
@@ -167,7 +151,7 @@ class WargameCallback(DefaultCallbacks, MongoDBMixin):
     """RLlib callback for per-iteration MongoDB logging.
     
     - Logs metrics per iteration to runs collection
-    - Scans and logs checkpoints from ray_results
+    - Checkpoints are captured by WargameCheckpointCallback (no directory crawling)
     """
 
     def __init__(self, results_dir: str = "/ray_results") -> None:
@@ -203,23 +187,80 @@ class WargameCallback(DefaultCallbacks, MongoDBMixin):
                 },
                 upsert=True
             )
-            
-            # Scan ray_results for checkpoints using shared utility
-            if hasattr(algorithm, 'logdir'):
-                trial_name = Path(algorithm.logdir).name
-                trial_dir = self._find_trial_directory(trial_name)
-                
-                if trial_dir:
-                    checkpoints = self._list_checkpoints(trial_dir)
-                    for ckpt in checkpoints:
-                        if not self.runs_collection.find_one({"experiment_id": experiment_id, "checkpoints.id": ckpt["id"]}):
-                            self.runs_collection.update_one(
-                                {"experiment_id": experiment_id},
-                                {"$push": {"checkpoints": ckpt}},
-                                upsert=True
-                            )
         except Exception as e:
             print(f"[WargameCallback] Error during on_train_result: {e}")
+
+
+class WargameCheckpointCallback(tune.Callback, MongoDBMixin):
+    """Ray Tune callback for checkpoint lifecycle event logging.
+    
+    Hooks into Tune's on_checkpoint event to capture checkpoint metadata
+    This approach:
+    - Works across any Ray deployment (local, SLURM, air-gapped, cloud)
+    - Uses Ray's documented lifecycle hooks
+    - Captures checkpoints as they're created, not discovered after the fact
+    - No filesystem layout assumptions
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._mongodb_initialized: bool = False
+
+    def on_checkpoint(
+        self,
+        iteration: int,
+        trials: List[Any],
+        trial: Any,
+        checkpoint: Checkpoint,
+        **info: Dict[str, Any],
+    ) -> None:
+        """Called when Tune saves a checkpoint for a trial.
+        
+        Args:
+            iteration: Current training iteration
+            trials: List of all trials
+            trial: Trial that saved the checkpoint
+            checkpoint: Ray AIR Checkpoint object
+            **info: Additional info from Tune
+        """
+        self._ensure_mongodb_connection()
+
+        if not self.enable_mongo or self.runs_collection is None:
+            return
+
+        try:
+            # Extract experiment ID using shared utility
+            experiment_id = self._get_experiment_id(trial=trial)
+            
+            # Get checkpoint directory directly from Checkpoint object
+            # checkpoint.path is guaranteed to be populated after RLlib writes the checkpoint
+            # This avoids race conditions with trial metadata and tmp directories
+            ckpt_dir = Path(checkpoint.path)
+
+            ckpt_metadata = {
+                "checkpoint_id": ckpt_dir.name,  # e.g. "checkpoint_000120"
+                "checkpoint_dir": str(ckpt_dir),
+                "trial_id": trial.trial_id,
+                "iteration": iteration,
+                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            }
+
+            # Append checkpoint to runs collection (append-only, no deduplication needed)
+            self.runs_collection.update_one(
+                {"experiment_id": experiment_id},
+                {
+                    "$push": {"checkpoints": ckpt_metadata},
+                    "$set": {"last_updated": ckpt_metadata["timestamp"]},
+                },
+                upsert=True,
+            )
+            
+            print(f"[WargameCheckpointCallback] Logged checkpoint: {ckpt_dir.name} for {experiment_id}")
+        except Exception as e:
+            print(f"[WargameCheckpointCallback] Error during on_checkpoint: {e}")
+            import traceback
+            traceback.print_exc()
+
 
 class WargameTuneCallback(tune.Callback, MongoDBMixin):
     """Ray Tune callback for final experiment snapshot on trial completion.
@@ -256,7 +297,14 @@ class WargameTuneCallback(tune.Callback, MongoDBMixin):
             params = self._load_json(trial_dir / "params.json", keys_to_extract=param_keys)
             results = self._load_ndjson(trial_dir / "result.json")
             metrics = self._parse_metrics(trial_dir / "progress.csv")
-            checkpoints = self._list_checkpoints(trial_dir)
+            
+            # Get checkpoints from runs collection (single source of truth)
+            # Checkpoints are captured via AIR events during training, not filesystem crawling
+            runs_doc = self.runs_collection.find_one(
+                {"experiment_id": experiment_id},
+                {"_id": 0, "checkpoints": 1}
+            )
+            checkpoints = runs_doc.get("checkpoints", []) if runs_doc else []
 
             # Extract algorithm name from parent directory
             try:
