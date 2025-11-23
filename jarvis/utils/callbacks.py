@@ -52,16 +52,6 @@ class MongoDBMixin:
         else:
             print(f"[{self.__class__.__name__}] MongoDB logging is disabled (enable_mongo={os.getenv('enable_mongo', 'not set')})")
     
-    def _find_trial_directory(self, trial_name: str) -> Optional[Path]:
-        """Find trial directory in ~/ray_results/PPO_*/ by trial name."""
-        ray_results = Path.home() / "ray_results"
-        
-        for exp_dir in sorted(ray_results.glob("PPO_*"), key=lambda p: p.stat().st_mtime, reverse=True):
-            trial_dirs = list(exp_dir.glob(trial_name))
-            if trial_dirs:
-                return trial_dirs[0]
-        return None
-    
     def _get_experiment_id(self, algorithm: Any = None, trial: Any = None) -> str:
         """Extract experiment ID from algorithm or trial object (experiment ID = trial directory name).
         
@@ -104,7 +94,7 @@ class MongoDBMixin:
                 last_line = None
                 for line in file:
                     last_line = line
-                if last_line:
+                if last_line and last_line.strip():
                     return orjson.loads(last_line)
         return {}
 
@@ -114,6 +104,224 @@ class MongoDBMixin:
             progress_df = pd.read_csv(file_path)
             return progress_df.iloc[-1].to_dict()
         return {}
+    
+class WargameCallback(DefaultCallbacks, MongoDBMixin):
+    """RLlib callback for per-iteration MongoDB logging.
+    
+    - Logs metrics per iteration to runs collection
+    - Checkpoints are captured by WargameCheckpointCallback (no directory crawling)
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+    
+    def on_train_result(self, *, algorithm: Any, result: Dict[str, Any], **kwargs) -> None:
+        """Store minimal metrics snapshot per iteration."""
+        self._ensure_mongodb_connection()
+        
+        if not self.enable_mongo or self.runs_collection is None:
+            return
+        
+        try:
+            experiment_id = self._get_experiment_id(algorithm=algorithm)
+            env_runners = result.get("env_runners", {})
+            
+            timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            
+            metrics_entry = {
+                "iteration": result.get("training_iteration", 0),
+                "reward_mean": env_runners.get("episode_return_mean"),
+                "agent_rewards": env_runners.get("agent_episode_returns_mean", {}),
+                "env_steps": result.get("num_env_steps_sampled_lifetime", 0),
+                "wall_time_s": result.get("time_total_s", 0.0),
+                "timestamp": timestamp
+            }
+
+            self.runs_collection.update_one(
+                {"experiment_id": experiment_id},
+                {
+                    "$push": {"metrics_history": metrics_entry},
+                    "$set": {"last_updated": timestamp}
+                },
+                upsert=True
+            )
+        except Exception as e:
+            print(f"[WargameCallback] Error during on_train_result: {e}")
+
+
+class WargameCheckpointCallback(tune.Callback, MongoDBMixin):
+    """Ray Tune callback for checkpoint lifecycle event logging.
+    
+    Hooks into Tune's on_checkpoint event to capture checkpoint metadata
+    This approach:
+    - Works across any Ray deployment (local, SLURM, air-gapped, cloud)
+    - Uses Ray's documented lifecycle hooks
+    - Captures checkpoints as they're created, not discovered after the fact
+    - No filesystem layout assumptions
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def on_checkpoint(
+        self,
+        iteration: int,
+        trials: List[Any],
+        trial: Any,
+        checkpoint: Checkpoint,
+        **info: Dict[str, Any],
+    ) -> None:
+        """Called when Tune saves a checkpoint for a trial.
+        
+        Args:
+            iteration: Current training iteration
+            trials: List of all trials
+            trial: Trial that saved the checkpoint
+            checkpoint: Ray AIR Checkpoint object
+            **info: Additional info from Tune
+        """
+        self._ensure_mongodb_connection()
+
+        if not self.enable_mongo or self.runs_collection is None:
+            return
+
+        try:
+            # Extract experiment ID using shared utility
+            experiment_id = self._get_experiment_id(trial=trial)
+            
+            # Get checkpoint directory directly from Checkpoint object
+            # This avoids race conditions with trial metadata and tmp directories
+            ckpt_dir = Path(checkpoint.path)
+
+            timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            
+            ckpt_metadata = {
+                "checkpoint_id": ckpt_dir.name,  # e.g. "checkpoint_000120"
+                "checkpoint_dir": str(ckpt_dir),
+                "trial_id": trial.trial_id,
+                "iteration": iteration,
+                "timestamp": timestamp,
+            }
+
+            # Append checkpoint to runs collection (append-only, no deduplication needed)
+            self.runs_collection.update_one(
+                {"experiment_id": experiment_id},
+                {
+                    "$push": {"checkpoints": ckpt_metadata},
+                    "$set": {"last_updated": timestamp},
+                },
+                upsert=True,
+            )
+            
+            print(f"[WargameCheckpointCallback] Logged checkpoint: {ckpt_dir.name} for {experiment_id}")
+        except Exception as e:
+            print(f"[WargameCheckpointCallback] Error during on_checkpoint: {e}")
+            import traceback
+            traceback.print_exc()
+
+
+class WargameTuneCallback(tune.Callback, MongoDBMixin):
+    """
+    Ray Tune callback for final experiment snapshot on trial completion.
+    
+    Triggered when a trial completes (normally or via Ctrl+C).
+    Parses experiment artifacts from ray_results and stores them in experiments collection.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def _process_trial_data(self, trial: Any, status: str = "complete") -> None:
+        """Helper method to process and save trial data to MongoDB."""
+        if not self.enable_mongo or self.experiments_collection is None:
+            return
+        
+        try:
+            # Extract experiment ID and get trial directory from Ray Tune API
+            experiment_id = self._get_experiment_id(trial=trial)
+            trial_dir = Path(trial.local_path)
+            
+            if not trial_dir.exists():
+                print(f"[WargameTuneCallback] Trial directory not found on disk: {trial_dir}")
+                return
+            
+            print(f"[WargameTuneCallback] Processing trial ({status}): {experiment_id}")
+            print(f"[WargameTuneCallback] Trial directory: {trial_dir}")
+
+            # Parameter keys to extract
+            param_keys = ["env", "policies", "_rl_module_spec"]
+
+            # Parse experiment files
+            params = self._load_json(trial_dir / "params.json", keys_to_extract=param_keys)
+            results = self._load_ndjson(trial_dir / "result.json")
+            metrics = self._parse_metrics(trial_dir / "progress.csv")
+
+            # Checkpoints are captured via AIR events and runs snapshots during training, not filesystem crawling
+            runs_doc = self.runs_collection.find_one(
+                {"experiment_id": experiment_id},
+                {"_id": 0, "checkpoints": 1}
+            )
+            checkpoints = runs_doc.get("checkpoints", []) if runs_doc else []
+
+            # Extract algorithm name from parent directory
+            try:
+                algorithm_name = trial_dir.parent.name.split("_")[0]
+            except Exception:
+                print(f"[WargameTuneCallback] Unable to extract algorithm name from {trial_dir.parent.name}")
+                algorithm_name = "unknown"
+
+            # Build experiment document
+            timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            
+            experiment_data = {
+                "experiment_id": experiment_id,
+                "env_name": params.get("env", "unknown"),
+                "algorithm": algorithm_name,
+                "timestamp": timestamp,
+                "params": params,
+                "results": results,
+                "metrics": metrics,
+                "checkpoints": checkpoints,
+                "status": status,
+                "last_updated": timestamp
+            }
+
+            # Upsert experiment document
+            result = self.experiments_collection.update_one(
+                {"experiment_id": experiment_id},
+                {"$set": experiment_data},
+                upsert=True
+            )
+            
+            if result.upserted_id:
+                print(f"[WargameTuneCallback] Experiment {experiment_id} ingested successfully.")
+            else:
+                print(f"[WargameTuneCallback] Experiment {experiment_id} updated in database.")
+        
+        except Exception as e:
+            print(f"[WargameTuneCallback] Error during experiment ingestion: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def on_experiment_end(self, trials: List[Any], **info) -> None:
+        """Called when experiment ends (completion, interruption, or error)."""
+        self._ensure_mongodb_connection()
+        
+        if not self.enable_mongo or self.experiments_collection is None:
+            return
+        
+        print(f"[WargameTuneCallback] Processing {len(trials)} trial(s)")
+        
+        for trial in trials:
+            # Determine status based on trial state
+            if trial.status == "TERMINATED":
+                status = "complete"
+            elif trial.status == "ERROR":
+                status = "error"
+            else:
+                status = "interrupted"
+            
+            self._process_trial_data(trial, status=status)
 
 
 class SaveVecNormalizeCallback(CheckpointCallback):
@@ -145,231 +353,3 @@ class SaveVecNormalizeCallback(CheckpointCallback):
                     print(f"Saved VecNormalize to {vec_normalize_path}")
 
         return result
-    
-
-class WargameCallback(DefaultCallbacks, MongoDBMixin):
-    """RLlib callback for per-iteration MongoDB logging.
-    
-    - Logs metrics per iteration to runs collection
-    - Checkpoints are captured by WargameCheckpointCallback (no directory crawling)
-    """
-
-    def __init__(self, results_dir: str = "/ray_results") -> None:
-        super().__init__()
-        self.results_dir: str = results_dir
-        self._mongodb_initialized: bool = False
-    
-    def on_train_result(self, *, algorithm: Any, result: Dict[str, Any], **kwargs) -> None:
-        """Store minimal metrics snapshot per iteration."""
-        self._ensure_mongodb_connection()
-        
-        if not self.enable_mongo or self.runs_collection is None:
-            return
-        
-        try:
-            experiment_id = self._get_experiment_id(algorithm=algorithm)
-            env_runners = result.get("env_runners", {})
-            
-            metrics_entry = {
-                "iteration": result.get("training_iteration", 0),
-                "reward_mean": env_runners.get("episode_return_mean"),
-                "agent_rewards": env_runners.get("agent_episode_returns_mean", {}),
-                "env_steps": result.get("num_env_steps_sampled_lifetime", 0),
-                "wall_time_s": result.get("time_total_s", 0.0),
-                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
-            }
-
-            self.runs_collection.update_one(
-                {"experiment_id": experiment_id},
-                {
-                    "$push": {"metrics_history": metrics_entry},
-                    "$set": {"last_updated": datetime.datetime.now(datetime.timezone.utc).isoformat()}
-                },
-                upsert=True
-            )
-        except Exception as e:
-            print(f"[WargameCallback] Error during on_train_result: {e}")
-
-
-class WargameCheckpointCallback(tune.Callback, MongoDBMixin):
-    """Ray Tune callback for checkpoint lifecycle event logging.
-    
-    Hooks into Tune's on_checkpoint event to capture checkpoint metadata
-    This approach:
-    - Works across any Ray deployment (local, SLURM, air-gapped, cloud)
-    - Uses Ray's documented lifecycle hooks
-    - Captures checkpoints as they're created, not discovered after the fact
-    - No filesystem layout assumptions
-    """
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._mongodb_initialized: bool = False
-
-    def on_checkpoint(
-        self,
-        iteration: int,
-        trials: List[Any],
-        trial: Any,
-        checkpoint: Checkpoint,
-        **info: Dict[str, Any],
-    ) -> None:
-        """Called when Tune saves a checkpoint for a trial.
-        
-        Args:
-            iteration: Current training iteration
-            trials: List of all trials
-            trial: Trial that saved the checkpoint
-            checkpoint: Ray AIR Checkpoint object
-            **info: Additional info from Tune
-        """
-        self._ensure_mongodb_connection()
-
-        if not self.enable_mongo or self.runs_collection is None:
-            return
-
-        try:
-            # Extract experiment ID using shared utility
-            experiment_id = self._get_experiment_id(trial=trial)
-            
-            # Get checkpoint directory directly from Checkpoint object
-            # checkpoint.path is guaranteed to be populated after RLlib writes the checkpoint
-            # This avoids race conditions with trial metadata and tmp directories
-            ckpt_dir = Path(checkpoint.path)
-
-            ckpt_metadata = {
-                "checkpoint_id": ckpt_dir.name,  # e.g. "checkpoint_000120"
-                "checkpoint_dir": str(ckpt_dir),
-                "trial_id": trial.trial_id,
-                "iteration": iteration,
-                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            }
-
-            # Append checkpoint to runs collection (append-only, no deduplication needed)
-            self.runs_collection.update_one(
-                {"experiment_id": experiment_id},
-                {
-                    "$push": {"checkpoints": ckpt_metadata},
-                    "$set": {"last_updated": ckpt_metadata["timestamp"]},
-                },
-                upsert=True,
-            )
-            
-            print(f"[WargameCheckpointCallback] Logged checkpoint: {ckpt_dir.name} for {experiment_id}")
-        except Exception as e:
-            print(f"[WargameCheckpointCallback] Error during on_checkpoint: {e}")
-            import traceback
-            traceback.print_exc()
-
-
-class WargameTuneCallback(tune.Callback, MongoDBMixin):
-    """Ray Tune callback for final experiment snapshot on trial completion.
-    
-    Triggered when a trial completes (normally or via Ctrl+C).
-    Parses experiment artifacts from ray_results and stores them in experiments collection.
-    """
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._mongodb_initialized: bool = False
-
-    def _process_trial_data(self, trial: Any, status: str = "complete") -> None:
-        """Helper method to process and save trial data to MongoDB."""
-        if not self.enable_mongo or self.experiments_collection is None:
-            return
-        
-        try:
-            # Extract experiment ID and find trial directory using shared utilities
-            experiment_id = self._get_experiment_id(trial=trial)
-            trial_dir = self._find_trial_directory(experiment_id)
-            
-            if not trial_dir or not trial_dir.exists():
-                print(f"[WargameTuneCallback] Trial directory not found for: {experiment_id}")
-                return
-            
-            print(f"[WargameTuneCallback] Processing trial ({status}): {experiment_id}")
-            print(f"[WargameTuneCallback] Trial directory: {trial_dir}")
-
-            # Parameter keys to extract
-            param_keys = ["env", "policies", "_rl_module_spec"]
-
-            # Parse experiment files
-            params = self._load_json(trial_dir / "params.json", keys_to_extract=param_keys)
-            results = self._load_ndjson(trial_dir / "result.json")
-            metrics = self._parse_metrics(trial_dir / "progress.csv")
-            
-            # Get checkpoints from runs collection (single source of truth)
-            # Checkpoints are captured via AIR events during training, not filesystem crawling
-            runs_doc = self.runs_collection.find_one(
-                {"experiment_id": experiment_id},
-                {"_id": 0, "checkpoints": 1}
-            )
-            checkpoints = runs_doc.get("checkpoints", []) if runs_doc else []
-
-            # Extract algorithm name from parent directory
-            try:
-                algorithm_name = trial_dir.parent.name.split("_")[0]
-            except Exception:
-                print(f"[WargameTuneCallback] Unable to extract algorithm name from {trial_dir.parent.name}")
-                algorithm_name = "unknown"
-
-            # Build experiment document
-            experiment_data = {
-                "experiment_id": experiment_id,
-                "env_name": params.get("env", "unknown"),
-                "algorithm": algorithm_name,
-                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                "params": params,
-                "results": results,
-                "metrics": metrics,
-                "checkpoints": checkpoints,
-                "status": status,
-                "last_updated": datetime.datetime.now(datetime.timezone.utc).isoformat()
-            }
-
-            # Upsert experiment document
-            result = self.experiments_collection.update_one(
-                {"experiment_id": experiment_id},
-                {"$set": experiment_data},
-                upsert=True
-            )
-            
-            if result.upserted_id:
-                print(f"[WargameTuneCallback] Experiment {experiment_id} ingested successfully.")
-            else:
-                print(f"[WargameTuneCallback] Experiment {experiment_id} updated in database.")
-        
-        except Exception as e:
-            print(f"[WargameTuneCallback] Error during experiment ingestion: {e}")
-            import traceback
-            traceback.print_exc()
-
-    def on_trial_complete(self, iteration: int, trials: List[Any], trial: Any, **info) -> None:
-        """Called when trial completes successfully."""
-        self._ensure_mongodb_connection()
-        self._process_trial_data(trial, status="complete")
-
-    def on_trial_error(self, iteration: int, trials: List[Any], trial: Any, **info) -> None:
-        """Called when trial errors out."""
-        self._ensure_mongodb_connection()
-        self._process_trial_data(trial, status="error")
-
-    def on_experiment_end(self, trials: List[Any], **info) -> None:
-        """Called when experiment ends (completion, interruption, or error)."""
-        self._ensure_mongodb_connection()
-        
-        if not self.enable_mongo or self.experiments_collection is None:
-            return
-        
-        print(f"[WargameTuneCallback] Processing {len(trials)} trial(s)")
-        
-        for trial in trials:
-            # Determine status based on trial state
-            if trial.status == "TERMINATED":
-                status = "complete"
-            elif trial.status == "ERROR":
-                status = "error"
-            else:
-                status = "interrupted"
-            
-            self._process_trial_data(trial, status=status)
