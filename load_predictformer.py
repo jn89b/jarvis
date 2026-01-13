@@ -3,7 +3,7 @@ import unittest
 import yaml
 import torch
 import matplotlib.pyplot as plt
-import time 
+import time
 from jarvis.transformers.wayformer.dataset import LazyBaseDataset as BaseDataset
 from jarvis.transformers.wayformer.predictformer import PredictFormer
 from torch.utils.data import DataLoader
@@ -14,7 +14,7 @@ from pytorch_lightning import Trainer
 import os
 
 
-plt.close('all')    
+plt.close('all')
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device = "cpu"
@@ -90,8 +90,10 @@ for i, batch in enumerate(dataloader):
     print(f"Time taken for inference: {end_time - start_time}")
     # if i == 2:
     #     break
-    center_gt_trajs.append(batch['input_dict']['center_gt_trajs'].detach().numpy())
-    center_objects_world.append(batch['input_dict']['center_objects_world'].detach().numpy())
+    center_gt_trajs.append(
+        batch['input_dict']['center_gt_trajs'].detach().numpy())
+    center_objects_world.append(
+        batch['input_dict']['center_objects_world'].detach().numpy())
     predicted_traj = output['predicted_trajectory'].detach().numpy()
     center_xyz = batch['input_dict']['center_objects_world'].detach().numpy()
     center_xy = center_xyz.squeeze()[:, start_idx, 0:2]
@@ -104,17 +106,18 @@ for i, batch in enumerate(dataloader):
         heading_index=5
     )
 
-    output['input_obj_trajs'] = batch['input_dict']['obj_trajs'].detach().numpy().squeeze()
+    output['input_obj_trajs'] = batch['input_dict']['obj_trajs'].detach(
+    ).numpy().squeeze()
     output['predicted_ground_traj'] = predicted_traj
     new_output = {}
-    
+
     # convert the output to numpy
     for key, value in output.items():
         if isinstance(value, torch.Tensor):
             new_output[key] = value.detach().numpy()
         else:
             new_output[key] = value
-    
+
     output_history.append(new_output)
     infer_time.append(end_time - start_time)
     if i == 20:
@@ -146,14 +149,15 @@ ground_truth_trajectory: np.array = batch['input_dict']['center_gt_trajs'].squee
 
 ground_truth_world = batch['input_dict']['center_objects_world'].squeeze(
 ).detach().numpy()
-original_pos_past = batch['input_dict']['center_objects_world'].squeeze().detach().numpy()
+original_pos_past = batch['input_dict']['center_objects_world'].squeeze(
+).detach().numpy()
 mask = batch['input_dict']['center_gt_trajs_mask'].unsqueeze(-1)
 
 
 num_agents: int = predicted_probability.shape[0]
 # Let's plot each agent trajectory in a seperate plot and show the gaussian mixture model trajectory of the agent
 for i in range(num_agents):
-    fig, ax = plt.subplots(1, 1, figsize=(10,10))
+    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
     # this becomes [num_modes, num_timesteps, num_attributes]
     agent_traj: np.array = predicted_trajectory[i]
     agent_probability: np.array = predicted_probability[i]
@@ -171,16 +175,16 @@ for i in range(num_agents):
     ax.set_title(
         f"Agent {i} Trajectory Highest Probability Mode {highest_probabilty_index}")
     ax.legend()
-    
-fig, ax = plt.subplots(1, 1, figsize=(10,10))
-heading_idx:int = 5
+
+fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+heading_idx: int = 5
 # transpose this to ground truth trajectory [num_agents, num_timesteps, num_attributes]
 for i in range(num_agents):
     x = original_pos_past[i, :, 0]
     y = original_pos_past[i, :, 1]
     x_start = x[start_idx]
     y_start = y[start_idx]
-    ax.plot(x, y, label="Ground Truth " + str(i))    
+    ax.plot(x, y, label="Ground Truth " + str(i))
     agent_traj = predicted_traj[i]
     current_heading = original_pos_past[i, start_idx, heading_idx]
     print("current heading", np.rad2deg(current_heading))
@@ -213,7 +217,7 @@ for i in range(num_agents):
     x_start = x[start_idx]
     y_start = y[start_idx]
     z_start = z[start_idx]
-    
+
     agent_traj = predicted_traj[i]
     current_heading = original_pos_past[i, start_idx, heading_idx]
     current_position = original_pos_past[i, start_idx, :2]
@@ -232,13 +236,13 @@ for i in range(num_agents):
         z = z_start + agent_traj[j, :, 2]
         # x = transformed_traj[j, :, 0]
         # y = transformed_traj[j, :, 1]
-            
+
         ax.scatter(
             x, y, z, label=f"Mode {j} for agent {i} ")
 
     ax.scatter(x_start, y_start, z_start, label="Start " + str(i))
     ax.legend()
-    
-#%%
+
+# %%
 
 plt.show()
