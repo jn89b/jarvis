@@ -1,4 +1,4 @@
-from typing import Dict, Any, List,Tuple
+from typing import Dict, Any, List, Tuple
 from omegaconf import OmegaConf
 import os
 import pickle
@@ -27,7 +27,7 @@ VELOCITY_IDX = 6
 def rotate_points_along_z(points, angles):
     """
     Rotate points along the Z-axis using a 2D rotation matrix for each center object and timestep.
-    
+
     Args:
         points (np.ndarray): Shape (B, N, T, 2), where
             B = number of center objects,
@@ -35,7 +35,7 @@ def rotate_points_along_z(points, angles):
             T = number of timesteps.
         angles (np.ndarray): Shape (B, T) containing rotation angles in radians 
                              (e.g. -center_heading per center per timestep).
-                             
+
     Returns:
         np.ndarray: Rotated points with shape (B, N, T, 2).
     """
@@ -54,7 +54,7 @@ def rotate_points_along_z(points, angles):
     # For each center (B) and each timestep (T), rotate each object's 2D point.
     rotated_points = np.einsum('b t i j, b n t j -> b n t i', R, points)
     return rotated_points
-    
+
 
 def generate_mask(current_index: int, total_length: int, interval: int) -> np.array:
     mask = []
@@ -82,7 +82,7 @@ class BaseDataset(Dataset):
             self.data_path = config['test_data_path']
         elif is_validation:
             self.data_path = config['val_data_path']
-        else:             
+        else:
             self.data_path: str = config['train_data_path']
 
         self.config = config
@@ -459,7 +459,7 @@ class BaseDataset(Dataset):
                 obj_trajs_future: np.array = obj_trajs_full[:,
                                                             self.past_len:, :]
                 ego_traj_overall: np.array = obj_trajs_full[idx_to_track, :, :]
-            
+
                 # # this is basically the ego agent
                 # processed_traj['center_objects'] = ego_traj_overall
 
@@ -730,9 +730,9 @@ class BaseDataset(Dataset):
 
 
 class LazyBaseDataset(Dataset):
-    def __init__(self, config: Dict[str, Any], 
-                 is_test:bool = False,
-                 is_validation: bool = False, 
+    def __init__(self, config: Dict[str, Any],
+                 is_test: bool = False,
+                 is_validation: bool = False,
                  num_samples: int = None):
         """
         Initializes the dataset in lazy mode.
@@ -742,48 +742,51 @@ class LazyBaseDataset(Dataset):
         self.is_validation = is_validation
         self.config = config
         # Determine the data directory based on whether we're validating or training.
-        #self.data_path = config['val_data_path'] if is_validation else config['train_data_path']
+        # self.data_path = config['val_data_path'] if is_validation else config['train_data_path']
         if is_test:
             print("Loading test data")
             self.data_path = config['test_data_path']
         elif is_validation:
             self.data_path = config['val_data_path']
-        else:             
+        else:
             self.data_path: str = config['train_data_path']
 
-        
         # List all JSON files.
-        self.json_files: List[str] = glob.glob(os.path.join(self.data_path, "*.json"))
+        self.json_files: List[str] = glob.glob(
+            os.path.join(self.data_path, "*.json"))
         if num_samples is not None:
             self.json_files = self.json_files[:num_samples]
-            
+
         self.past_len = config['past_len']
         self.future_len = config['future_len']
         # Step size for sliding window segmentation (default: 1).
         self.step_size = config.get('step_size', 1)
-        
+
         # Build an index mapping from global segment index to a tuple (file_index, local_segment_index)
         self.index_map: List[Tuple[int, int]] = []
         for file_idx, file_path in enumerate(self.json_files):
             # Open each file and count the timesteps.
             with open(file_path, 'r') as f:
                 sim_data = json.load(f)
-            total_steps = len(sim_data)  # Assuming sim_data is a list of timesteps.
+            # Assuming sim_data is a list of timesteps.
+            total_steps = len(sim_data)
             total_len = self.past_len + self.future_len
 
             # Determine how many segments can be extracted.
             # The segmentation loop will run from start_idx = total_len to (len(sim_data) - total_len)
-            #num_segments = max(0, (total_steps - 2 * total_len + self.step_size) // self.step_size)
-            num_segments = self.compute_num_segments(total_steps, total_len, self.step_size)
+            # num_segments = max(0, (total_steps - 2 * total_len + self.step_size) // self.step_size)
+            num_segments = self.compute_num_segments(
+                total_steps, total_len, self.step_size)
             for local_seg_idx in range(num_segments):
                 self.index_map.append((file_idx, local_seg_idx))
-                
-        print(f"Initialized dataset with {len(self.index_map)} segments across {len(self.json_files)} files.")
+
+        print(
+            f"Initialized dataset with {len(self.index_map)} segments across {len(self.json_files)} files.")
 
     def __len__(self):
         # The length is now the total number of segments.
         return len(self.index_map)
-    
+
     def __getitem__(self, global_index: int) -> Dict[str, Any]:
         """
         Maps the global segment index to the appropriate JSON file and local segment index.
@@ -791,19 +794,18 @@ class LazyBaseDataset(Dataset):
         """
         if global_index >= len(self.index_map):
             raise IndexError(f"Index {global_index} out of bounds.")
-        
+
         file_idx, local_seg_idx = self.index_map[global_index]
         file_path = self.json_files[file_idx]
         # Load and process the file (all segments) on demand.
         segments = self.load_and_process_file(file_path)
         # Return the segment corresponding to the local index.
-         
+
         return segments[local_seg_idx]
 
     def compute_num_segments(self, total_steps: int, total_len: int, step_size: int) -> int:
         # This uses the same range logic as in load_and_process_file.
         return len(range(total_len, total_steps - total_len + 1, step_size))
-
 
     def load_and_process_file(self, file_path: str) -> List[Dict[str, Any]]:
         """
@@ -812,29 +814,31 @@ class LazyBaseDataset(Dataset):
         """
         with open(file_path, 'r') as f:
             sim_data: List[Dict[str, Any]] = json.load(f)
-        
+
         # Build raw arrays from the JSON.
         overall_ego_position: List[List[float]] = []
         overall_controls: List[List[float]] = []
         overall_timestamps: List[float] = []
         num_other_vehicles: int = len(sim_data[0]['vehicles'])
-        overall_pursuer_positions: List[List[Any]] = [[] for _ in range(num_other_vehicles)]
-        
+        overall_pursuer_positions: List[List[Any]] = [
+            [] for _ in range(num_other_vehicles)]
+
         for current_info in sim_data:
             overall_ego_position.append(current_info['ego'])
             overall_controls.append(current_info['controls'])
             overall_timestamps.append(current_info['time_step'])
             for j, pursuer_info in enumerate(current_info['vehicles']):
                 overall_pursuer_positions[j].append(pursuer_info)
-                
+
         overall_ego_position = np.array(overall_ego_position)
         overall_controls = np.array(overall_controls)
         for i, veh in enumerate(overall_pursuer_positions):
             overall_pursuer_positions[i] = np.array(veh)
         overall_pursuer_positions = np.stack(overall_pursuer_positions)
         # Combine ego and pursuer trajectories into one array.
-        overall_traj: np.array = np.vstack([overall_ego_position[np.newaxis, ...], overall_pursuer_positions])
-        
+        overall_traj: np.array = np.vstack(
+            [overall_ego_position[np.newaxis, ...], overall_pursuer_positions])
+
         # Segment the trajectory into overlapping chunks.
         total_len = self.past_len + self.future_len
         segments: List[Dict[str, Any]] = []
@@ -843,12 +847,13 @@ class LazyBaseDataset(Dataset):
         # for start_idx in range(total_len, len(sim_data) - total_len, self.step_size):
         for start_idx in range(total_len, len(sim_data) - total_len + 1, self.step_size):
             segment = overall_traj[:, start_idx - total_len:start_idx, :]
-            processed_segment = self.process_segment(segment, overall_timestamps[start_idx:start_idx + total_len], idx_counter)
+            processed_segment = self.process_segment(
+                segment, overall_timestamps[start_idx:start_idx + total_len], idx_counter)
             segments.append(processed_segment)
             idx_counter += 1
         return segments
 
-    def process_segment(self, segment: np.array, 
+    def process_segment(self, segment: np.array,
                         timestamps: List[float], idx: int) -> Dict[str, Any]:
         """
         Processes a single segment.
@@ -858,7 +863,7 @@ class LazyBaseDataset(Dataset):
         # Convert heading (at HEADING_IDX) from degrees to radians.
         # segment[:, :, HEADING_IDX] = np.deg2rad(segment[:, :, HEADING_IDX])
         assert segment.ndim == 3
-        ego_idx:int = 0        
+        ego_idx: int = 0
         tracks_to_predict: Dict[str, Any] = {
             'track_index': [],
             'object_type': []
@@ -875,16 +880,16 @@ class LazyBaseDataset(Dataset):
             'segment_data': segment,
             # Add any additional keys for further processed outputs.
         }
-        
+
         num_ego: int = 1
-        total_agents:int = num_pursuers + num_ego
+        total_agents: int = num_pursuers + num_ego
         for i in range(total_agents):
             tracks_to_predict['track_index'].append(i)
             tracks_to_predict['object_type'].append(VEHICLE)
-            processed['object_type'].append(VEHICLE)            
+            processed['object_type'].append(VEHICLE)
 
         processed['tracks_to_predict'] = tracks_to_predict
-                
+
         return processed
 
     def transform_trajs_to_center_coords(self, obj_trajs,
@@ -910,24 +915,10 @@ class LazyBaseDataset(Dataset):
             obj_trajs[None, :, :, :], (num_center_objects, 1, 1, 1))
         obj_trajs[:, :, :, 0:center_xyz.shape[1]
                   ] -= center_xyz[:, None, None, :]
-        
-        # For the x-y positions (first 2 coordinates), apply rotation using per-timestep heading.
-        # points_xy shape: (B, num_objects, T, 2)
-        # points_xy = obj_trajs[:, :, :, 0:2]
-        # Rotate points using -center_heading (to align the center with zero heading).
-        # rotated_xy = rotate_points_along_z(points_xy, -center_heading)
-        # obj_trajs[:, :, :, 0:2] = rotated_xy
-        # plot the trajectories
 
-        
-        # obj_trajs[:, :, :, 0:2] = rotate_points_along_z(
-        #     points=obj_trajs[:, :, :, 0:2].reshape(num_center_objects, -1, 2),
-        #     angle=-center_heading
-        # ).reshape(num_center_objects, num_objects, num_timestamps, 2)
-        
         # # Assuming `heading_index` is the index of the heading feature.
         obj_trajs[:, :, :, heading_index] -= center_heading[:, None, :]
-        
+
         return obj_trajs
 
     def get_agent_data(
@@ -945,7 +936,7 @@ class LazyBaseDataset(Dataset):
         center_objects = obj_trajs_past
         num_center_objects = center_objects.shape[0]
         num_objects, num_timestamps, num_attributes = obj_trajs_past.shape
-        
+
         obj_trajs = self.transform_trajs_to_center_coords(
             obj_trajs=obj_trajs_past,
             center_xyz=center_objects[:, 0, 0:3],
@@ -953,8 +944,9 @@ class LazyBaseDataset(Dataset):
             heading_index=HEADING_IDX, rot_vel_index=[7, 8]
         )
         obj_types = obj_types[0]
+        shape_of_mask: int = 5  # vehicle
         object_onehot_mask = np.zeros(
-            (num_center_objects, num_objects, num_timestamps, 5))
+            (num_center_objects, num_objects, num_timestamps, shape_of_mask))
         object_onehot_mask[:, obj_types == 1, :, 0] = 1
         object_onehot_mask[:, obj_types == 2, :, 1] = 1
         object_onehot_mask[:, obj_types == 3, :, 2] = 1
@@ -1005,7 +997,7 @@ class LazyBaseDataset(Dataset):
             center_heading=center_objects[:, :, HEADING_IDX],
             heading_index=HEADING_IDX, rot_vel_index=[7, 8]
         )
-        obj_trajs_future_test = obj_trajs_future[0,:,:,:]
+        obj_trajs_future_test = obj_trajs_future[0, :, :, :]
         # fig, ax = plt.subplots()
         # # plot the 2d trajectories
         # for i in range(obj_trajs_future.shape[0]):
@@ -1094,7 +1086,7 @@ class LazyBaseDataset(Dataset):
                 center_gt_final_valid_idx,
                 track_index_to_predict_new)
 
-    def process(self, sim_data: Dict[str,Any]) -> Dict[str,Any]:
+    def process(self, sim_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Process the data in internal format and return the processed data.
         """
@@ -1109,27 +1101,28 @@ class LazyBaseDataset(Dataset):
         obj_trajs_past: np.array = obj_trajs_full[:, :self.past_len, :]
         obj_trajs_future: np.array = obj_trajs_full[:,
                                                     self.past_len:, :]
-        
+
         track_idx_to_predict = [i for i in range(len(obj_trajs_full))]
         center_objects = obj_trajs_full
         original_pos_past: np.array = obj_trajs_past.copy()
-        
+
         # ========================== NOISE INJECTION ==========================
 
-        ## 1. Measurement Noise (Sensor Errors)
+        # 1. Measurement Noise (Sensor Errors)
         # Gaussian position noise (simulating GPS or LIDAR errors)
-        position_noise:float = 0.1
-        obj_trajs_past[:, :, 0:2] += np.random.normal(0, position_noise, obj_trajs_past[:, :, 0:2].shape)  # (Mean 0, Std 0.1m)
-    
+        position_noise: float = 0.1
+        obj_trajs_past[:, :, 0:2] += np.random.normal(
+            0, position_noise, obj_trajs_past[:, :, 0:2].shape)  # (Mean 0, Std 0.1m)
+
         # Multiplicative noise (simulating sensor drift)
-        obj_trajs_past[:, :, 0:2] *= np.random.normal(1, 
-                                                      0.001, 
+        obj_trajs_past[:, :, 0:2] *= np.random.normal(1,
+                                                      0.001,
                                                       obj_trajs_past[:, :, 0:2].shape)  # 2% variation
 
         # Heading noise (simulating IMU/Gyro errors)
         # obj_trajs_past[:, :, HEADING_IDX] += np.random.normal(0, np.deg2rad(1), obj_trajs_past[:, :, HEADING_IDX].shape)  # 2-degree noise
 
-        ## 2. Process Noise (Motion Model Uncertainty)
+        # 2. Process Noise (Motion Model Uncertainty)
         # Random walk noise (simulating object drift over time)
         # drift = np.cumsum(np.random.normal(0, 0.05, obj_trajs_past[:, :, 0:2].shape), axis=1)  # Accumulate small movements
         # obj_trajs_past[:, :, 0:2] += drift
@@ -1138,12 +1131,11 @@ class LazyBaseDataset(Dataset):
         # velocity_noise = np.random.normal(0, 0.2, obj_trajs_past[:, :, VELOCITY_IDX].shape)  # Velocity in (x, y)
         # obj_trajs_past[:, :, VELOCITY_IDX] += velocity_noise
 
-        
-        (obj_trajs_data, obj_trajs_mask, 
-        obj_trajs_pos, obj_trajs_last_pos, 
-        obj_trajs_future_state,
-        obj_trajs_future_mask, center_gt_trajs,
-        center_gt_trajs_mask, center_gt_final_valid_idx,
+        (obj_trajs_data, obj_trajs_mask,
+         obj_trajs_pos, obj_trajs_last_pos,
+         obj_trajs_future_state,
+         obj_trajs_future_mask, center_gt_trajs,
+         center_gt_trajs_mask, center_gt_final_valid_idx,
             track_index_to_predict_new) = self.get_agent_data(
             center_objects=center_objects,
             obj_trajs_past=obj_trajs_past,
@@ -1152,7 +1144,7 @@ class LazyBaseDataset(Dataset):
             sdc_track_index=idx_to_track,
             timestamps=timestamp, obj_types=obj_types
         )
-                    
+
         ret: Dict[str, Any] = {
             # 'scenario_id': np.array([scene_id] * len(track_index_to_predict)),
             'obj_trajs': obj_trajs_data,
@@ -1175,7 +1167,7 @@ class LazyBaseDataset(Dataset):
             'center_gt_trajs_src': obj_trajs_full[track_idx_to_predict],
             'original_pos_past': original_pos_past,
         }
-        
+
         return ret
 
     def collate_fn(self, data_list: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1184,28 +1176,29 @@ class LazyBaseDataset(Dataset):
         This example stacks the segment_data from each sample.
         """
         processed_data: List[Dict[str, Any]] = []
-        processed_data:List[Dict[str,Any]] = [self.process(sample) for sample in data_list]
+        processed_data: List[Dict[str, Any]] = [
+            self.process(sample) for sample in data_list]
         input_dict = {}
         for key in processed_data[0].keys():
-            input_dict[key] = torch.from_numpy(np.stack([sample[key] for sample in processed_data]))
-            
+            input_dict[key] = torch.from_numpy(
+                np.stack([sample[key] for sample in processed_data]))
+
         input_dict['center_objects_type'] = input_dict['center_objects_type'].numpy()
-        
+
         batch_list = []
         for batch in data_list:
             batch_list += batch
-            
+
         batch_size = len(batch_list)
-        
+
         batch_dict = {
             'batch_size': batch_size,
             'input_dict': input_dict,
             'batch_sample_count': batch_size
         }
-        
+
         return batch_dict
-    
-    
+
     def infer_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Process the data in internal format and return the processed data.
@@ -1248,15 +1241,14 @@ class LazyBaseDataset(Dataset):
             ]
         }
         """
-        
+
         return self.process(data)
 
-
-    def transform_with_current_heading(self, 
-                                    pred_traj: np.array, 
-                                    current_heading: float, 
-                                    current_position: np.array, 
-                                    heading_index: int):
+    def transform_with_current_heading(self,
+                                       pred_traj: np.array,
+                                       current_heading: float,
+                                       current_position: np.array,
+                                       heading_index: int):
         """
         Transforms a predicted trajectory from the local frame back to the global frame 
         using the current ground truth heading and position.
@@ -1268,21 +1260,21 @@ class LazyBaseDataset(Dataset):
             current_heading (float): The current ground truth heading (in radians).
             current_position (np.ndarray): The current ground truth position (e.g. [x, y]).
             heading_index (int): The index of the heading feature in pred_traj.
-            
+
         Returns:
             np.ndarray: The transformed (global) trajectory with the same shape as pred_traj.
         """
         # Compute cosine and sine of the current heading.
         c = np.cos(current_heading)
         s = np.sin(current_heading)
-        
+
         # Option 1: Standard rotation matrix for +current_heading.
         R1 = np.array([[c, -s],
-                    [s,  c]])
+                       [s,  c]])
         # Option 2: Alternative rotation matrix to correct flipping.
         R2 = np.array([[c,  s],
-                    [-s, c]])
-        
+                       [-s, c]])
+
         # Choose the matrix that gives correct orientation.
         # If your trajectories appear flipped, try using R2.
         R = R1
@@ -1290,29 +1282,29 @@ class LazyBaseDataset(Dataset):
         # Extract local x,y coordinates (assumed to be in the first two columns).
         # pred_traj shape: [num_modes, T, num_attrs]
         local_xy = pred_traj[:, :, 0:2]
-        
+
         # Rotate the local x,y coordinates by +current_heading.
         # Using np.einsum to multiply R with each [x, y] pair.
         rotated_xy = np.einsum('ij,mti->mtj', R, local_xy)
-        
+
         # Translate by adding the current global position.
-        global_xy = rotated_xy + current_position  # current_position should be shape [2]
-        
+        # current_position should be shape [2]
+        global_xy = rotated_xy + current_position
+
         # Create a copy to avoid modifying the input.
         global_traj = pred_traj.copy()
         global_traj[:, :, 0:2] = global_xy
-        
+
         # Adjust the heading feature: add the current heading back.
         global_traj[:, :, heading_index] += current_heading
-        
+
         # Wrap the heading into the interval [-pi, pi]
-        #global_traj[:, :, heading_index] = (global_traj[:, :, heading_index] + np.pi) % (2 * np.pi) - np.pi
-        
+        # global_traj[:, :, heading_index] = (global_traj[:, :, heading_index] + np.pi) % (2 * np.pi) - np.pi
+
         return global_traj
 
-    
     def inverse_transform_trajs_from_center_coords(
-        self, obj_trajs_center, center_xyz, center_heading, heading_index, rot_vel_index=None):
+            self, obj_trajs_center, center_xyz, center_heading, heading_index, rot_vel_index=None):
         """
         Inverse transforms trajectories from center (ego-centric) coordinates back to global coordinates.
         This reverses the transformation applied in transform_trajs_to_center_coords.
@@ -1336,12 +1328,13 @@ class LazyBaseDataset(Dataset):
 
         # --- Inverse Rotation for x,y positions ---
         # Extract the x,y coordinates.
-        points_xy = obj_trajs_center[:, :, :, 0:2]  # shape: (B, num_objects, T, 2)
+        # shape: (B, num_objects, T, 2)
+        points_xy = obj_trajs_center[:, :, :, 0:2]
         # If center_heading is given per agent (shape (B,)), expand it to per-timestep:
         if center_heading.ndim == 1:
             # Create a (B, T) array where each row is the same heading.
             center_heading = np.tile(center_heading[:, None], (1, T))
-        
+
         # Build inverse rotation matrices for each center and timestep.
         # Since the original transform rotated by -center_heading, we now rotate by +center_heading.
         cos_vals = np.cos(center_heading)  # shape: (B, T)
@@ -1358,7 +1351,7 @@ class LazyBaseDataset(Dataset):
         # --- Inverse Translation for x,y positions ---
         # Add back the center position.
         # Expand center_xyz from (B, D) to (B, 1, 1, D) for broadcasting.
-        global_xy = rotated_xy #+ center_xyz[:, None, None, 0:2]
+        global_xy = rotated_xy  # + center_xyz[:, None, None, 0:2]
 
         # Prepare output by copying the input trajectories.
         global_trajs = obj_trajs_center.copy()
@@ -1374,20 +1367,20 @@ class LazyBaseDataset(Dataset):
         # global_trajs[:, :, :, heading_index] = (global_trajs[:, :, :, heading_index] + np.pi) % (2 * np.pi) - np.pi
         # --- Optional: Inverse Rotation for Other Vector Attributes ---
         if rot_vel_index is not None:
-            vel = global_trajs[:, :, :, rot_vel_index]  # shape: (B, num_objects, T, len(rot_vel_index))
+            # shape: (B, num_objects, T, len(rot_vel_index))
+            vel = global_trajs[:, :, :, rot_vel_index]
             rotated_vel = np.einsum('b t i j, b n t j -> b n t i', R_inv, vel)
             global_trajs[:, :, :, rot_vel_index] = rotated_vel
 
         return global_trajs
-    
 
-    def rotate_predicted_trajs_by_heading(self, pred_trajs, heading_index, x_y_indices=(0,1)):
+    def rotate_predicted_trajs_by_heading(self, pred_trajs, heading_index, x_y_indices=(0, 1)):
         """
         Rotates the (x,y) coordinates of predicted trajectories using their own predicted heading.
-        
+
         This function is similar in structure to your inverse_transform_trajs_from_center_coords,
         but here the rotation angle is taken from the predicted heading in the trajectories themselves.
-        
+
         Args:
             pred_trajs (np.ndarray): Predicted trajectories of shape (B, M, T, F)
                 where B = number of agents,
@@ -1396,7 +1389,7 @@ class LazyBaseDataset(Dataset):
                     F = number of features.
             heading_index (int): Index of the predicted heading within the feature dimension.
             x_y_indices (tuple): Tuple of indices for the x and y coordinates (default (0,1)).
-            
+
         Returns:
             np.ndarray: Predicted trajectories with rotated (x,y) coordinates.
         """
@@ -1407,14 +1400,14 @@ class LazyBaseDataset(Dataset):
         points_xy = pred_trajs[..., x_y_indices[0]:x_y_indices[1]+1]
         # Predicted heading for each agent, mode, and timestep: shape (B, M, T)
         pred_heading = pred_trajs[..., heading_index]
-        
+
         # --- Build rotation matrices for each agent, mode, and timestep ---
         # Standard rotation matrix for an angle h (counterclockwise):
         # R(h) = [ cos(h)  -sin(h) ]
         #        [ sin(h)   cos(h) ]
         cos_vals = np.cos(pred_heading)  # shape: (B, M, T)
         sin_vals = np.sin(pred_heading)  # shape: (B, M, T)
-        
+
         # Build a rotation matrix R for each (B, M, T)
         R = np.empty((B, M, T, 2, 2), dtype=pred_trajs.dtype)
         R[..., 0, 0] = cos_vals
@@ -1426,19 +1419,19 @@ class LazyBaseDataset(Dataset):
         # Use np.einsum to multiply the rotation matrix with the (x,y) vectors:
         # The result is rotated_xy with shape (B, M, T, 2).
         rotated_xy = np.einsum('bmtij,bmtj->bmt i', R, points_xy)
-        
+
         # --- Create the output ---
         # Make a copy of the predicted trajectories and replace the (x,y) coordinates.
         rotated_trajs = pred_trajs.copy()
         rotated_trajs[..., x_y_indices[0]:x_y_indices[1]+1] = rotated_xy
 
         return rotated_trajs
-    
-    
+
+
 class LSTMDataset(Dataset):
-    def __init__(self, config: Dict[str, Any], 
-                 is_test:bool = False,
-                 is_validation: bool = False, 
+    def __init__(self, config: Dict[str, Any],
+                 is_test: bool = False,
+                 is_validation: bool = False,
                  num_samples: int = None):
         """
         Initializes the dataset in lazy mode.
@@ -1448,48 +1441,51 @@ class LSTMDataset(Dataset):
         self.is_validation = is_validation
         self.config = config
         # Determine the data directory based on whether we're validating or training.
-        #self.data_path = config['val_data_path'] if is_validation else config['train_data_path']
+        # self.data_path = config['val_data_path'] if is_validation else config['train_data_path']
         if is_test:
             print("Loading test data")
             self.data_path = config['test_data_path']
         elif is_validation:
             self.data_path = config['val_data_path']
-        else:             
+        else:
             self.data_path: str = config['train_data_path']
 
-        
         # List all JSON files.
-        self.json_files: List[str] = glob.glob(os.path.join(self.data_path, "*.json"))
+        self.json_files: List[str] = glob.glob(
+            os.path.join(self.data_path, "*.json"))
         if num_samples is not None:
             self.json_files = self.json_files[:num_samples]
-            
+
         self.past_len = config['past_len']
         self.future_len = config['future_len']
         # Step size for sliding window segmentation (default: 1).
         self.step_size = config.get('step_size', 1)
-        
+
         # Build an index mapping from global segment index to a tuple (file_index, local_segment_index)
         self.index_map: List[Tuple[int, int]] = []
         for file_idx, file_path in enumerate(self.json_files):
             # Open each file and count the timesteps.
             with open(file_path, 'r') as f:
                 sim_data = json.load(f)
-            total_steps = len(sim_data)  # Assuming sim_data is a list of timesteps.
+            # Assuming sim_data is a list of timesteps.
+            total_steps = len(sim_data)
             total_len = self.past_len + self.future_len
 
             # Determine how many segments can be extracted.
             # The segmentation loop will run from start_idx = total_len to (len(sim_data) - total_len)
-            #num_segments = max(0, (total_steps - 2 * total_len + self.step_size) // self.step_size)
-            num_segments = self.compute_num_segments(total_steps, total_len, self.step_size)
+            # num_segments = max(0, (total_steps - 2 * total_len + self.step_size) // self.step_size)
+            num_segments = self.compute_num_segments(
+                total_steps, total_len, self.step_size)
             for local_seg_idx in range(num_segments):
                 self.index_map.append((file_idx, local_seg_idx))
-                
-        print(f"Initialized dataset with {len(self.index_map)} segments across {len(self.json_files)} files.")
+
+        print(
+            f"Initialized dataset with {len(self.index_map)} segments across {len(self.json_files)} files.")
 
     def __len__(self):
         # The length is now the total number of segments.
         return len(self.index_map)
-    
+
     def __getitem__(self, global_index: int) -> Dict[str, Any]:
         """
         Maps the global segment index to the appropriate JSON file and local segment index.
@@ -1497,13 +1493,13 @@ class LSTMDataset(Dataset):
         """
         if global_index >= len(self.index_map):
             raise IndexError(f"Index {global_index} out of bounds.")
-        
+
         file_idx, local_seg_idx = self.index_map[global_index]
         file_path = self.json_files[file_idx]
         # Load and process the file (all segments) on demand.
         segments = self.load_and_process_file(file_path)
         # Return the segment corresponding to the local index.
-         
+
         return segments[local_seg_idx]
 
     def compute_num_segments(self, total_steps: int, total_len: int, step_size: int) -> int:
@@ -1517,29 +1513,31 @@ class LSTMDataset(Dataset):
         """
         with open(file_path, 'r') as f:
             sim_data: List[Dict[str, Any]] = json.load(f)
-        
+
         # Build raw arrays from the JSON.
         overall_ego_position: List[List[float]] = []
         overall_controls: List[List[float]] = []
         overall_timestamps: List[float] = []
         num_other_vehicles: int = len(sim_data[0]['vehicles'])
-        overall_pursuer_positions: List[List[Any]] = [[] for _ in range(num_other_vehicles)]
-        
+        overall_pursuer_positions: List[List[Any]] = [
+            [] for _ in range(num_other_vehicles)]
+
         for current_info in sim_data:
             overall_ego_position.append(current_info['ego'])
             overall_controls.append(current_info['controls'])
             overall_timestamps.append(current_info['time_step'])
             for j, pursuer_info in enumerate(current_info['vehicles']):
                 overall_pursuer_positions[j].append(pursuer_info)
-                
+
         overall_ego_position = np.array(overall_ego_position)
         overall_controls = np.array(overall_controls)
         for i, veh in enumerate(overall_pursuer_positions):
             overall_pursuer_positions[i] = np.array(veh)
         overall_pursuer_positions = np.stack(overall_pursuer_positions)
         # Combine ego and pursuer trajectories into one array.
-        overall_traj: np.array = np.vstack([overall_ego_position[np.newaxis, ...], overall_pursuer_positions])
-        
+        overall_traj: np.array = np.vstack(
+            [overall_ego_position[np.newaxis, ...], overall_pursuer_positions])
+
         # Segment the trajectory into overlapping chunks.
         total_len = self.past_len + self.future_len
         segments: List[Dict[str, Any]] = []
@@ -1548,11 +1546,12 @@ class LSTMDataset(Dataset):
         # for start_idx in range(total_len, len(sim_data) - total_len, self.step_size):
         for start_idx in range(total_len, len(sim_data) - total_len + 1, self.step_size):
             segment = overall_traj[:, start_idx - total_len:start_idx, :]
-            processed_segment = self.process_segment(segment, overall_timestamps[start_idx:start_idx + total_len], idx_counter)
+            processed_segment = self.process_segment(
+                segment, overall_timestamps[start_idx:start_idx + total_len], idx_counter)
             segments.append(processed_segment)
             idx_counter += 1
         return segments
-    
+
     def process_segment(self, segment: np.array, timestamps: List[float], idx: int) -> Dict[str, Any]:
         """
         Processes a single segment.
@@ -1562,7 +1561,7 @@ class LSTMDataset(Dataset):
         # Convert heading (at HEADING_IDX) from degrees to radians.
         # segment[:, :, HEADING_IDX] = np.deg2rad(segment[:, :, HEADING_IDX])
         assert segment.ndim == 3
-        ego_idx:int = 0        
+        ego_idx: int = 0
         tracks_to_predict: Dict[str, Any] = {
             'track_index': [],
             'object_type': []
@@ -1579,40 +1578,40 @@ class LSTMDataset(Dataset):
             'segment_data': segment,
             # Add any additional keys for further processed outputs.
         }
-        
+
         num_ego: int = 1
-        total_agents:int = num_pursuers + num_ego
+        total_agents: int = num_pursuers + num_ego
         for i in range(total_agents):
             tracks_to_predict['track_index'].append(i)
             tracks_to_predict['object_type'].append(VEHICLE)
-            processed['object_type'].append(VEHICLE)        
+            processed['object_type'].append(VEHICLE)
 
         processed['tracks_to_predict'] = tracks_to_predict
-                
+
         return processed
-    
+
     def transform_trajs_to_center_coords(
-        self, obj_trajs: np.array, 
-        center_xyz: np.array, 
-        center_heading: np.array, 
-        heading_index: int, rot_vel_index=None):
+            self, obj_trajs: np.array,
+            center_xyz: np.array,
+            center_heading: np.array,
+            heading_index: int, rot_vel_index=None):
         """
         Transforms trajectories from global coordinates to 
         center (ego-centric) coordinates.
         """
         num_center_objects = center_xyz.shape[0]
         num_objects, num_timestamps, num_attributes = obj_trajs.shape
-        
+
         # subtract the position of the center object to zero out the position
-        obj_trajs[:,:, 0:3] -= center_xyz[:, None, :]
-        
+        obj_trajs[:, :, 0:3] -= center_xyz[:, None, :]
+
         # zero out the heading of the center object as well
-        obj_trajs[:,:, heading_index] -= center_heading
+        obj_trajs[:, :, heading_index] -= center_heading
 
         return obj_trajs
-    
+
     def get_agent_data(
-        self, 
+        self,
         center_objects: np.array,
         obj_trajs_past: np.array,
         obj_trajs_future: np.array,
@@ -1627,34 +1626,33 @@ class LSTMDataset(Dataset):
         center_objects = obj_trajs_past
         num_center_objects = center_objects.shape[0]
         num_objects, num_timestamps, num_attributes = obj_trajs_past.shape
-        
+
         obj_trajs = self.transform_trajs_to_center_coords(
             obj_trajs=obj_trajs_past,
             center_xyz=center_objects[:, 0, 0:3],
             center_heading=center_objects[:, :, HEADING_IDX],
             heading_index=HEADING_IDX, rot_vel_index=[7, 8]
         )
-        
+
         obj_trajs_future = obj_trajs_future.astype(np.float32)
         copy_obj = obj_trajs_future.copy()
         center_objects = obj_trajs_future
-        
+
         obj_trajs_future = self.transform_trajs_to_center_coords(
             obj_trajs=obj_trajs_future,
             center_xyz=center_objects[:, 0, 0:3],
             center_heading=center_objects[:, :, HEADING_IDX],
             heading_index=HEADING_IDX, rot_vel_index=[7, 8]
         )
-        
+
         return (
             obj_trajs,
             obj_trajs_future,
             timestamps,
             obj_types
         )
-        
-    
-    def process(self, sim_data: Dict[str,Any]) -> Dict[str,Any]:
+
+    def process(self, sim_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Need to return a dictionary
         """
@@ -1667,31 +1665,31 @@ class LSTMDataset(Dataset):
         obj_trajs_past: np.array = obj_trajs_full[:, :self.past_len, :]
         obj_trajs_future: np.array = obj_trajs_full[:,
                                                     self.past_len:, :]
-        
+
         track_idx_to_predict = [i for i in range(len(obj_trajs_full))]
         center_objects = obj_trajs_full.copy()
         original_pos_past: np.array = obj_trajs_past.copy()
-        
+
         # sanity check let's plot the trajectories
         # fig, ax = plt.subplots()
         # for i in range(obj_trajs_past.shape[0]):
         #     ax.plot(obj_trajs_past[i, :, 0], obj_trajs_past[i, :, 1], label=f"Agent {i}")
         # ax.legend()
-        # # title 
+        # # title
         # ax.set_title("Trajectories Uncentered")
-    
+
         # ========================== NOISE INJECTION ==========================
 
-        ## 1. Measurement Noise (Sensor Errors)
+        # 1. Measurement Noise (Sensor Errors)
         # Gaussian position noise (simulating GPS or LIDAR errors)
-        position_noise:float = 0.1
-        obj_trajs_past[:, :, 0:2] += np.random.normal(0, 
-                                                      position_noise, 
+        position_noise: float = 0.1
+        obj_trajs_past[:, :, 0:2] += np.random.normal(0,
+                                                      position_noise,
                                                       obj_trajs_past[:, :, 0:2].shape)  # (Mean 0, Std 0.1m)
-    
+
         # Multiplicative noise (simulating sensor drift)
-        obj_trajs_past[:, :, 0:2] *= np.random.normal(1, 
-                                                      0.02, 
+        obj_trajs_past[:, :, 0:2] *= np.random.normal(1,
+                                                      0.02,
                                                       obj_trajs_past[:, :, 0:2].shape)  # 2% variation
 
         # ## 2. Process Noise (Motion Model Uncertainty)
@@ -1702,7 +1700,7 @@ class LSTMDataset(Dataset):
         # # Velocity noise (simulating varying acceleration)
         # velocity_noise = np.random.normal(0, 0.2, obj_trajs_past[:, :, VELOCITY_IDX].shape)  # Velocity in (x, y)
         # obj_trajs_past[:, :, VELOCITY_IDX] += velocity_noise
-        
+
         (obj_trajs_data, obj_trajs_future, timestamps, obj_types) = self.get_agent_data(
             center_objects=center_objects,
             obj_trajs_past=obj_trajs_past,
@@ -1711,10 +1709,10 @@ class LSTMDataset(Dataset):
             sdc_track_index=idx_to_track,
             timestamps=timestamp, obj_types=obj_types
         )
-        
+
         ret: Dict[str, Any] = {
             # 'scenario_id': np.array([scene_id] * len(track_index_to_predict)),
-            'obj_trajs': obj_trajs_data, # this is the past trajectory
+            'obj_trajs': obj_trajs_data,  # this is the past trajectory
             'center_objects_world': center_objects,
             'center_objects_type': np.array(obj_types),
             'center_gt_trajs': obj_trajs_future,
@@ -1726,36 +1724,39 @@ class LSTMDataset(Dataset):
     def collate_fn(self, data_list: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Custom collate function (if using PyTorch DataLoader).
-        
+
         Process will return past_len + future_len segments
-        
+
         """
         processed_data: List[Dict[str, Any]] = []
-        processed_data:List[Dict[str,Any]] = [self.process(sample) for sample in data_list]
+        processed_data: List[Dict[str, Any]] = [
+            self.process(sample) for sample in data_list]
         input_dict = {}
         for key in processed_data[0].keys():
-            input_dict[key] = torch.from_numpy(np.stack([sample[key] for sample in processed_data]))
-            
+            input_dict[key] = torch.from_numpy(
+                np.stack([sample[key] for sample in processed_data]))
+
         input_dict['center_objects_type'] = input_dict['center_objects_type'].numpy()
-        
+
         batch_list = []
         for batch in data_list:
             batch_list += batch
-            
+
         batch_size = len(batch_list)
-        
+
         batch_dict = {
             'batch_size': batch_size,
             'input_dict': input_dict,
             'batch_sample_count': batch_size
         }
-        
+
         return batch_dict
 
+
 class SingleLSTMDataset(Dataset):
-    def __init__(self, config: Dict[str, Any], 
+    def __init__(self, config: Dict[str, Any],
                  is_test: bool = False,
-                 is_validation: bool = False, 
+                 is_validation: bool = False,
                  num_samples: int = None):
         """
         Initializes the dataset in lazy mode.
@@ -1763,44 +1764,48 @@ class SingleLSTMDataset(Dataset):
         """
         self.is_validation = is_validation
         self.config = config
-        
+
         if is_test:
             print("Loading test data")
             self.data_path = config['test_data_path']
         elif is_validation:
             self.data_path = config['val_data_path']
-        else:             
+        else:
             self.data_path = config['train_data_path']
 
         # List all JSON files.
-        self.json_files: List[str] = glob.glob(os.path.join(self.data_path, "*.json"))
+        self.json_files: List[str] = glob.glob(
+            os.path.join(self.data_path, "*.json"))
         if num_samples is not None:
             self.json_files = self.json_files[:num_samples]
-            
+
         self.past_len = config['past_len']
         self.future_len = config['future_len']
         self.step_size = config.get('step_size', 1)
-        
+
         # Build an index mapping from global segment index to (file_index, local_segment_index)
         self.index_map: List[Tuple[int, int]] = []
         for file_idx, file_path in enumerate(self.json_files):
             with open(file_path, 'r') as f:
                 sim_data = json.load(f)
-            total_steps = len(sim_data)  # assuming sim_data is a list of timesteps
+            # assuming sim_data is a list of timesteps
+            total_steps = len(sim_data)
             total_len = self.past_len + self.future_len
-            num_segments = self.compute_num_segments(total_steps, total_len, self.step_size)
+            num_segments = self.compute_num_segments(
+                total_steps, total_len, self.step_size)
             for local_seg_idx in range(num_segments):
                 self.index_map.append((file_idx, local_seg_idx))
-                
-        print(f"Initialized dataset with {len(self.index_map)} segments across {len(self.json_files)} files.")
+
+        print(
+            f"Initialized dataset with {len(self.index_map)} segments across {len(self.json_files)} files.")
 
     def __len__(self):
         return len(self.index_map)
-    
+
     def __getitem__(self, global_index: int) -> Dict[str, Any]:
         if global_index >= len(self.index_map):
             raise IndexError(f"Index {global_index} out of bounds.")
-        
+
         file_idx, local_seg_idx = self.index_map[global_index]
         file_path = self.json_files[file_idx]
         segments = self.load_and_process_file(file_path)
@@ -1815,33 +1820,35 @@ class SingleLSTMDataset(Dataset):
         """
         with open(file_path, 'r') as f:
             sim_data: List[Dict[str, Any]] = json.load(f)
-        
+
         # Build raw arrays from the JSON (only ego data is used).
         overall_ego_position: List[List[float]] = []
         overall_controls: List[List[float]] = []
         overall_timestamps: List[float] = []
-        
+
         for current_info in sim_data:
             overall_ego_position.append(current_info['ego'])
             overall_controls.append(current_info['controls'])
             overall_timestamps.append(current_info['time_step'])
-            
+
         overall_ego_position = np.array(overall_ego_position)
         overall_controls = np.array(overall_controls)
         # Use only the ego trajectory (add a new axis so the agent dimension is 1).
-        overall_traj: np.array = overall_ego_position[np.newaxis, ...]  # shape: (1, T, features)
-        
+        # shape: (1, T, features)
+        overall_traj: np.array = overall_ego_position[np.newaxis, ...]
+
         total_len = self.past_len + self.future_len
         segments: List[Dict[str, Any]] = []
         idx_counter = 0
         for start_idx in range(total_len, len(sim_data) - total_len + 1, self.step_size):
             # Slice the trajectory for the segment.
             segment = overall_traj[:, start_idx - total_len:start_idx, :]
-            processed_segment = self.process_segment(segment, overall_timestamps[start_idx:start_idx + total_len], idx_counter)
+            processed_segment = self.process_segment(
+                segment, overall_timestamps[start_idx:start_idx + total_len], idx_counter)
             segments.append(processed_segment)
             idx_counter += 1
         return segments
-    
+
     def process_segment(self, segment: np.array, timestamps: List[float], idx: int) -> Dict[str, Any]:
         """
         Processes a segment to output only the ego agent.
@@ -1849,7 +1856,7 @@ class SingleLSTMDataset(Dataset):
         """
         # Select only the ego agent (index 0) and keep the agent dimension.
         ego_segment = segment[0:1, :, :]  # shape: (1, total_steps, features)
-        
+
         processed = {
             'object_type': [VEHICLE],  # assuming VEHICLE is defined
             'timestamp': timestamps,
@@ -1857,33 +1864,33 @@ class SingleLSTMDataset(Dataset):
             'segment_idx': idx,
             'segment_data': ego_segment,
         }
-        
+
         tracks_to_predict = {
             'track_index': [0],
             'object_type': [VEHICLE]
         }
         processed['tracks_to_predict'] = tracks_to_predict
-                
+
         return processed
-    
+
     def transform_trajs_to_center_coords(
-        self, obj_trajs: np.array, 
-        center_xyz: np.array, 
-        center_heading: np.array, 
-        heading_index: int, rot_vel_index=None):
+            self, obj_trajs: np.array,
+            center_xyz: np.array,
+            center_heading: np.array,
+            heading_index: int, rot_vel_index=None):
         """
         Transforms trajectories from global to ego-centric coordinates.
         """
         num_center_objects = center_xyz.shape[0]
         num_objects, num_timestamps, num_attributes = obj_trajs.shape
-        
+
         obj_trajs[:, :, 0:3] -= center_xyz[:, None, :]
         obj_trajs[:, :, heading_index] -= center_heading
 
         return obj_trajs
-    
+
     def get_agent_data(
-        self, 
+        self,
         center_objects: np.array,
         obj_trajs_past: np.array,
         obj_trajs_future: np.array,
@@ -1902,25 +1909,25 @@ class SingleLSTMDataset(Dataset):
             center_heading=center_objects[:, :, HEADING_IDX],
             heading_index=HEADING_IDX, rot_vel_index=[7, 8]
         )
-        
+
         obj_trajs_future = obj_trajs_future.astype(np.float32)
         copy_obj = obj_trajs_future.copy()
         center_objects = obj_trajs_future
-        
+
         obj_trajs_future = self.transform_trajs_to_center_coords(
             obj_trajs=obj_trajs_future,
             center_xyz=center_objects[:, 0, 0:3],
             center_heading=center_objects[:, :, HEADING_IDX],
             heading_index=HEADING_IDX, rot_vel_index=[7, 8]
         )
-        
+
         return (
             obj_trajs,
             obj_trajs_future,
             timestamps,
             obj_types
         )
-        
+
     def process(self, sim_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Processes a single segment and returns the dictionary.
@@ -1929,25 +1936,26 @@ class SingleLSTMDataset(Dataset):
         idx_to_track: int = sim_data['idx_to_track']
         obj_trajs_full: np.array = sim_data['segment_data']
         # Convert heading angles from degrees to radians (only for ego).
-        obj_trajs_full[:, :, HEADING_IDX] = np.deg2rad(obj_trajs_full[:, :, HEADING_IDX])
+        obj_trajs_full[:, :, HEADING_IDX] = np.deg2rad(
+            obj_trajs_full[:, :, HEADING_IDX])
         obj_types: List[int] = sim_data['object_type']
         obj_trajs_past: np.array = obj_trajs_full[:, :self.past_len, :]
         obj_trajs_future: np.array = obj_trajs_full[:, self.past_len:, :]
-        
+
         track_idx_to_predict = [0]
         center_objects = obj_trajs_full.copy()
         original_pos_past = obj_trajs_past.copy()
-        
+
         (obj_trajs_data, obj_trajs_future, timestamps, obj_types) = self.get_agent_data(
             center_objects=center_objects,
             obj_trajs_past=obj_trajs_past,
             obj_trajs_future=obj_trajs_future,
             track_index_to_predict=track_idx_to_predict,
             sdc_track_index=idx_to_track,
-            timestamps=timestamp, 
+            timestamps=timestamp,
             obj_types=obj_types
         )
-        
+
         ret: Dict[str, Any] = {
             'obj_trajs': obj_trajs_data,  # past trajectory for ego
             'center_objects_world': center_objects,
@@ -1962,19 +1970,21 @@ class SingleLSTMDataset(Dataset):
         """
         Custom collate function for the DataLoader.
         """
-        processed_data: List[Dict[str, Any]] = [self.process(sample) for sample in data_list]
+        processed_data: List[Dict[str, Any]] = [
+            self.process(sample) for sample in data_list]
         input_dict = {}
         for key in processed_data[0].keys():
-            input_dict[key] = torch.from_numpy(np.stack([sample[key] for sample in processed_data]))
-            
+            input_dict[key] = torch.from_numpy(
+                np.stack([sample[key] for sample in processed_data]))
+
         input_dict['center_objects_type'] = input_dict['center_objects_type'].numpy()
-        
+
         batch_list = []
         for batch in data_list:
             batch_list += batch
-            
+
         batch_size = len(batch_list)
-        
+
         batch_dict = {
             'batch_size': batch_size,
             'input_dict': input_dict,

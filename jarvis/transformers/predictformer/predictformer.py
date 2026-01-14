@@ -5,9 +5,9 @@ import torch.nn.functional as F
 from torch import optim
 from typing import Dict, Any
 # from unitraj.models.base_model.base_model import BaseModel
-from jarvis.transformers.wayformer.base_modelV2 import BaseModelV2
+from jarvis.transformers.predictformer.base_modelV2 import BaseModelV2
 
-from jarvis.transformers.wayformer.wayformer_utils import \
+from jarvis.transformers.predictformer.wayformer_utils import \
     (PerceiverEncoder, PerceiverDecoder, TrainableQueryProvider)
 
 
@@ -55,7 +55,7 @@ class PredictFormer(BaseModelV2):
         output_query_provider = TrainableQueryProvider(
             num_queries=config['num_queries_dec'],
             num_query_channels=self.d_k,
-            init_scale=0.1, 
+            init_scale=0.1,
         )
 
         self.agents_positional_embedding = nn.parameter.Parameter(
@@ -79,7 +79,6 @@ class PredictFormer(BaseModelV2):
         self.num_parameters: int = 7
         self.output_model = nn.Sequential(
             init_(nn.Linear(self.d_k, 7 * self.T)))
-
         self.selu = nn.SELU(inplace=True)
 
         self.criterion = Criterion(self.config)
@@ -193,15 +192,15 @@ class PredictFormer(BaseModelV2):
         agents_in = agents_in.reshape(-1, *agents_in.shape[2:])
         agents_mask = agents_mask.reshape(-1, *agents_mask.shape[2:])
         ego_in = torch.gather(agents_in, 1, inputs['track_index_to_predict'].view(-1, 1, 1, 1).repeat(1, 1,
-                    *agents_in.shape[-2:])).squeeze(1)
+                                                                                                      *agents_in.shape[-2:])).squeeze(1)
         ego_mask = torch.gather(agents_mask, 1, inputs['track_index_to_predict'].view(-1, 1, 1).repeat(1, 1,
-                agents_mask.shape[-1])).squeeze(1)
+                                                                                                       agents_mask.shape[-1])).squeeze(1)
         agents_in = torch.cat([agents_in, agents_mask.unsqueeze(-1)], dim=-1)
         agents_in = agents_in.transpose(1, 2)
         ego_in = torch.cat([ego_in, ego_mask.unsqueeze(-1)], dim=-1)
         model_input['ego_in'] = ego_in
         model_input['agents_in'] = agents_in
-        
+
         return model_input
 
     def forward(self, batch: Dict[str, Any]):
@@ -214,6 +213,8 @@ class PredictFormer(BaseModelV2):
         T
 
         """
+
+        # -- Processing the Inputs to forward propagate through the model
         model_input = {}
         inputs = batch['input_dict']
         agents_in, agents_mask = inputs['obj_trajs'], inputs['obj_trajs_mask']
@@ -222,9 +223,9 @@ class PredictFormer(BaseModelV2):
         agents_in = agents_in.reshape(-1, *agents_in.shape[2:])
         agents_mask = agents_mask.reshape(-1, *agents_mask.shape[2:])
         ego_in = torch.gather(agents_in, 1, inputs['track_index_to_predict'].view(-1, 1, 1, 1).repeat(1, 1,
-                    *agents_in.shape[-2:])).squeeze(1)
+                                                                                                      *agents_in.shape[-2:])).squeeze(1)
         ego_mask = torch.gather(agents_mask, 1, inputs['track_index_to_predict'].view(-1, 1, 1).repeat(1, 1,
-                agents_mask.shape[-1])).squeeze(1)
+                                                                                                       agents_mask.shape[-1])).squeeze(1)
         agents_in = torch.cat([agents_in, agents_mask.unsqueeze(-1)], dim=-1)
         agents_in = agents_in.transpose(1, 2)
         ego_in = torch.cat([ego_in, ego_mask.unsqueeze(-1)], dim=-1)
@@ -232,6 +233,7 @@ class PredictFormer(BaseModelV2):
         model_input['agents_in'] = agents_in
         output = self._forward(model_input)
 
+        # -- We now compute the loss based on our GMM
         center_gt_trajs = inputs['center_gt_trajs']
         center_gt_trajs_mask = inputs['center_gt_trajs_mask']
         center_gt_final_valid_idx = inputs['center_gt_final_valid_idx']
@@ -355,7 +357,7 @@ class Criterion(nn.Module):
             # 1D component for z.
             reg_gmm_log_coefficient_z = log_std
             reg_gmm_exp_z = 0.5 * (dz / std) ** 2
-    
+
             reg_loss = ((reg_gmm_log_coefficient_xy + reg_gmm_exp_xy +
                          reg_gmm_log_coefficient_z + reg_gmm_exp_z) * gt_valid_mask).sum(dim=-1)
         else:
